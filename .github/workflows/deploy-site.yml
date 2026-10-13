@@ -65,6 +65,10 @@ jobs:
           common="set cmd:fail-exit true; set net:max-retries 3; set net:timeout 30; set net:reconnect-interval-base 5; set ssl:verify-certificate no; set ftp:passive-mode true"
           # eerst expliciete FTPS (versleuteld), daarna gewone FTP als de server geen TLS kent
           USER_OK=""; base=""; SERVER_OK=""
+          # DNS-controle (alleen of de naam bestaat; de naam zelf kan gemaskeerd zijn)
+          for h in "$FTP_SERVER" ftp.dotenterprises.nl dotenterprises.nl ftp.bingr.online; do
+            ip=$(getent ahostsv4 "$h" | awk 'NR==1{print $1}'); echo "::notice::DNS ${h}: ${ip:-niet gevonden} (lengte ${#h})"
+          done
           # de FTP-server reageert soms even niet: tot 4 pogingen met een pauze
           for attempt in 1 2 3 4; do
           [ "$attempt" -gt 1 ] && { echo "Nieuwe poging $attempt over 45 s…"; sleep 45; }
