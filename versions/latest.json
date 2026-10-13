@@ -1,0 +1,29 @@
+{
+ "android": {
+  "version": "1.0.0",
+  "build": 68,
+  "file": "Bingr-1.0.0-build68.apk",
+  "path": "android/1.0.0-build68/Bingr-1.0.0-build68.apk",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/android/1.0.0-build68/Bingr-1.0.0-build68.apk",
+  "size": 58507687,
+  "date": "2026-10-13"
+ },
+ "tizen": {
+  "version": "1.0.0",
+  "build": 68,
+  "file": "Bingr-1.0.0-build68-testsigned.wgt",
+  "path": "tizen/1.0.0-build68/Bingr-1.0.0-build68-testsigned.wgt",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/tizen/1.0.0-build68/Bingr-1.0.0-build68-testsigned.wgt",
+  "size": 625486,
+  "date": "2026-10-13"
+ },
+ "apple": {
+  "version": "1.0.0",
+  "build": 68,
+  "file": "Bingr-1.0.0-build68-Xcode.zip",
+  "path": "apple/1.0.0-build68/Bingr-1.0.0-build68-Xcode.zip",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/apple/1.0.0-build68/Bingr-1.0.0-build68-Xcode.zip",
+  "size": 2987368,
+  "date": "2026-10-13"
+ }
+}
