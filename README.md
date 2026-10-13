@@ -17,7 +17,7 @@ Wijzigingen in deze repo komen **nooit** in de openbare changelog (`docs/changel
 
 | Secret | Wat |
 | --- | --- |
-| `FTP_SERVER` | FTP-server van de hoster: `ftp.dotenterprises.nl` (de workflow probeert daarna ook `ftp.dotenterprises.nl` en `ftp.bingr.online`) |
+| `FTP_SERVER` | FTP-server: `ftp.bingr.online` (de workflow probeert die ook als terugval) |
 | `FTP_USERNAME` | FTP-gebruikersnaam van het eigen FTP-account van beheer.bingr.online (komt direct uit in de map van het subdomein; dan is `FTP_DIR` niet nodig) |
 | `FTP_PASSWORD` | FTP-wachtwoord |
 | `FTP_DIR` | optioneel; leeg als de FTP-login (een eigen FTP-account van het subdomein) direct in de map van beheer.bingr.online uitkomt. Anders de map waar beheer.bingr.online naar wijst, gezien vanaf de FTP-login (bv. `beheer.bingr.online` of `domains/bingr.online/beheer`) |

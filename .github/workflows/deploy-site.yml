@@ -66,13 +66,13 @@ jobs:
           # eerst expliciete FTPS (versleuteld), daarna gewone FTP als de server geen TLS kent
           USER_OK=""; base=""; SERVER_OK=""
           # DNS-controle (alleen of de naam bestaat; de naam zelf kan gemaskeerd zijn)
-          for h in "$FTP_SERVER" ftp.dotenterprises.nl dotenterprises.nl ftp.bingr.online; do
+          for h in "$FTP_SERVER" ftp.bingr.online; do
             ip=$( (getent ahostsv4 "$h" || true) | awk 'NR==1{print $1}'); echo "::notice::DNS ${h}: ${ip:-niet gevonden} (lengte ${#h})"
           done
           # de FTP-server reageert soms even niet: tot 4 pogingen met een pauze
           for attempt in 1 2 3 4; do
           [ "$attempt" -gt 1 ] && { echo "Nieuwe poging $attempt over 45 s…"; sleep 45; }
-          for srv in "$FTP_SERVER" "ftp.dotenterprises.nl" "ftp.bingr.online"; do
+          for srv in "$FTP_SERVER" "ftp.bingr.online"; do
           for mode in "set ftp:ssl-force true; set ftp:ssl-protect-data true" "set ftp:ssl-allow false"; do
             for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
               [ -z "$u" ] && continue
@@ -127,7 +127,7 @@ jobs:
           for u in "https://bingr.online/${TARGET#/}/robots.txt" "https://bingr.online/public_html/robots.txt"; do
             echo "::notice::Test $(echo "$u" | sed "s#${TARGET#/}#<FTP_DIR>#"): $(curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}' --max-time 15 "$u")"
           done
-          [ "$SERVER_OK" != "$FTP_SERVER" ] && echo "::warning::FTP_SERVER werkt niet (naam onbekend); gebruik ftp.dotenterprises.nl als waarde."
+          [ "$SERVER_OK" != "$FTP_SERVER" ] && echo "::warning::FTP_SERVER werkt niet (naam onbekend); gebruik ftp.bingr.online als waarde."
 
       - name: Controleren of beheer.bingr.online het dashboard toont
         if: steps.check.outputs.skip != '1' && success()
