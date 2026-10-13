@@ -93,6 +93,13 @@ jobs:
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -1 \"$TARGET/\"; bye" > /tmp/ls-target.txt 2>&1 || true
           echo "::notice::FTP-hoofdmap: $(tr '\n' ' ' < /tmp/ls-root.txt | sed 's#ftp://[^ ]*@#ftp://***@#g' | head -c 600)"
           echo "::notice::Inhoud doelmap: $(tr '\n' ' ' < /tmp/ls-target.txt | head -c 400)"
+          # rechten: map 755 en bestanden 644, anders geeft de webserver 403
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; chmod 755 \"$TARGET\"; cd \"$TARGET\"; chmod 644 *; chmod 644 .htaccess; bye" >/dev/null 2>&1 || echo "::warning::chmod niet gelukt"
+          parent=$(dirname "$TARGET"); name=$(basename "$TARGET")
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -l \"$parent/\"; bye" 2>&1 | grep -v -E 'index|\.(html|css|js|png|txt|xml|json)$' | awk '{print $1, $NF}' | tr '\n' ' ' > /tmp/ls-parent.txt || true
+          echo "::notice::Mappen naast de doelmap: $(sed "s#$name#<FTP_DIR-map>#g" /tmp/ls-parent.txt | head -c 900)"
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -l \"$TARGET/\"; bye" 2>&1 | awk '{print $1, $NF}' | sed 's#.*/##' | tr '\n' ' ' > /tmp/ls-perm.txt || true
+          echo "::notice::Rechten doelmap: $(head -c 500 /tmp/ls-perm.txt)"
           # waar is de doelmap via de website bereikbaar? (laat zien of de FTP-hoofdmap de webmap van bingr.online is)
           for u in "https://bingr.online/${TARGET#/}/robots.txt" "https://bingr.online/public_html/robots.txt"; do
             echo "::notice::Test $(echo "$u" | sed "s#${TARGET#/}#<FTP_DIR>#"): $(curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}' --max-time 15 "$u")"
