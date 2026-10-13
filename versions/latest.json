@@ -1,29 +1,29 @@
 {
  "android": {
   "version": "1.0.0",
-  "build": 68,
-  "file": "Bingr-1.0.0-build68.apk",
-  "path": "android/1.0.0-build68/Bingr-1.0.0-build68.apk",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/android/1.0.0-build68/Bingr-1.0.0-build68.apk",
-  "size": 58507687,
+  "build": 72,
+  "file": "Bingr-1.0.0-build72.apk",
+  "path": "android/1.0.0-build72/Bingr-1.0.0-build72.apk",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/android/1.0.0-build72/Bingr-1.0.0-build72.apk",
+  "size": 58520623,
   "date": "2026-10-13"
  },
  "tizen": {
   "version": "1.0.0",
-  "build": 68,
-  "file": "Bingr-1.0.0-build68-testsigned.wgt",
-  "path": "tizen/1.0.0-build68/Bingr-1.0.0-build68-testsigned.wgt",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/tizen/1.0.0-build68/Bingr-1.0.0-build68-testsigned.wgt",
-  "size": 625486,
+  "build": 72,
+  "file": "Bingr-1.0.0-build72-testsigned.wgt",
+  "path": "tizen/1.0.0-build72/Bingr-1.0.0-build72-testsigned.wgt",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/tizen/1.0.0-build72/Bingr-1.0.0-build72-testsigned.wgt",
+  "size": 627053,
   "date": "2026-10-13"
  },
  "apple": {
   "version": "1.0.0",
-  "build": 68,
-  "file": "Bingr-1.0.0-build68-Xcode.zip",
-  "path": "apple/1.0.0-build68/Bingr-1.0.0-build68-Xcode.zip",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/apple/1.0.0-build68/Bingr-1.0.0-build68-Xcode.zip",
-  "size": 2987368,
+  "build": 72,
+  "file": "Bingr-1.0.0-build72-Xcode.zip",
+  "path": "apple/1.0.0-build72/Bingr-1.0.0-build72-Xcode.zip",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/apple/1.0.0-build72/Bingr-1.0.0-build72-Xcode.zip",
+  "size": 2996561,
   "date": "2026-10-13"
  }
 }
