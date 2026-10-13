@@ -127,7 +127,12 @@ jobs:
           echo "::notice::FTP-hoofdmap: $(tr '\n' ' ' < /tmp/ls-root.txt | sed 's#ftp://[^ ]*@#ftp://***@#g' | head -c 600)"
           echo "::notice::Inhoud doelmap: $(tr '\n' ' ' < /tmp/ls-target.txt | head -c 400)"
           # rechten: map 755 en bestanden 644, anders geeft de webserver 403
-          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; chmod 755 \"$TARGET\"; cd \"$TARGET\"; chmod 644 *; chmod 644 .htaccess; bye" >/dev/null 2>&1 || echo "::warning::chmod niet gelukt"
+          # (los van elkaar: de hoofdmap van een FTP-login mag vaak niet ge-chmod worden)
+          [ "$TARGET" != "." ] && { lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; chmod 755 \"$TARGET\"; bye" >/dev/null 2>&1 || echo "::warning::chmod van de doelmap niet gelukt"; }
+          lftp -e "set cmd:fail-exit false; $base; set cmd:fail-exit false; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cd \"$TARGET\"; chmod 644 index.html admin.css admin.js config.js favicon.png apple-touch-icon.png robots.txt .htaccess; bye" >/tmp/chmod.txt 2>&1 || true
+          echo "::notice::chmod bestanden: $(tr '\n' ' ' < /tmp/chmod.txt | head -c 300)"
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; ls -la \"$TARGET/\"; bye" 2>&1 | awk '{print $1, $NF}' | tr '\n' ' ' > /tmp/ls-la.txt || true
+          echo "::notice::ls -la doelmap: $(head -c 600 /tmp/ls-la.txt)"
           if [ "$TARGET" != "." ]; then
             parent=$(dirname "$TARGET"); name=$(basename "$TARGET")
             lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -l \"$parent/\"; bye" 2>&1 | grep -v -E 'index|\.(html|css|js|png|txt|xml|json)$' | awk '{print $1, $NF}' | tr '\n' ' ' > /tmp/ls-parent.txt || true
@@ -156,6 +161,12 @@ jobs:
             if [ -z "$ip" ]; then
               echo "::warning::beheer.bingr.online bestaat nog niet in DNS: maak het subdomein aan bij de hoster (zie README.md)."
             else
+              for u in https://beheer.bingr.online/ https://beheer.bingr.online/index.html https://beheer.bingr.online/robots.txt http://beheer.bingr.online/; do
+                r=$(curl -skI --max-time 15 "$u" | tr -d '\r' | grep -iE '^(HTTP|server|location)' | tr '\n' ' ')
+                echo "::notice::$u -> ${r:-geen antwoord}"
+              done
+              cert=$(echo | openssl s_client -connect beheer.bingr.online:443 -servername beheer.bingr.online 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName 2>/dev/null | tr '\n' ' ')
+              echo "::notice::Certificaat: ${cert:-geen}"
               echo "::warning::$url ($ip) geeft HTTP ${code:-geen antwoord}, nog niet het dashboard: wijst het subdomein naar FTP_DIR, en is er een SSL-certificaat? $(head -c 160 /tmp/site.html 2>/dev/null | tr '\n' ' ')"
             fi
           fi
