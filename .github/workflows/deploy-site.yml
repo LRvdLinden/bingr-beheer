@@ -70,6 +70,8 @@ jobs:
             v="${!k}"; t=$(trim "$v"); [ "$v" != "$t" ] && echo "::warning::$k had spaties of een regeleinde aan begin of eind; die zijn weggehaald."
             printf -v "$k" '%s' "$t"
           done
+          # wachtwoord via LFTP_PASSWORD: tekens als , " \\ ; of # in het wachtwoord breken anders het lftp-commando
+          export LFTP_PASSWORD="$FTP_PASSWORD"
           u="$FTP_USERNAME"
           echo "::notice::Gebruikersnaam: ${#u} tekens, eindigt op @beheer.bingr.online: $([[ "$u" == *@beheer.bingr.online ]] && echo ja || echo nee); wachtwoord: ${#FTP_PASSWORD} tekens"
           USER_OK=""; base=""; SERVER_OK=""
@@ -85,7 +87,7 @@ jobs:
             for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
               [ -z "$u" ] && continue
               echo "Proberen: gebruiker '${u%%@*}…', modus: ${mode%%;*}"
-              if lftp -e "$common; $mode; open -u \"$u\",\"$FTP_PASSWORD\" \"$srv\"; cls -1 > /tmp/root.txt; bye" 2>/tmp/err.txt; then
+              if lftp -e "$common; $mode; open --env-password -u \"$u\" \"$srv\"; cls -1 > /tmp/root.txt; bye" 2>/tmp/err.txt; then
                 USER_OK="$u"; base="$common; $mode"; SERVER_OK="$srv"; break 4
               fi
               msg=$(sed 's/PASS .*/PASS ***/' /tmp/err.txt | tr '\n' ' ' | tail -c 300)
@@ -116,20 +118,20 @@ jobs:
             echo "::notice::FTP-hoofdmap is al public_html; doelmap wordt $TARGET"
           fi
           # map aanmaken als hij er nog niet is (mkdir -p -f: geen fout als hij al bestaat)
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mkdir -p -f \"$TARGET\"; bye" || true
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store ./web/ \"$TARGET\"; bye"
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; mkdir -p -f \"$TARGET\"; bye" || true
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store ./web/ \"$TARGET\"; bye"
           echo "::notice::Dashboard geüpload naar map $TARGET"
           # overzicht voor controle: mappen in de FTP-hoofdmap en de inhoud van de doelmap (alleen namen)
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -1; bye" > /tmp/ls-root.txt 2>&1 || true
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -1 \"$TARGET/\"; bye" > /tmp/ls-target.txt 2>&1 || true
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -1; bye" > /tmp/ls-root.txt 2>&1 || true
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -1 \"$TARGET/\"; bye" > /tmp/ls-target.txt 2>&1 || true
           echo "::notice::FTP-hoofdmap: $(tr '\n' ' ' < /tmp/ls-root.txt | sed 's#ftp://[^ ]*@#ftp://***@#g' | head -c 600)"
           echo "::notice::Inhoud doelmap: $(tr '\n' ' ' < /tmp/ls-target.txt | head -c 400)"
           # rechten: map 755 en bestanden 644, anders geeft de webserver 403
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; chmod 755 \"$TARGET\"; cd \"$TARGET\"; chmod 644 *; chmod 644 .htaccess; bye" >/dev/null 2>&1 || echo "::warning::chmod niet gelukt"
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; chmod 755 \"$TARGET\"; cd \"$TARGET\"; chmod 644 *; chmod 644 .htaccess; bye" >/dev/null 2>&1 || echo "::warning::chmod niet gelukt"
           parent=$(dirname "$TARGET"); name=$(basename "$TARGET")
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -l \"$parent/\"; bye" 2>&1 | grep -v -E 'index|\.(html|css|js|png|txt|xml|json)$' | awk '{print $1, $NF}' | tr '\n' ' ' > /tmp/ls-parent.txt || true
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -l \"$parent/\"; bye" 2>&1 | grep -v -E 'index|\.(html|css|js|png|txt|xml|json)$' | awk '{print $1, $NF}' | tr '\n' ' ' > /tmp/ls-parent.txt || true
           echo "::notice::Mappen naast de doelmap: $(sed "s#$name#<FTP_DIR-map>#g" /tmp/ls-parent.txt | head -c 900)"
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -l \"$TARGET/\"; bye" 2>&1 | awk '{print $1, $NF}' | sed 's#.*/##' | tr '\n' ' ' > /tmp/ls-perm.txt || true
+          lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -l \"$TARGET/\"; bye" 2>&1 | awk '{print $1, $NF}' | sed 's#.*/##' | tr '\n' ' ' > /tmp/ls-perm.txt || true
           echo "::notice::Rechten doelmap: $(head -c 500 /tmp/ls-perm.txt)"
           # waar is de doelmap via de website bereikbaar? (laat zien of de FTP-hoofdmap de webmap van bingr.online is)
           for u in "https://bingr.online/${TARGET#/}/robots.txt" "https://bingr.online/public_html/robots.txt"; do
