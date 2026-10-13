@@ -64,6 +64,14 @@ jobs:
           set -euo pipefail
           common="set cmd:fail-exit true; set net:max-retries 3; set net:timeout 30; set net:reconnect-interval-base 5; set ssl:verify-certificate no; set ftp:passive-mode true"
           # eerst expliciete FTPS (versleuteld), daarna gewone FTP als de server geen TLS kent
+          # spaties, tabs en regeleinden rond de secrets weghalen (komt vaak mee bij plakken)
+          trim(){ printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+          for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do
+            v="${!k}"; t=$(trim "$v"); [ "$v" != "$t" ] && echo "::warning::$k had spaties of een regeleinde aan begin of eind; die zijn weggehaald."
+            printf -v "$k" '%s' "$t"
+          done
+          u="$FTP_USERNAME"
+          echo "::notice::Gebruikersnaam: ${#u} tekens, eindigt op @beheer.bingr.online: $([[ "$u" == *@beheer.bingr.online ]] && echo ja || echo nee); wachtwoord: ${#FTP_PASSWORD} tekens"
           USER_OK=""; base=""; SERVER_OK=""
           # DNS-controle (alleen of de naam bestaat; de naam zelf kan gemaskeerd zijn)
           for h in "$FTP_SERVER" ftp.bingr.online; do
