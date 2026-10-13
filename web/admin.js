@@ -229,10 +229,11 @@
     tablet: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/>',
     mac: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M2 20h20"/>',
     tv: '<rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8"/>',
+    appletv: '<path d="M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM9 7.75v7.25a1.75 1.75 0 0 0 1.75 1.75M7 10.5h4M13 10.5l2.5 6.25L18 10.5"/>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
   };
   function icon(p) {
-    const k = /iphone|^android$/i.test(p) ? "phone" : /ipad|tablet/i.test(p) ? "tablet" : /mac/i.test(p) ? "mac" : p === "browser" ? "globe" : "tv";
+    const k = /^apple ?tv$/i.test(p || "") ? "appletv" : /iphone|^android$/i.test(p) ? "phone" : /ipad|tablet/i.test(p) ? "tablet" : /mac/i.test(p) ? "mac" : p === "browser" ? "globe" : "tv";
     return `<svg viewBox="0 0 24 24">${ICON[k]}</svg>`;
   }
   async function openUser(id) {
