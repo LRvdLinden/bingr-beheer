@@ -109,6 +109,22 @@ jobs:
               exit 1
             fi
             echo "::notice::Geen FTP_DIR: upload naar de hoofdmap van de FTP-login"
+            # komt de login uit in een submap van de map van het subdomein (bv. /public_html/beheer.bingr.online/lrvdlinden),
+            # dan een map hoger uploaden: daar wijst beheer.bingr.online naar
+            cwd=$(lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; pwd; bye" 2>/dev/null | tail -1 | sed 's#^ftp://[^/]*##')
+            echo "::notice::FTP-hoofdmap: ${cwd:-onbekend}"
+            if [ "$(basename "$(dirname "${cwd:-/x/x}")")" = "beheer.bingr.online" ]; then
+              sub=$(basename "$cwd")
+              if lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -1 \"..\"; bye" >/tmp/up.txt 2>&1; then
+                TARGET=".."
+                echo "::notice::Upload naar de map van het subdomein (een map hoger dan de FTP-hoofdmap)"
+                # eerder per ongeluk in de submap gezette dashboardbestanden opruimen
+                lftp -e "set cmd:fail-exit false; $base; set cmd:fail-exit false; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; rm -f .htaccess admin.css admin.js apple-touch-icon.png config.js favicon.png index.html robots.txt; bye" >/dev/null 2>&1 || true
+                echo "::notice::Oude bestanden in de submap $sub opgeruimd"
+              else
+                echo "::warning::De map boven de FTP-hoofdmap is niet bereikbaar; zet in het FTP-account de map /public_html/beheer.bingr.online als hoofdmap."
+              fi
+            fi
           fi
           # begint de FTP-hoofdmap al in public_html (de webmap van bingr.online)? dan het voorvoegsel public_html/ weglaten,
           # anders ontstaat er een map public_html in de website
