@@ -89,10 +89,14 @@ jobs:
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store ./web/ \"$TARGET\"; bye"
           echo "::notice::Dashboard geüpload naar map $TARGET"
           # overzicht voor controle: mappen in de FTP-hoofdmap en de inhoud van de doelmap (alleen namen)
-          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; pwd; cls -1 -d */; bye" > /tmp/ls-root.txt 2>&1 || true
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -1; bye" > /tmp/ls-root.txt 2>&1 || true
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; cls -1 \"$TARGET/\"; bye" > /tmp/ls-target.txt 2>&1 || true
           echo "::notice::FTP-hoofdmap: $(tr '\n' ' ' < /tmp/ls-root.txt | sed 's#ftp://[^ ]*@#ftp://***@#g' | head -c 600)"
           echo "::notice::Inhoud doelmap: $(tr '\n' ' ' < /tmp/ls-target.txt | head -c 400)"
+          # waar is de doelmap via de website bereikbaar? (laat zien of de FTP-hoofdmap de webmap van bingr.online is)
+          for u in "https://bingr.online/${TARGET#/}/robots.txt" "https://bingr.online/public_html/robots.txt"; do
+            echo "::notice::Test $(echo "$u" | sed "s#${TARGET#/}#<FTP_DIR>#"): $(curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}' --max-time 15 "$u")"
+          done
           [ "$SERVER_OK" != "$FTP_SERVER" ] && echo "::warning::FTP_SERVER werkt niet (naam onbekend); gebruik ftp.bingr.online als waarde."
 
       - name: Controleren of beheer.bingr.online het dashboard toont
