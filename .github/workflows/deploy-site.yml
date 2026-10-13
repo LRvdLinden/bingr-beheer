@@ -113,6 +113,10 @@ jobs:
             # dan een map hoger uploaden: daar wijst beheer.bingr.online naar
             cwd=$(lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; pwd; bye" 2>/dev/null | tail -1 | sed 's#^ftp://[^/]*##')
             echo "::notice::FTP-hoofdmap: ${cwd:-onbekend}"
+            raw=$(lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; quote PWD; cd ..; quote PWD; cls -1; bye" 2>&1 | sed 's#ftp://[^@]*@#ftp://***@#g' | tr '\n' ' ' | head -c 600)
+            echo "::notice::PWD en map erboven: $raw"
+            qp=$(lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; quote PWD; bye" 2>/dev/null | grep -o '"[^"]*"' | head -1 | tr -d '"')
+            [ -z "$cwd" ] && cwd="$qp"
             if [ "$(basename "$(dirname "${cwd:-/x/x}")")" = "beheer.bingr.online" ]; then
               sub=$(basename "$cwd")
               if lftp -e "$base; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cls -1 \"..\"; bye" >/tmp/up.txt 2>&1; then
