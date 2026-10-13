@@ -1,0 +1,114 @@
+name: Admin-functie
+
+# Zet de Supabase Edge Function `admin` (supabase/functions/admin) op het Bingr-project en zet de beheer-secrets.
+# Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens); optioneel SUPABASE_PROJECT_REF (anders het
+# project uit de publieke Supabase-URL). Beheer: BINGR_ADMIN_USER, BINGR_ADMIN_PASSWORD. Mail (optioneel): BINGR_SMTP_HOST,
+# BINGR_SMTP_PORT (465), BINGR_SMTP_USER, BINGR_SMTP_PASSWORD, BINGR_SMTP_FROM.
+# Let op: function-secrets gelden voor het hele Supabase-project (ook voor device-auth, web-proxy en status uit
+# LRvdLinden/iptv-ios-appletv). Alleen gezette secrets worden doorgezet; waarden komen nooit in de repo of het log.
+# Schema, tabellen en de andere functies staan in iptv-ios-appletv (workflow Backend); die raakt deze functie niet.
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/**', '.github/workflows/deploy-admin.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: admin-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF_SECRET: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # publiek: hetzelfde project als https://vjewsncmsxmhmhnoxwqx.supabase.co (web/config.js)
+      REF_DEFAULT: vjewsncmsxmhmhnoxwqx
+    steps:
+      - uses: actions/checkout@v5
+      - name: Controleren
+        id: check
+        run: |
+          REF="${REF_SECRET:-$REF_DEFAULT}"
+          echo "REF=$REF" >> $GITHUB_ENV
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::warning::SUPABASE_ACCESS_TOKEN ontbreekt — functie admin niet bijgewerkt. Zie README.md."; echo "skip=1" >> $GITHUB_OUTPUT
+          fi
+          grep -q "$REF" web/config.js || echo "::warning::Project $REF is niet het project uit web/config.js"
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.skip != '1'
+        with:
+          version: latest
+      - name: Beheer- en mailgegevens als function-secrets
+        if: steps.check.outputs.skip != '1'
+        env:
+          A_USER: ${{ secrets.BINGR_ADMIN_USER }}
+          A_PASS: ${{ secrets.BINGR_ADMIN_PASSWORD }}
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          S_USER: ${{ secrets.BINGR_SMTP_USER }}
+          S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
+        run: |
+          # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
+          args=()
+          [ -n "$A_USER" ] && args+=("BINGR_ADMIN_USER=$A_USER")
+          [ -n "$A_PASS" ] && args+=("BINGR_ADMIN_PASSWORD=$A_PASS")
+          [ -n "$S_HOST" ] && args+=("BINGR_SMTP_HOST=$S_HOST")
+          [ -n "$S_PORT" ] && args+=("BINGR_SMTP_PORT=$S_PORT")
+          [ -n "$S_USER" ] && args+=("BINGR_SMTP_USER=$S_USER")
+          [ -n "$S_PASS" ] && args+=("BINGR_SMTP_PASSWORD=$S_PASS")
+          [ -n "$S_FROM" ] && args+=("BINGR_SMTP_FROM=$S_FROM")
+          if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} beheer/mail-secret(s) op de server gezet"; fi
+          supabase secrets list --project-ref "$REF" 2>/dev/null | awk '{print $1}' > /tmp/names.txt || true
+          if [ -z "$A_USER" ] || [ -z "$A_PASS" ]; then
+            if grep -qx BINGR_ADMIN_USER /tmp/names.txt && grep -qx BINGR_ADMIN_PASSWORD /tmp/names.txt; then
+              echo "::warning::BINGR_ADMIN_USER/BINGR_ADMIN_PASSWORD ontbreken in deze repo; de functie gebruikt de waarden die al op de server staan."
+            else
+              echo "::warning::BINGR_ADMIN_USER/BINGR_ADMIN_PASSWORD ontbreken (ook op de server): het dashboard kan niet inloggen."
+            fi
+          fi
+          [ -n "$A_PASS" ] && [ ${#A_PASS} -lt 12 ] && echo "::warning::BINGR_ADMIN_PASSWORD is korter dan 12 tekens; kies een langer wachtwoord."
+          [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
+          grep -qx STATUS_CRON_SECRET /tmp/names.txt || echo "::warning::STATUS_CRON_SECRET staat niet op de server: de tab Status werkt pas na de workflow Backend in iptv-ios-appletv."
+          true
+      - name: Edge Function admin
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy admin --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          sleep 5
+          F="https://$REF.supabase.co/functions/v1/admin"
+          fail=0
+          # 1. inloggen met een fout wachtwoord vanaf beheer.bingr.online: 401 JSON met CORS voor dat domein
+          code=$(curl -s -D /tmp/h.txt -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://beheer.bingr.online" \
+            -H "Content-Type: application/json" -d "{\"action\":\"login\",\"user\":\"ci-test\",\"password\":\"fout-$(openssl rand -hex 8)\"}")
+          cat /tmp/b.json; echo
+          acao=$(grep -i '^access-control-allow-origin:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2-)
+          if [ "$code" = 401 ] && grep -q invalid_credentials /tmp/b.json && [ "$acao" = "https://beheer.bingr.online" ]; then
+            echo "::notice::login met fout wachtwoord: 401 met CORS voor https://beheer.bingr.online"
+          elif [ "$code" = 503 ] && grep -q not_configured /tmp/b.json; then
+            echo "::warning::admin werkt, maar BINGR_ADMIN_USER/BINGR_ADMIN_PASSWORD staan niet op de server"
+          elif [ "$code" = 429 ]; then
+            echo "::warning::login tijdelijk geblokkeerd (te veel fouten); CORS: ${acao:-geen}"
+          else
+            echo "::error::login gaf HTTP $code, CORS '${acao:-geen}'"; fail=1
+          fi
+          # 2. preflight vanaf beheer.bingr.online
+          acao=$(curl -s -D - -o /dev/null -X OPTIONS "$F" -H "Origin: https://beheer.bingr.online" -H "Access-Control-Request-Method: POST" \
+            | grep -i '^access-control-allow-origin:' | tr -d '\r' | cut -d' ' -f2-)
+          [ "$acao" = "https://beheer.bingr.online" ] && echo "::notice::preflight OK" || { echo "::error::preflight zonder CORS ('$acao')"; fail=1; }
+          # 3. bingr.online mag alleen unsubscribe (afmeldpagina); beheer-acties vanaf daar: 403 zonder CORS
+          code=$(curl -s -D /tmp/h.txt -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://bingr.online" -H "Content-Type: application/json" -d '{"action":"stats"}')
+          if [ "$code" = 403 ] && ! grep -qi '^access-control-allow-origin:' /tmp/h.txt; then echo "::notice::beheer vanaf bingr.online geweigerd (403)"; else echo "::error::stats vanaf bingr.online gaf HTTP $code"; fail=1; fi
+          code=$(curl -s -D /tmp/h.txt -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://bingr.online" -H "Content-Type: application/json" -d '{"action":"unsubscribe","t":"x"}')
+          acao=$(grep -i '^access-control-allow-origin:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2-)
+          if [ "$code" = 400 ] && grep -q invalid_token /tmp/b.json && [ "$acao" = "https://bingr.online" ]; then echo "::notice::afmelden vanaf bingr.online werkt"; else echo "::error::unsubscribe vanaf bingr.online gaf HTTP $code, CORS '${acao:-geen}'"; fail=1; fi
+          # 4. zonder inloggen geen gegevens
+          curl -s -X POST "$F" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' | tee /tmp/b.json; echo
+          grep -q not_signed_in /tmp/b.json && echo "::notice::status vraagt om inloggen" || { echo "::error::status zonder inloggen onverwacht"; fail=1; }
+          exit $fail

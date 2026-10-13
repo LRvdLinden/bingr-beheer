@@ -1,0 +1,109 @@
+name: Dashboard
+
+# Zet het beheer-dashboard (map web/) via FTPS op de webserver, in de map waar beheer.bingr.online naar wijst.
+# Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD en FTP_DIR (de map van het subdomein, bv. beheer.bingr.online of
+# domains/bingr.online/public_html/beheer). Optioneel: FTP_USERNAME_ALT (tweede gebruikersnaam om te proberen).
+# Ontbreekt er een secret, dan alleen een waarschuwing (geen fout). Er wordt altijd precies naar FTP_DIR geüpload.
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/deploy-site.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: dashboard-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Controleren
+        id: check
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.FTP_DIR }}
+        run: |
+          missing=""
+          for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD FTP_DIR; do [ -n "${!k:-}" ] || missing="$missing $k"; done
+          if [ -n "$missing" ]; then
+            echo "::warning::Secrets ontbreken:$missing — dashboard niet geüpload. Zie README.md."; echo "skip=1" >> $GITHUB_OUTPUT; exit 0
+          fi
+          # nooit in de hoofdmap of de webmap van bingr.online uploaden: FTP_DIR moet de eigen map van het subdomein zijn
+          d="${FTP_DIR%/}"; d="${d#/}"; d="${d#./}"
+          case "$d" in
+            ""|"."|public_html|httpdocs|www|htdocs|domains/bingr.online/public_html)
+              echo "::warning::FTP_DIR '$FTP_DIR' is de hoofdmap of de webmap van bingr.online, niet de map van beheer.bingr.online — niet geüpload."
+              echo "skip=1" >> $GITHUB_OUTPUT ;;
+          esac
+          # het dashboard moet noindex houden (web/ bevat verder alleen de publieke Supabase-URL en publishable key)
+          grep -q 'name="robots" content="noindex' web/index.html || { echo "::error::web/index.html mist noindex"; exit 1; }
+
+      - name: lftp installeren
+        if: steps.check.outputs.skip != '1'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Uploaden via FTPS
+        if: steps.check.outputs.skip != '1'
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_USERNAME_ALT: ${{ secrets.FTP_USERNAME_ALT }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.FTP_DIR }}
+        run: |
+          set -euo pipefail
+          common="set cmd:fail-exit true; set net:max-retries 3; set net:timeout 30; set net:reconnect-interval-base 5; set ssl:verify-certificate no; set ftp:passive-mode true"
+          # eerst expliciete FTPS (versleuteld), daarna gewone FTP als de server geen TLS kent
+          USER_OK=""; base=""; SERVER_OK=""
+          # de FTP-server reageert soms even niet: tot 4 pogingen met een pauze
+          for attempt in 1 2 3 4; do
+          [ "$attempt" -gt 1 ] && { echo "Nieuwe poging $attempt over 45 s…"; sleep 45; }
+          for srv in "$FTP_SERVER" "ftp.bingr.online" "bingr.online"; do
+          for mode in "set ftp:ssl-force true; set ftp:ssl-protect-data true" "set ftp:ssl-allow false"; do
+            for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
+              [ -z "$u" ] && continue
+              echo "Proberen: gebruiker '${u%%@*}…', modus: ${mode%%;*}"
+              if lftp -e "$common; $mode; open -u \"$u\",\"$FTP_PASSWORD\" \"$srv\"; cls -1 > /tmp/root.txt; bye" 2>/tmp/err.txt; then
+                USER_OK="$u"; base="$common; $mode"; SERVER_OK="$srv"; break 4
+              fi
+              msg=$(sed 's/PASS .*/PASS ***/' /tmp/err.txt | tr '\n' ' ' | tail -c 300)
+              echo "::warning::Mislukt (${srv}, gebruiker ${u%%@*}…, ${mode%%;*}): ${msg:-geen melding}"
+            done
+          done
+          done
+          done
+          [ -n "$USER_OK" ] || { echo "::error::Inloggen op de FTP-server mislukt met de opgegeven gebruikersnamen."; exit 1; }
+          [[ "$base" == *"ssl-allow false"* ]] && echo "::warning::Server ondersteunt geen FTPS; upload gaat via gewone FTP."
+          echo "::notice::Ingelogd op ${SERVER_OK} als ${USER_OK%%@*}…"
+
+          TARGET="${FTP_DIR%/}"
+          # map aanmaken als hij er nog niet is (mkdir -p -f: geen fout als hij al bestaat)
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mkdir -p -f \"$TARGET\"; bye" || true
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store ./web/ \"$TARGET\"; bye"
+          echo "::notice::Dashboard geüpload naar map $TARGET"
+
+      - name: Controleren of beheer.bingr.online het dashboard toont
+        if: steps.check.outputs.skip != '1' && success()
+        run: |
+          sleep 5
+          url=https://beheer.bingr.online/
+          code=$(curl -sL --max-time 20 -o /tmp/site.html -w '%{http_code}' "$url" || true)
+          if grep -q 'name="bingr-app" content="beheer"' /tmp/site.html 2>/dev/null; then
+            echo "::notice::$url toont het dashboard (HTTP $code)"
+            robots=$(curl -sL --max-time 20 "${url}robots.txt" || true)
+            echo "$robots" | grep -q 'Disallow: /$' && echo "::notice::robots.txt blokkeert alles" || echo "::warning::robots.txt op $url blokkeert niet alles"
+          else
+            ip=$(getent hosts beheer.bingr.online | awk '{print $1}' | head -1)
+            if [ -z "$ip" ]; then
+              echo "::warning::beheer.bingr.online bestaat nog niet in DNS: maak het subdomein aan bij de hoster (zie README.md)."
+            else
+              echo "::warning::$url ($ip) geeft HTTP ${code:-geen antwoord}, nog niet het dashboard: wijst het subdomein naar FTP_DIR, en is er een SSL-certificaat? $(head -c 160 /tmp/site.html 2>/dev/null | tr '\n' ' ')"
+            fi
+          fi

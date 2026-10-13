@@ -1,0 +1,6 @@
+.DS_Store
+*.zip
+.env
+*.env
+supabase/.temp/
+supabase/.branches/

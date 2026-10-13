@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Beheer · Bingr</title>
+<meta name="bingr-app" content="beheer">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div id="login" class="login hidden">
+  <form id="loginForm" class="login-card" novalidate>
+    <div class="brand"><span class="logo">BINGR</span><span class="tag">Beheer</span></div>
+    <label>Gebruikersnaam<input id="lu" autocomplete="username" required></label>
+    <label>Wachtwoord<input id="lp" type="password" autocomplete="current-password" required></label>
+    <div id="loginErr" class="err" role="alert"></div>
+    <button id="loginBtn" class="btn" type="submit">Inloggen</button>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <div class="brand"><span class="logo">BINGR</span><span class="tag">Beheer</span></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview" aria-selected="true">Overzicht</button>
+      <button role="tab" data-tab="users">Gebruikers</button>
+      <button role="tab" data-tab="messages">Berichten</button>
+      <button role="tab" data-tab="status">Status</button>
+    </nav>
+    <button id="logout" class="link">Uitloggen</button>
+  </header>
+
+  <main>
+    <section id="tab-overview" class="tab">
+      <div class="row-head"><h1>Overzicht</h1><button id="refresh" class="btn ghost small">Vernieuwen</button></div>
+      <div id="kpis" class="kpis"></div>
+      <div class="grid2">
+        <div class="panel"><h2>Nieuwe gebruikers per dag</h2><p class="sub">Laatste 30 dagen</p><div id="chartNew" class="chart"></div></div>
+        <div class="panel"><h2 id="signinTitle">Inloggen per dag</h2><p id="signinSub" class="sub">Laatste 30 dagen</p><div id="chartSign" class="chart"></div></div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h2>Actieve apparaten per platform</h2><p class="sub">Gezien in de laatste 30 dagen</p><div id="platforms" class="hbars"></div></div>
+        <div class="panel"><h2>App-versies in gebruik</h2><p class="sub">Per platform, laatste 30 dagen</p><div id="versions" class="hbars"></div></div>
+      </div>
+    </section>
+
+    <section id="tab-users" class="tab hidden">
+      <div class="row-head"><h1>Gebruikers</h1><span id="userCount" class="sub"></span></div>
+      <input id="search" class="search" type="search" placeholder="Zoek op begin van e-mailadres" autocomplete="off">
+      <div class="table-wrap">
+        <table class="users">
+          <thead><tr><th>E-mail</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
+          <tbody id="userRows"></tbody>
+        </table>
+      </div>
+      <div class="pager"><button id="prev" class="btn ghost small">Vorige</button><span id="pageInfo"></span><button id="next" class="btn ghost small">Volgende</button></div>
+    </section>
+
+    <section id="tab-messages" class="tab hidden">
+      <div class="row-head"><h1>Berichten</h1></div>
+      <div class="grid2 compose-grid">
+        <form id="composeForm" class="panel" novalidate>
+          <h2>Nieuw bericht</h2>
+          <p class="sub">Apps tonen een bericht één keer, zolang het actief is (max. 30 dagen).</p>
+          <fieldset><legend>Nederlands</legend>
+            <label>Titel<input id="tNl" maxlength="120" required></label>
+            <label>Tekst<textarea id="bNl" rows="5" maxlength="4000" required></textarea></label>
+          </fieldset>
+          <fieldset><legend>Engels <span class="sub">(leeg = Nederlands voor iedereen)</span></legend>
+            <label>Title<input id="tEn" maxlength="120"></label>
+            <label>Text<textarea id="bEn" rows="5" maxlength="4000"></textarea></label>
+          </fieldset>
+          <label>Verloopt op <span class="sub">(optioneel)</span><input id="exp" type="date"></label>
+          <label class="switch"><input id="mail" type="checkbox"><span class="track"></span><span>Ook per e-mail versturen</span></label>
+          <p id="smtpHint" class="sub hidden">E-mail is niet ingesteld (BINGR_SMTP_* ontbreken).</p>
+          <div id="composeErr" class="err" role="alert"></div>
+          <button id="sendBtn" class="btn" type="submit">Plaatsen</button>
+          <div id="progress" class="progress hidden"><div class="bar"><span></span></div><p class="sub"></p></div>
+        </form>
+        <div class="panel">
+          <div class="row-head"><h2>Voorbeeld</h2><div class="seg"><button data-lang="nl" class="on">NL</button><button data-lang="en">EN</button></div></div>
+          <div class="preview"><div class="pv-card"><div class="pv-title" id="pvTitle"></div><div class="pv-body" id="pvBody"></div><div class="pv-ok">OK</div></div></div>
+        </div>
+      </div>
+      <div class="panel"><h2>Geplaatste berichten</h2><div id="annList" class="ann-list"></div></div>
+    </section>
+
+    <section id="tab-status" class="tab hidden">
+      <div class="row-head"><h1>Status</h1>
+        <div class="head-btns"><a class="btn ghost small" href="https://bingr.online/status/" target="_blank" rel="noopener">Openbare pagina</a>
+          <button id="stAdd" class="btn ghost small">Monitor toevoegen</button><button id="stRun" class="btn small">Nu controleren</button></div></div>
+      <div id="stBanner" class="st-banner"></div>
+      <div id="stInfo" class="kpis st-kpis"></div>
+      <div class="grid2">
+        <div class="panel"><h2>Actieve apparaten</h2><p class="sub">Per platform, gezien in de laatste 15 minuten (alleen hier, niet openbaar)</p><div id="stDevices" class="hbars"></div></div>
+        <div class="panel"><h2>Storingen</h2><p class="sub">Laatste 90 dagen, met oorzaak</p><div id="stIncidents" class="st-inc"></div></div>
+      </div>
+      <div id="stGroups"></div>
+    </section>
+  </main>
+</div>
+
+<aside id="drawer" class="drawer" aria-hidden="true">
+  <div class="drawer-bg" data-close></div>
+  <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <button class="drawer-x" data-close aria-label="Sluiten">×</button>
+    <div id="drawerBody"></div>
+  </div>
+</aside>
+<div id="toast" class="toast" role="status"></div>
+
+<script src="config.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

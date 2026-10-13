@@ -1,0 +1,5 @@
+# Alleen de functie `admin`; de rest van de backend (schema, device-auth, web-proxy, status) staat in LRvdLinden/iptv-ios-appletv.
+project_id = "bingr"
+
+[functions.admin]
+verify_jwt = false
