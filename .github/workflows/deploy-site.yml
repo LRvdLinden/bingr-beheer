@@ -84,6 +84,13 @@ jobs:
           echo "::notice::Ingelogd op ${SERVER_OK} als ${USER_OK%%@*}…"
 
           TARGET="${FTP_DIR%/}"
+          # begint de FTP-hoofdmap al in public_html (de webmap van bingr.online)? dan het voorvoegsel public_html/ weglaten,
+          # anders ontstaat er een map public_html in de website
+          t="${TARGET#/}"
+          if [[ "$t" == public_html/* ]] && ! grep -qx 'public_html/\?' /tmp/root.txt; then
+            TARGET="${t#public_html/}"
+            echo "::notice::FTP-hoofdmap is al public_html; doelmap wordt $TARGET"
+          fi
           # map aanmaken als hij er nog niet is (mkdir -p -f: geen fout als hij al bestaat)
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mkdir -p -f \"$TARGET\"; bye" || true
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store ./web/ \"$TARGET\"; bye"
