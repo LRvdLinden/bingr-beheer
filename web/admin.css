@@ -139,6 +139,7 @@ table.users{width:100%;border-collapse:collapse;font-size:14px}
 .dev{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line-soft)}
 .dev:last-of-type{border-bottom:0}
 .dev .ic{width:40px;height:40px;border-radius:10px;background:var(--s2);border:1px solid #ffffff1a;display:flex;align-items:center;justify-content:center;flex:none}
+.dev .ic{color:#fff}
 .dev .ic svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .dev .nm{font-weight:700}.dev .meta{color:var(--dim);font-size:13px;margin-top:2px}
 .drawer h3{font-size:16px;font-weight:800;margin-top:26px;margin-bottom:4px;color:#fff;letter-spacing:-.01em}
