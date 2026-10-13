@@ -17,7 +17,7 @@ Wijzigingen in deze repo komen **nooit** in de openbare changelog (`docs/changel
 
 | Secret | Wat |
 | --- | --- |
-| `FTP_SERVER` | FTP-server van de hoster (dezelfde als bij bingr-website) |
+| `FTP_SERVER` | FTP-server van de hoster, bv. `ftp.bingr.online` (de workflow probeert daarna ook `ftp.bingr.online` en `bingr.online`) |
 | `FTP_USERNAME` | FTP-gebruikersnaam |
 | `FTP_PASSWORD` | FTP-wachtwoord |
 | `FTP_DIR` | de map waar beheer.bingr.online naar wijst, gezien vanaf de FTP-login (bv. `beheer.bingr.online` of `domains/bingr.online/beheer`) |
@@ -39,11 +39,15 @@ Function-secrets gelden voor het hele Supabase-project, dus voor alle functies t
 
 ## Subdomein beheer.bingr.online instellen (eenmalig, bij de hoster)
 
-1. Maak in het hostingpaneel (bij *Domeinen* / *Subdomeinen*) het subdomein **beheer.bingr.online** aan en laat het naar een **eigen map** wijzen, buiten de webmap van bingr.online (dus niet `public_html/beheer`, anders staat het dashboard ook op bingr.online/beheer). Veel panelen maken zelf een map als `beheer.bingr.online` of `domains/bingr.online/beheer` aan.
-2. Zoek op hoe die map heet vanaf de FTP-login (log in met een FTP-programma en kijk in de hoofdmap) en zet dat pad in het secret `FTP_DIR`.
+1. Maak in het hostingpaneel (bij *Domeinen* / *Subdomeinen*) het subdomein **beheer.bingr.online** aan en laat het naar een **eigen map** wijzen, bij voorkeur buiten de webmap van bingr.online. Veel panelen maken zelf een map als `beheer.bingr.online` of `domains/bingr.online/beheer` aan.
+2. Zoek op hoe die map heet vanaf de FTP-login (log in met een FTP-programma en kijk in de hoofdmap) en zet dat pad in het secret `FTP_DIR`. Let op: de huidige FTP-login komt direct uit in de webmap van bingr.online. Kan het subdomein alleen naar een map daarbinnen wijzen (bv. `beheer.bingr.online/`), dan is dat prima: `web/.htaccess` stuurt elke andere host (zoals bingr.online/beheer.bingr.online/) door naar https://beheer.bingr.online, en de workflow *Website* van bingr-website verwijdert die map niet (hij uploadt zonder `--delete`).
 3. Staat de DNS niet bij de hoster zelf: maak een A-record (of CNAME naar bingr.online) voor `beheer` aan.
 4. Vraag in het hostingpaneel een SSL-certificaat aan voor beheer.bingr.online (meestal *SSL / Let's Encrypt*, gratis). Zet, als het paneel dat kan, *HTTPS forceren* aan.
 5. Start *Actions → Dashboard → Run workflow*. Bij een groen vinkje zonder waarschuwing staat het dashboard op https://beheer.bingr.online.
+
+## GitHub Actions in een privé-repo
+
+Workflows in een privé-repo gebruiken de Actions-minuten van het account (openbare repo's zijn gratis). Staat er bij een run *"The job was not started because recent account payments have failed or your spending limit needs to be increased"*, regel dat dan eerst bij GitHub onder *Settings → Billing and plans* (betaalmethode of uitgavenlimiet voor Actions).
 
 ## Lokaal testen
 

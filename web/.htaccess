@@ -5,3 +5,12 @@
   Header always set Referrer-Policy "no-referrer"
   Header always set X-Content-Type-Options "nosniff"
 </IfModule>
+
+# Alleen via https://beheer.bingr.online: ligt de map van het subdomein binnen de webmap van bingr.online
+# (bv. bingr.online/beheer.bingr.online/), dan stuurt elke andere host door naar het subdomein
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP_HOST} !^beheer\.bingr\.online$ [NC]
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
+  RewriteRule ^ https://beheer.bingr.online/ [R=302,L]
+</IfModule>
