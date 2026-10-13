@@ -171,7 +171,7 @@
       const i = Number(gr.dataset.i), d = data[i];
       const show = () => {
         svg.querySelectorAll(".bar").forEach((b) => b.setAttribute("fill", b.classList.contains("zero") ? "#ffffff1f" : "var(--red)"));
-        const b = gr.querySelector(".bar"); if (d.y) b.setAttribute("fill", "#ff4d55");
+        const b = gr.querySelector(".bar"); if (d.y) b.setAttribute("fill", "var(--red-hi)");
         const sx = svg.getBoundingClientRect().width / W;
         tip.innerHTML = `<b>${nf.format(d.y)}</b> ${esc(unit)}<br><span class="sub">${esc(longDay(d.x))}</span>`;
         tip.style.left = `${(L + (i + 0.5) * bw) * sx}px`; tip.style.top = `${y(d.y) * sx}px`;
