@@ -20,10 +20,10 @@ Wijzigingen in deze repo komen **nooit** in de openbare changelog (`docs/changel
 | `FTP_SERVER` | FTP-server van de hoster, bv. `ftp.bingr.online` (de workflow probeert daarna ook `ftp.bingr.online` en `bingr.online`) |
 | `FTP_USERNAME` | FTP-gebruikersnaam |
 | `FTP_PASSWORD` | FTP-wachtwoord |
-| `FTP_DIR` | de map waar beheer.bingr.online naar wijst, gezien vanaf de FTP-login (bv. `beheer.bingr.online` of `domains/bingr.online/beheer`) |
+| `FTP_DIR` | optioneel; leeg als de FTP-login (een eigen FTP-account van het subdomein) direct in de map van beheer.bingr.online uitkomt. Anders de map waar beheer.bingr.online naar wijst, gezien vanaf de FTP-login (bv. `beheer.bingr.online` of `domains/bingr.online/beheer`) |
 | `FTP_USERNAME_ALT` | optioneel: tweede gebruikersnaam om te proberen |
 
-De workflow uploadt altijd precies naar `FTP_DIR` (en weigert de hoofdmap of `public_html` van bingr.online). Daarna controleert hij of https://beheer.bingr.online/ het dashboard toont; zo niet, dan een waarschuwing (subdomein, DNS of SSL nog niet klaar).
+De workflow uploadt naar `FTP_DIR`, of zonder `FTP_DIR` naar de hoofdmap van de FTP-login (en weigert de hoofdmap of `public_html` van bingr.online). Daarna controleert hij of https://beheer.bingr.online/ het dashboard toont; zo niet, dan een waarschuwing (subdomein, DNS of SSL nog niet klaar).
 
 **Functie admin (workflow *Admin-functie*, `deploy-admin.yml`)**
 

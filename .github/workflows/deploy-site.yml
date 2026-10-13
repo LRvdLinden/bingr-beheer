@@ -1,9 +1,9 @@
 name: Dashboard
 
 # Zet het beheer-dashboard (map web/) via FTPS op de webserver, in de map waar beheer.bingr.online naar wijst.
-# Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD en FTP_DIR (de map van het subdomein, bv. beheer.bingr.online of
+# Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD en optioneel FTP_DIR (de map van het subdomein; leeg = hoofdmap van de FTP-login, bv. beheer.bingr.online of
 # domains/bingr.online/public_html/beheer). Optioneel: FTP_USERNAME_ALT (tweede gebruikersnaam om te proberen).
-# Ontbreekt er een secret, dan alleen een waarschuwing (geen fout). Er wordt altijd precies naar FTP_DIR geüpload.
+# Ontbreekt er een secret, dan alleen een waarschuwing (geen fout). Zonder FTP_DIR gaat de upload naar de hoofdmap van de FTP-login, maar nooit als dat de webmap van bingr.online is.
 
 on:
   push:
@@ -31,14 +31,17 @@ jobs:
           FTP_DIR: ${{ secrets.FTP_DIR }}
         run: |
           missing=""
-          for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD FTP_DIR; do [ -n "${!k:-}" ] || missing="$missing $k"; done
+          for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do [ -n "${!k:-}" ] || missing="$missing $k"; done
           if [ -n "$missing" ]; then
             echo "::warning::Secrets ontbreken:$missing — dashboard niet geüpload. Zie README.md."; echo "skip=1" >> $GITHUB_OUTPUT; exit 0
           fi
           # nooit in de hoofdmap of de webmap van bingr.online uploaden: FTP_DIR moet de eigen map van het subdomein zijn
+          # zonder FTP_DIR: upload naar de hoofdmap van de FTP-login (eigen FTP-account van het subdomein);
+          # na het inloggen wordt gecontroleerd dat dat niet de webmap van bingr.online is
           d="${FTP_DIR%/}"; d="${d#/}"; d="${d#./}"
+          [ -z "${FTP_DIR:-}" ] && d="(leeg)"
           case "$d" in
-            ""|"."|public_html|httpdocs|www|htdocs|domains/bingr.online/public_html)
+            "."|public_html|httpdocs|www|htdocs|domains/bingr.online/public_html)
               echo "::warning::FTP_DIR '$FTP_DIR' is de hoofdmap of de webmap van bingr.online, niet de map van beheer.bingr.online — niet geüpload."
               echo "skip=1" >> $GITHUB_OUTPUT ;;
           esac
@@ -84,6 +87,15 @@ jobs:
           echo "::notice::Ingelogd op ${SERVER_OK} als ${USER_OK%%@*}…"
 
           TARGET="${FTP_DIR%/}"
+          if [ -z "$TARGET" ]; then
+            TARGET="."
+            # veiligheid: nooit het dashboard in de webmap van bingr.online zetten
+            if grep -qxE '(koppelen|changelog|status|unsubscribe|account)/?' /tmp/root.txt; then
+              echo "::error::Zonder FTP_DIR komt deze FTP-login uit in de webmap van bingr.online. Gebruik een eigen FTP-account voor beheer.bingr.online of zet FTP_DIR."
+              exit 1
+            fi
+            echo "::notice::Geen FTP_DIR: upload naar de hoofdmap van de FTP-login"
+          fi
           # begint de FTP-hoofdmap al in public_html (de webmap van bingr.online)? dan het voorvoegsel public_html/ weglaten,
           # anders ontstaat er een map public_html in de website
           t="${TARGET#/}"
