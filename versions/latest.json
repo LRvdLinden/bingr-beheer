@@ -19,11 +19,11 @@
  },
  "apple": {
   "version": "1.0.0",
-  "build": 88,
-  "file": "Bingr-1.0.0-build88-Xcode.zip",
-  "path": "Apple/v1.0.0/Bingr-1.0.0-build88-Xcode.zip",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Apple/v1.0.0/Bingr-1.0.0-build88-Xcode.zip",
-  "size": 3170798,
+  "build": 89,
+  "file": "Bingr-1.0.0-build89-Xcode.zip",
+  "path": "Apple/v1.0.0/Bingr-1.0.0-build89-Xcode.zip",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Apple/v1.0.0/Bingr-1.0.0-build89-Xcode.zip",
+  "size": 3172157,
   "date": "2026-10-14"
  },
  "beheer": {
