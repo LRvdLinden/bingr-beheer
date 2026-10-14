@@ -22,8 +22,10 @@
 //                       De support_*-acties gaan door naar de functie `support` (LRvdLinden/iptv-ios-appletv) met het geheim
 //                       SUPPORT_ADMIN_SECRET (zet de Backend-workflow daar klaar). Supporttickets komen nooit in de changelog.
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
+//   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, transport } from "../_shared/mail.ts";
+import { announcementMail } from "./mails.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -120,32 +122,16 @@ function clientIp(req: Request) {
 async function audit(action: string, ip: string, target?: string | null, detail?: unknown) {
   await admin.from("admin_audit").insert({ action, ip, target_user: target ?? null, detail: detail ?? null });
 }
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-const linkify = (s: string) => s.replace(/https:\/\/[^\s<]+[^\s<.,;:!?)]/g, (u) => `<a href="${u}" style="color:#ffffff">${u}</a>`);
-
-// ---- e-mail ----
-function mailFor(lang: "nl" | "en", title: string, body: string, unsubUrl: string) {
-  const nl = lang === "nl";
-  const paras = body.split(/\n{2,}/).map((p) => `<p style="margin:0 0 16px;font-size:16px;line-height:24px;color:#d6d6d6">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`).join("");
-  const foot = nl
-    ? `Je ontvangt dit bericht omdat je een Bingr-account hebt. <a href="${unsubUrl}" style="color:#b3b3b3">Afmelden voor berichten</a>`
-    : `You're receiving this because you have a Bingr account. <a href="${unsubUrl}" style="color:#b3b3b3">Unsubscribe from announcements</a>`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>${esc(title)}</title></head>
-<body style="margin:0;padding:0;background:#000000">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-<tr><td style="padding:0 4px 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-<td style="vertical-align:middle"><img src="${SITE}/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
-<td style="vertical-align:middle;padding-left:12px"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px"></div></td>
-</tr></table></td></tr>
-<tr><td style="background:#141414;border-radius:12px;padding:36px 32px;border-top:4px solid #E50914">
-<h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:800;color:#ffffff">${esc(title)}</h1>${paras}
-</td></tr>
-<tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">${foot}<br><br>
-<a href="${SITE}" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a></td></tr>
-</table></td></tr></table></body></html>`;
-  const text = `${title}\n\n${body}\n\n—\n${nl ? "Afmelden voor berichten" : "Unsubscribe from announcements"}: ${unsubUrl}\n${SITE}`;
-  return { html, text };
+// afmelden met één klik (RFC 8058): de mailclient doet POST <functie-URL>?unsubscribe=<token> met List-Unsubscribe=One-Click.
+// Een GET (oudere clients openen de link in de browser) gaat door naar de afmeldpagina op bingr.online; die vraagt eerst.
+const oneClickUrl = (t: string) => `${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/admin?unsubscribe=${encodeURIComponent(t)}`;
+async function unsubscribe(t: unknown): Promise<boolean> {
+  const id = await unsubUser(t);
+  if (!id) return false;
+  const { error } = await admin.from("account_email_prefs").upsert({ user_id: id, email_opt_out: true, updated_at: new Date().toISOString() });
+  // account bestaat niet meer (foreign key): er wordt toch al niets meer gestuurd
+  if (error && !/foreign key/i.test(error.message)) throw new Error(error.message);
+  return true;
 }
 
 Deno.serve(async (req) => {
@@ -153,6 +139,20 @@ Deno.serve(async (req) => {
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const oneClick = new URL(req.url).searchParams.get("unsubscribe");
+  if (oneClick !== null) {
+    const plain = (text: string, status: number) => new Response(text, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    if (req.method === "GET" || req.method === "HEAD") {
+      return new Response(null, { status: 303, headers: { Location: `${SITE}/unsubscribe/?t=${encodeURIComponent(oneClick)}`, "Referrer-Policy": "no-referrer", "Cache-Control": "no-store" } });
+    }
+    if (req.method !== "POST") return plain("method not allowed", 405);
+    try {
+      return (await unsubscribe(oneClick)) ? plain("unsubscribed", 200) : plain("invalid link", 400);
+    } catch (e) {
+      console.error("admin", "one-click unsubscribe", e instanceof Error ? e.message : e);
+      return plain("server error", 500);
+    }
+  }
   cors = corsFor(req, "");
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   let body: Record<string, unknown>;
@@ -194,11 +194,7 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
   }
 
   if (action === "unsubscribe") {
-    const id = await unsubUser(body.t);
-    if (!id) return json({ error: "invalid_token" }, 400);
-    const { error } = await admin.from("account_email_prefs").upsert({ user_id: id, email_opt_out: true, updated_at: new Date().toISOString() });
-    // account bestaat niet meer (foreign key): er wordt toch al niets meer gestuurd
-    if (error && !/foreign key/i.test(error.message)) throw new Error(error.message);
+    if (!(await unsubscribe(body.t))) return json({ error: "invalid_token" }, 400);
     return json({ ok: true });
   }
 
@@ -278,12 +274,13 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
         try {
           for (const r of items) {
             const en = r.lang !== "nl" && !!a.title_en && !!a.body_en;
-            const url = `${SITE}/unsubscribe/?t=${encodeURIComponent(await unsubToken(r.id))}`;
-            const { html, text } = mailFor(en ? "en" : "nl", en ? a.title_en : a.title_nl, en ? a.body_en : a.body_nl, url);
+            const tok = await unsubToken(r.id);
+            const url = `${SITE}/unsubscribe/?t=${encodeURIComponent(tok)}`;
+            const m = announcementMail(en ? "en" : "nl", en ? a.title_en : a.title_nl, en ? a.body_en : a.body_nl, url);
             try {
               await tx.sendMail({
-                from: env("BINGR_SMTP_FROM"), to: r.email, subject: en ? a.title_en : a.title_nl, text, html,
-                headers: { "List-Unsubscribe": `<${url}>` },
+                from: env("BINGR_SMTP_FROM"), to: r.email, subject: m.subject, text: m.text, html: m.html,
+                headers: { "List-Unsubscribe": `<${oneClickUrl(tok)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
               });
               sent++;
             } catch (e) {
