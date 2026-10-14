@@ -52,6 +52,13 @@ struct APIError: Error, LocalizedError {
         "bad_number": "Ongeldig ticketnummer.",
         "invalid_credentials": "Onjuiste gebruikersnaam of wachtwoord.",
         "not_configured": "Beheer is nog niet ingesteld (BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD).",
+        "bad_id": "Ongeldig account.",
+        "reason_missing": "Vul een reden in (de klant ziet hem in de mail).",
+        "bad_until": "Kies een einddatum in de toekomst (minstens 1 minuut, hoogstens 10 jaar), of onbepaald.",
+        "block_failed": "Blokkeren is mislukt. Probeer het opnieuw.",
+        "unblock_failed": "Opheffen is mislukt. Probeer het opnieuw.",
+        "confirm_mismatch": "Het e-mailadres klopt niet. Typ het volledige adres of precies het adres zoals hierboven.",
+        "delete_failed": "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
     ]
 }
 

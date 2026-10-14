@@ -23,6 +23,8 @@ struct Stats {
     let active30d: Int
     let devicesTotal: Int
     let watchingNow: Int
+    /// Accounts met een actieve blokkade (nil bij een ouder schema).
+    let blockedUsers: Int?
     /// "audit": inlogs uit het inloglogboek; anders accounts met app-activiteit
     let signinsFromAudit: Bool
     let days: [Day]
@@ -38,6 +40,7 @@ struct Stats {
         active30d = j["active_30d"].int ?? 0
         devicesTotal = j["devices_total"].int ?? 0
         watchingNow = j["watching_now"].int ?? 0
+        blockedUsers = j["blocked_users"].int
         signinsFromAudit = j["signins_source"].text == "audit"
         days = j["days"].array.compactMap { d in
             guard let day = d["day"].date else { return nil }

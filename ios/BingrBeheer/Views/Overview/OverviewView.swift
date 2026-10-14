@@ -32,6 +32,17 @@ struct OverviewView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Naar Support")
+                    if let blocked = stats?.blockedUsers {
+                        Button {
+                            session.usersFilter = "blocked"
+                            session.section = .users
+                        } label: {
+                            KPITile(label: "Geblokkeerd", value: Fmt.num(blocked), hint: "accounts",
+                                    valueColor: blocked > 0 ? Color(hex: 0xFF8A8F) : .white, highlight: blocked > 0 ? .bad : nil)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Geblokkeerde accounts bekijken")
+                    }
                 }
 
                 ViewThatFits(in: .horizontal) {
@@ -52,6 +63,7 @@ struct OverviewView: View {
         .navigationTitle("Overzicht")
         .refreshable { await load() }
         .task { if stats == nil { await load() } }
+        .onChange(of: session.usersRevision) { Task { await load() } }
     }
 
     private func value(_ n: Int?) -> String {

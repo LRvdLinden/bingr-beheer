@@ -76,6 +76,10 @@ final class Session {
     // navigatie
     var section: AppSection = .overview
     var supportPath: [Int] = []
+    /// Filter van de tab Gebruikers ("" = alle, "blocked" = geblokkeerd); de tegel in Overzicht zet hem.
+    var usersFilter = ""
+    /// Wordt opgehoogd na blokkeren, opheffen of verwijderen: lijst en tellers laden opnieuw.
+    var usersRevision = 0
 
     // support-tellers (badge op de tab, tegel in Overzicht)
     var supportCounts: SupportCounts?

@@ -11,9 +11,14 @@ struct UserRow: Identifiable, Hashable {
     let platforms: [String]
     let appVersions: [String]
     let profileCount: Int
+    /// Actieve blokkade (`blocked` niet leeg); einddatum nil = onbepaald.
+    let isBlocked: Bool
+    let blockedUntil: Date?
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        isBlocked = j["blocked"].object != nil
+        blockedUntil = j["blocked"]["until"].date
         email = j["email"].text ?? ""
         createdAt = j["created_at"].date
         lastSignInAt = j["last_sign_in_at"].date
@@ -48,6 +53,9 @@ struct UserDetail {
     let watchingNow: Int
     let emailOptOut: Bool
     let devices: [Device]
+    /// Actieve blokkade en de geschiedenis (nieuwste eerst, max. 20).
+    let block: AccountBlock?
+    let blocks: [AccountBlock]
 
     init(_ j: JSON) {
         id = j["id"].text ?? ""
@@ -60,9 +68,47 @@ struct UserDetail {
         activeDays30d = j["active_days_30d"].int ?? 0
         watchingNow = j["watching_now"].int ?? 0
         emailOptOut = j["email_opt_out"].bool ?? false
+        block = j["block"].object != nil ? AccountBlock(j["block"]) : nil
+        blocks = j["blocks"].array.map(AccountBlock.init)
         devices = j["devices"].array.map {
             Device(name: $0["name"].text, platform: $0["platform"].text, appVersion: $0["app_version"].text,
                    osVersion: $0["os_version"].text, createdAt: $0["created_at"].date, lastSeenAt: $0["last_seen_at"].date)
         }
+    }
+}
+
+/// Blokkade van een account (`account_blocks`): reden (ziet de klant), einddatum (nil = onbepaald) en hoe hij eindigde.
+struct AccountBlock: Identifiable {
+    let id: Int
+    let reason: String
+    let until: Date?
+    let createdAt: Date?
+    let notified: Bool
+    let liftedAt: Date?
+    let liftedBy: String?
+
+    init(_ j: JSON) {
+        id = j["id"].int ?? 0
+        reason = j["reason"].text ?? ""
+        until = j["until"].date
+        createdAt = j["created_at"].date
+        notified = j["notified"].bool ?? false
+        liftedAt = j["lifted_at"].date
+        liftedBy = j["lifted_by"].text
+    }
+
+    /// "tot 21 okt 2026 12:00" of "voor onbepaalde tijd"
+    var untilText: String { until.map { "tot \(Fmt.dateTime($0))" } ?? "voor onbepaalde tijd" }
+
+    var endedText: String? {
+        guard let liftedAt else { return nil }
+        let how: String
+        switch liftedBy {
+        case "beheer": how = "opgeheven"
+        case "verlopen": how = "verlopen"
+        case "vervangen": how = "vervangen"
+        default: how = "beëindigd"
+        }
+        return "\(how) \(Fmt.date(liftedAt))"
     }
 }
