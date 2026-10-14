@@ -53,10 +53,23 @@ label{display:block;font-size:14px;font-weight:500;color:#e2e2e2;margin-top:14px
 label input,label textarea{margin-top:6px}
 
 /* inloggen */
-.login{position:relative;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:40px 16px;isolation:isolate;overflow:hidden}
-.login::before{content:"";position:absolute;left:50%;top:50%;width:min(900px,160vw);height:520px;transform:translate(-50%,-50%);z-index:-1;
-  background:radial-gradient(ellipse 50% 50% at 50% 50%,#e509142e,transparent 70%)}
-.login-card{width:100%;max-width:400px;background:linear-gradient(150deg,#1d1d24 0%,#151515 55%,#1b0a0c 100%);border:1px solid #ffffff14;border-radius:var(--r-card);padding:36px 30px 32px;box-shadow:0 30px 80px #000c}
+.login{position:relative;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:40px 16px;isolation:isolate;overflow:hidden;background:#000}
+/* covermuur: schuin, donker, langzaam drijvend (zelfde beeldtaal als de hero op bingr.online) */
+.login-wall{position:absolute;inset:-35% -25%;z-index:-3;display:grid;grid-template-columns:repeat(12,1fr);gap:14px;align-content:center;
+  transform:perspective(1400px) rotateX(8deg) rotate(-11deg);animation:loginDrift 90s linear infinite alternate;pointer-events:none}
+.login-wall .col{display:flex;flex-direction:column;gap:14px}
+.login-wall .col:nth-child(even){margin-top:-90px}
+.login-wall img{display:block;width:100%;height:auto;aspect-ratio:2/3;object-fit:cover;border-radius:10px;background:#141414;box-shadow:0 0 0 1px #ffffff12,0 10px 30px #0009;opacity:0;transition:opacity .9s ease}
+.login-wall img.in{opacity:.9}
+@keyframes loginDrift{to{transform:perspective(1400px) rotateX(8deg) rotate(-11deg) translate3d(-4%,-3%,0)}}
+/* donkere laag + vignet zodat de kaart leesbaar blijft */
+.login::after{content:"";position:absolute;inset:0;z-index:-2;pointer-events:none;background:
+  radial-gradient(ellipse 60% 55% at 50% 50%,#000000e0 0%,#000000b8 40%,#00000073 75%,#00000099 100%),
+  linear-gradient(180deg,#000000d9 0%,#00000040 25%,#00000040 72%,#000000e6 100%)}
+.login::before{content:"";position:absolute;left:50%;top:50%;width:min(900px,160vw);height:520px;transform:translate(-50%,-50%);z-index:-1;pointer-events:none;
+  background:radial-gradient(ellipse 50% 50% at 50% 50%,#e5091438,transparent 70%)}
+.login-card{width:100%;max-width:400px;background:linear-gradient(150deg,#1d1d24eb 0%,#151515eb 55%,#1b0a0ceb 100%);border:1px solid #ffffff1a;border-radius:var(--r-card);padding:36px 30px 32px;
+  box-shadow:0 30px 80px #000c,0 0 0 1px #00000080;backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2)}
 .login-card .brand{margin-bottom:22px}
 .login-card .logo{font-size:34px}
 .login-card .tag{font-size:17px}
@@ -346,6 +359,11 @@ legend .sub{font-weight:400}
   .drawer-panel{padding:26px 18px 40px}
   #drawerBody>h2{font-size:20px}
   .login-card{padding:30px 22px 26px}
+  .login-wall{grid-template-columns:repeat(6,1fr);inset:-25% -32%;gap:10px}
+  .login-wall .col{gap:10px}
+  .login-wall .col:nth-child(n+7){display:none}
+  .login-wall .col:nth-child(even){margin-top:-60px}
+  .login-wall img{border-radius:8px}
 }
 @media (max-width:760px){.sup-inbox li{grid-template-columns:1fr auto}.sup-inbox li .t{display:none}.sup-inbox .btn{margin-left:0}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.login-wall{animation:none}}

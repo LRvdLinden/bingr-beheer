@@ -74,7 +74,30 @@
   }
 
   // ---- inloggen ----
+  // achtergrond van het inlogscherm: schuine muur van covers (zoals de hero op bingr.online), alleen bij inloggen
+  const COVERS = 36;
+  function buildWall() {
+    const wall = $("loginWall");
+    if (!wall || wall.childElementCount) return;
+    const ids = Array.from({ length: COVERS }, (_, i) => i + 1);
+    for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    const cols = 12, per = 8;
+    for (let c = 0; c < cols; c++) {
+      const col = document.createElement("div");
+      col.className = "col";
+      for (let r = 0; r < per; r++) {
+        const img = document.createElement("img");
+        img.src = `covers/c${String(ids[(c * 7 + r * 5) % ids.length]).padStart(2, "0")}.jpg`;
+        img.alt = ""; img.decoding = "async"; img.loading = "lazy"; img.width = 300; img.height = 450;
+        img.onload = () => img.classList.add("in");
+        img.onerror = () => img.remove();
+        col.appendChild(img);
+      }
+      wall.appendChild(col);
+    }
+  }
   function showLogin(msg) {
+    buildWall();
     $("app").classList.add("hidden"); $("login").classList.remove("hidden");
     $("loginErr").textContent = msg || "";
     $("lu").focus();
