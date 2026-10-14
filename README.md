@@ -41,6 +41,17 @@ Function-secrets gelden voor het hele Supabase-project, dus voor alle functies t
 
 Supporttickets van https://support.bingr.online (repo LRvdLinden/bingr-support). Lijst met nummer (#1001), onderwerp, klant, status en leeftijd; een rode stip = de klant wacht op een reactie die je nog niet hebt gezien. Klik een ticket voor het gesprek, de accountgegevens van de klant (apparaten, platforms, versies), een antwoordvak (de klant krijgt een gebrande mail vanaf support@bingr.online met #nummer in het onderwerp), de status en prioriteit, en interne notities (nooit zichtbaar voor de klant). Een link als `https://beheer.bingr.online/#support/1001` (uit de meldingsmail) opent dat ticket direct. Supporttickets en wijzigingen hieraan komen nooit in de changelog.
 
+### Antwoorden per e-mail (inbox-import)
+
+De functie `support` haalt elke 2 minuten nieuwe mails uit de INBOX van support@bingr.online (IMAP over TLS, pg_cron-taak `bingr-support-inbox`, ingesteld door de workflow *Backend* in iptv-ios-appletv) en zet ze in het ticket:
+
+- **Klant antwoordt op een ticketmail** (onderwerp `[#1007]` of een antwoord op onze Message-ID) vanaf het adres van het ticket: bericht van de klant (label *✉ per e-mail*), status weer *In behandeling*, ticket ongelezen. Een ander adres met hetzelfde ticketnummer wordt geweigerd en blijft ongelezen in de mailbox staan.
+- **Jij antwoordt vanuit je mailbox** op een melding (*Nieuw ticket* / *Reactie van klant*): de Reply-To van die meldingen is support@ zelf, dus je antwoord komt via de import in het ticket en gaat als gebrande mail naar de klant. Dat werkt vanaf support@ zelf en vanaf de adressen in het secret `BINGR_SUPPORT_AGENTS` (iptv-ios-appletv). Schrijf boven de regel *-- Antwoord boven deze lijn --*; citaten en handtekeningen worden weggeknipt.
+- **Nieuwe mail aan support@** zonder ticket: nieuw ticket (categorie Overig) met bevestigingsmail; max. 3 per adres en 100 in totaal per uur. Reactie op een gesloten ticket: nieuw vervolgticket.
+- Genegeerd (blijven staan): onze eigen meldingen (X-Bingr-Ticket), afwezigheidsmeldingen, bounces, nieuwsbrieven en spam. Verwerkte mails worden gelezen en naar de map **Bingr-verwerkt** verplaatst als die bestaat (maak hem zelf aan in de mailbox). Bijlagen worden niet overgenomen (alleen een regel met de naam).
+
+Boven de ticketlijst staat de status van de import (laatste ronde, fout, *IMAP niet ingesteld*), een knop **Nu ophalen** en het logboek van de laatste mails. Zonder `BINGR_IMAP_*` blijft alles zoals vroeger (Reply-To van meldingen = de klant).
+
 ## Subdomein beheer.bingr.online instellen (eenmalig, bij de hoster)
 
 1. Maak in het hostingpaneel (bij *Domeinen* / *Subdomeinen*) het subdomein **beheer.bingr.online** aan en laat het naar een **eigen map** wijzen, bij voorkeur buiten de webmap van bingr.online. Veel panelen maken zelf een map als `beheer.bingr.online` of `domains/bingr.online/beheer` aan.

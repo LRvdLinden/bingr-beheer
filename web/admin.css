@@ -132,6 +132,21 @@ table.users{width:100%;border-collapse:collapse;font-size:14px}
 /* support */
 .tab-badge{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;margin-left:7px;border-radius:10px;background:var(--red);color:#fff;font-size:11px;font-weight:800;line-height:1;vertical-align:1px}
 .sup-notice{background:#ff8a5c14;border:1px solid #ff8a5c40;color:#ffc2a8;border-radius:12px;padding:12px 16px;font-size:14px;margin-bottom:16px}
+.sup-inbox{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:13px;color:var(--sec);background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:10px 14px;margin-bottom:16px}
+.sup-inbox .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+.sup-inbox.ok .dot{background:var(--ok)}.sup-inbox.warn .dot{background:var(--warn)}.sup-inbox.off .dot{background:#5c5c5c}
+.sup-inbox b{color:#fff;font-weight:600}
+.sup-inbox .err-t{color:var(--warn)}
+.sup-inbox .btn{margin-left:auto}
+.sup-inbox details{flex-basis:100%}
+.sup-inbox summary{cursor:pointer;color:var(--dim)}
+.sup-inbox summary:hover{color:#fff}
+.sup-inbox ol{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+.sup-inbox li{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:baseline;font-size:12px}
+.sup-inbox li .r{color:var(--dim);white-space:nowrap}
+.sup-inbox li .r.bad{color:var(--warn)}.sup-inbox li .r.good{color:var(--ok)}
+.sup-inbox li .s{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d6d6d6}
+.chip.mail{background:#2f7cf61f;border-color:#2f7cf640;color:#9cc3ff}
 .sup-bar{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;margin-bottom:16px}
 .sup-bar .search{margin:0;max-width:360px}
 .sup-filters{display:flex;flex-wrap:wrap;gap:6px}
@@ -332,4 +347,5 @@ legend .sub{font-weight:400}
   #drawerBody>h2{font-size:20px}
   .login-card{padding:30px 22px 26px}
 }
+@media (max-width:760px){.sup-inbox li{grid-template-columns:1fr auto}.sup-inbox li .t{display:none}.sup-inbox .btn{margin-left:0}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}

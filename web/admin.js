@@ -337,8 +337,66 @@
   $("supSearch").oninput = () => { clearTimeout(supSearchTimer); supSearchTimer = setTimeout(() => { supPageNo = 0; loadTickets(); }, 300); };
   $("supPrev").onclick = () => { if (supPageNo > 0) { supPageNo--; loadTickets(); } };
   $("supNext").onclick = () => { if ((supPageNo + 1) * SUP_PAGE < supTotal) { supPageNo++; loadTickets(); } };
+  // inbox-import (antwoorden per e-mail): statusregel boven de lijst
+  const INBOX_RESULT = {
+    imported: ["Reactie klant", "good"], agent: ["Antwoord support → klant", "good"], new_ticket: ["Nieuw ticket", "good"], duplicate: ["Al verwerkt", ""],
+    "ignored:own_system": ["Eigen melding", ""], "ignored:auto": ["Automatisch antwoord", ""], "ignored:bulk": ["Nieuwsbrief/lijst", ""],
+    "ignored:bounce": ["Bounce", ""], "ignored:spam": ["Spam", ""], "rejected:sender_mismatch": ["Geweigerd: ander adres dan de klant", "bad"],
+    "rejected:agent_no_ticket": ["Geweigerd: geen ticket gevonden", "bad"], "rejected:auth_failed": ["Geweigerd: SPF/DMARC afgekeurd", "bad"],
+    "rejected:rate_limited": ["Geweigerd: limiet", "bad"], "rejected:empty": ["Geweigerd: geen tekst", "bad"], "rejected:no_sender": ["Geweigerd: geen afzender", "bad"],
+    "rejected:bad_email": ["Geweigerd: ongeldig adres", "bad"], error: ["Fout (volgende ronde opnieuw)", "bad"], "error:skipped": ["Fout, overgeslagen", "bad"],
+  };
+  let inboxLogOpen = false, inboxPolling = false;
+  async function loadInbox() {
+    const el = $("supInbox");
+    let r;
+    try { r = await call("support_inbox"); } catch (e) { if (e.code !== "auth") { el.className = "sup-inbox warn"; el.innerHTML = `<span class="dot"></span><span>E-mail-inbox: ${esc(errText(e))}</span>`; } return; }
+    const st = r.state || {};
+    let cls = "ok", txt;
+    if (!r.configured) {
+      cls = "off";
+      txt = "<span>E-mail-inbox: <b>IMAP niet ingesteld</b>. Antwoorden per e-mail komen niet in de tickets en meldingen hebben de klant als Reply-To. Zet de secrets BINGR_IMAP_HOST, BINGR_IMAP_USER en BINGR_IMAP_PASSWORD (en BINGR_SUPPORT_AGENTS) in iptv-ios-appletv en draai de workflow Backend.</span>";
+    } else {
+      const failed = st.last_error && (!st.last_ok_at || st.last_error_at >= st.last_ok_at);
+      const stale = !st.last_poll_at || Date.now() - new Date(st.last_poll_at).getTime() > 10 * 60000;
+      const lr = st.last_result || {};
+      const parts = [`laatst opgehaald <b>${esc(st.last_poll_at ? ago(st.last_poll_at) : "nog nooit")}</b>`];
+      if (st.last_import_at) parts.push(`laatste import ${esc(ago(st.last_import_at))}`);
+      if (!failed && st.last_ok_at) parts.push(`laatste ronde: ${nf.format(lr.fetched || 0)} mail${lr.fetched === 1 ? "" : "s"}${lr.more ? ", er staan er nog meer klaar" : ""}`);
+      if (!r.extra_agents) parts.push("alleen antwoorden vanaf het supportadres zelf (BINGR_SUPPORT_AGENTS niet gezet)");
+      if (failed) { cls = "warn"; parts.push(`<span class="err-t">fout: ${esc(st.last_error)}</span>`); }
+      else if (stale) { cls = "warn"; parts.push('<span class="err-t">de planning (elke 2 min) lijkt niet te lopen</span>'); }
+      txt = `<span>E-mail-inbox${r.user ? ` (${esc(r.user)})` : ""}: ${parts.join(" · ")}</span>`;
+    }
+    const log = (r.log || []).map((x) => {
+      const [label, c] = INBOX_RESULT[x.result] || [x.result, ""];
+      return `<li><span class="r t">${esc(fmtDateTime(x.at))}</span><span class="s" title="${esc(x.detail || "")}">${esc(x.subject || "(geen onderwerp)")} <span class="sub">${esc(x.sender || "")}</span></span><span class="r ${c}">${esc(label)}${x.ticket_number ? ` · <a href="#support/${x.ticket_number}">#${x.ticket_number}</a>` : ""}</span></li>`;
+    }).join("");
+    el.className = `sup-inbox ${cls}`;
+    el.innerHTML = `<span class="dot"></span>${txt}${r.configured ? `<button id="supPoll" class="btn ghost small" type="button"${inboxPolling ? " disabled" : ""}>Nu ophalen</button>` : ""}` +
+      (log ? `<details id="supInboxLog"${inboxLogOpen ? " open" : ""}><summary>Laatste mails in support@ (${(r.log || []).length})</summary><ol>${log}</ol></details>` : "");
+    const d = $("supInboxLog"); if (d) d.ontoggle = () => { inboxLogOpen = d.open; };
+    const b = $("supPoll");
+    if (b) b.onclick = async () => {
+      inboxPolling = true; b.disabled = true; b.textContent = "Ophalen…";
+      try {
+        const x = await call("support_poll");
+        if (x.busy) toast("Er loopt al een ronde; probeer het zo opnieuw.");
+        else if (x.skipped) toast("IMAP is niet ingesteld.", true);
+        else if (x.ok === false) toast(`Ophalen mislukt: ${x.error || "onbekende fout"}`, true);
+        else {
+          const n = (x.imported || 0) + (x.agent || 0) + (x.new_tickets || 0);
+          toast(n ? `${n} mail${n === 1 ? "" : "s"} verwerkt (${x.imported || 0} reactie${x.imported === 1 ? "" : "s"}, ${x.agent || 0} antwoord${x.agent === 1 ? "" : "en"} support, ${x.new_tickets || 0} nieuw).` : `Geen nieuwe mails voor tickets (${x.fetched || 0} bekeken).`);
+        }
+      } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+      inboxPolling = false;
+      loadTickets();
+    };
+  }
+
   async function loadTickets() {
     renderSupFilters();
+    loadInbox();
     let r;
     try { r = await call("support_list", { status: supFilter, q: $("supSearch").value.trim(), page: supPageNo, page_size: SUP_PAGE }); }
     catch (e) {
@@ -370,7 +428,8 @@
     const when = esc(fmtDateTime(m.created_at));
     if (m.author === "event") return `<div class="msg event"><span>Status: <b>${esc(SUP_ST[m.body] || m.body)}</b> · ${when}</span></div>`;
     const who = { customer: "Klant", support: "Bingr Support", note: "Interne notitie" }[m.author] || m.author;
-    const mail = m.author === "support" ? (m.email_sent ? '<span class="chip">gemaild</span>' : `<span class="chip warn" title="${esc(m.email_error || "")}">niet gemaild</span>`) : "";
+    const viaMail = m.source === "email" ? `<span class="chip mail" title="${m.author === "support" ? "Per e-mail beantwoord (antwoord op een melding aan support@)" : "Per e-mail binnengekomen"}">✉ per e-mail</span>` : "";
+    const mail = viaMail + (m.author === "support" ? (m.email_sent ? '<span class="chip">gemaild</span>' : `<span class="chip warn" title="${esc(m.email_error || "")}">niet gemaild</span>`) : "");
     return `<div class="msg ${esc(m.author)}"><div class="mh"><b>${esc(who)}</b><span class="sub">${when}</span>${mail}</div><div class="mb">${esc(m.body)}</div></div>`;
   }
   let supOpen = null;

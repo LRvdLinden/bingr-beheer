@@ -17,6 +17,8 @@
 //   support_reply       {token, number, message, status?} -> {ok, status, email_sent}  (mail aan de klant vanaf support@bingr.online)
 //   support_status      {token, number, status?, priority?, notify?} -> {ok, status, email_sent}  (opgelost/gesloten: mail aan de klant)
 //   support_note        {token, number, message} -> {ok}  (interne notitie, de klant ziet hem nooit)
+//   support_inbox       {token}           -> {configured, agents, state, log}  (inbox-import: laatste ronde, fout, logboek)
+//   support_poll        {token}           -> {ok, fetched, imported, …} | {skipped} | {busy}  (nu mails ophalen)
 //                       De support_*-acties gaan door naar de functie `support` (LRvdLinden/iptv-ios-appletv) met het geheim
 //                       SUPPORT_ADMIN_SECRET (zet de Backend-workflow daar klaar). Supporttickets komen nooit in de changelog.
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
@@ -335,7 +337,7 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       return json(out, res.status);
     }
     case "support_counts": case "support_list": case "support_get":
-    case "support_reply": case "support_status": case "support_note": {
+    case "support_reply": case "support_status": case "support_note": case "support_inbox": case "support_poll": {
       // tab Support: doorgeven aan de functie `support` met het geheim (staat alleen op de server)
       if (!env("SUPPORT_ADMIN_SECRET")) return json({ error: "support_not_configured" }, 503);
       const { action: _a, token: _t, ...rest } = body;
@@ -348,6 +350,9 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       const out = await res.json().catch(() => ({ error: "server_error" }));
       if (res.status === 403) return json({ error: "support_forbidden" }, 502);
       if (res.status === 404 && !out?.error) return json({ error: "support_not_deployed" }, 503);
+      if (res.ok && action === "support_poll") {
+        await audit(action, ip, null, { ok: out.ok ?? null, fetched: out.fetched, imported: out.imported, agent: out.agent, new_tickets: out.new_tickets, skipped: out.skipped ? true : undefined });
+      }
       if (res.ok && ["support_reply", "support_status", "support_note"].includes(action)) {
         // geen berichttekst in het logboek, alleen wat er gebeurde
         await audit(action, ip, null, {
