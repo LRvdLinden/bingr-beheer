@@ -43,6 +43,26 @@ struct OverviewView: View {
                         .buttonStyle(.plain)
                         .accessibilityHint("Geblokkeerde accounts bekijken")
                     }
+                    if let free = stats?.planFree, let life = stats?.planLifetime {
+                        Button {
+                            session.usersFilter = "free"
+                            session.section = .users
+                        } label: {
+                            KPITile(label: "Gratis", value: Fmt.num(free), hint: "accounts")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Gratis accounts bekijken")
+                        Button {
+                            session.usersFilter = "lifetime"
+                            session.section = .users
+                        } label: {
+                            KPITile(label: "Lifetime", value: Fmt.num(life),
+                                    hint: (stats?.planCustom ?? 0) > 0 ? "\(Fmt.num(stats?.planCustom)) met eigen limieten" : "accounts",
+                                    valueColor: Color(hex: 0xFFD54A))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Lifetime-accounts bekijken")
+                    }
                 }
 
                 ViewThatFits(in: .horizontal) {

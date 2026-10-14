@@ -14,9 +14,12 @@ struct UserRow: Identifiable, Hashable {
     /// Actieve blokkade (`blocked` niet leeg); einddatum nil = onbepaald.
     let isBlocked: Bool
     let blockedUntil: Date?
+    /// Abonnement (`plan`: Gratis als het ontbreekt).
+    let plan: AccountPlan
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        plan = AccountPlan(j["plan"])
         isBlocked = j["blocked"].object != nil
         blockedUntil = j["blocked"]["until"].date
         email = j["email"].text ?? ""
@@ -56,9 +59,11 @@ struct UserDetail {
     /// Actieve blokkade en de geschiedenis (nieuwste eerst, max. 20).
     let block: AccountBlock?
     let blocks: [AccountBlock]
+    let plan: AccountPlan
 
     init(_ j: JSON) {
         id = j["id"].text ?? ""
+        plan = AccountPlan(j["plan"])
         email = j["email"].text ?? ""
         createdAt = j["created_at"].date
         lastSignInAt = j["last_sign_in_at"].date
@@ -110,5 +115,45 @@ struct AccountBlock: Identifiable {
         default: how = "beëindigd"
         }
         return "\(how) \(Fmt.date(liftedAt))"
+    }
+}
+
+/// Abonnement van een account (`account_plans`; geen rij = Gratis). Standaardlimieten zoals de server
+/// (supabase/functions/_shared/plans.ts in iptv-ios-appletv); eigen limieten nil = standaard.
+struct AccountPlan: Hashable {
+    static let defaults: [String: (streams: Int, devices: Int)] = ["free": (2, 8), "lifetime": (6, 15)]
+    static let options: [Option] = [.init("free", "Gratis"), .init("lifetime", "Lifetime (gratis gegeven)")]
+
+    let plan: String
+    let maxStreams: Int?
+    let maxDevices: Int?
+    let source: String?
+    let note: String?
+    let updatedAt: Date?
+
+    init(_ j: JSON) {
+        plan = j["plan"].text == "lifetime" ? "lifetime" : "free"
+        maxStreams = j["max_streams"].int
+        maxDevices = j["max_devices"].int
+        source = j["source"].text
+        note = j["note"].text
+        updatedAt = j["updated_at"].date
+    }
+
+    var isLifetime: Bool { plan == "lifetime" }
+    var isCustom: Bool { maxStreams != nil || maxDevices != nil }
+    var name: String { isLifetime ? "Lifetime" : "Gratis" }
+    var streams: Int { maxStreams ?? AccountPlan.defaults[plan]!.streams }
+    var devices: Int { maxDevices ?? AccountPlan.defaults[plan]!.devices }
+    /// "Lifetime" of "Lifetime · 10/20" bij eigen limieten (streams/apparaten)
+    var chipText: String { isCustom ? "\(name) · \(streams)/\(devices)" : name }
+
+    var sourceText: String? {
+        switch source {
+        case "legacy": return "cadeau bij de invoering (bestaand account)"
+        case "admin": return "via het beheer"
+        case "purchase": return "gekocht"
+        default: return nil
+        }
     }
 }

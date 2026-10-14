@@ -68,7 +68,20 @@
     block_failed: "Blokkeren is mislukt. Probeer het opnieuw.", unblock_failed: "Opheffen is mislukt. Probeer het opnieuw.",
     confirm_mismatch: "Het e-mailadres klopt niet. Typ het volledige adres of precies het adres zoals hierboven.",
     delete_failed: "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
+    bad_plan: "Kies Gratis of Lifetime.", bad_max_streams: "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
+    bad_max_devices: "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.", bad_settings: "Ongeldige instellingen.",
   };
+  // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
+  const PLAN_DEFAULTS = { free: { streams: 2, devices: 8 }, lifetime: { streams: 6, devices: 15 } };
+  const PLAN_NAME = { free: "Gratis", lifetime: "Lifetime" };
+  const PLAN_SOURCE = { legacy: "cadeau bij de invoering (bestaand account)", admin: "via het beheer", purchase: "gekocht" };
+  const planObj = (p) => (p && typeof p === "object" ? p : { plan: "free" });
+  const isCustom = (p) => p.max_streams != null || p.max_devices != null;
+  function planChip(raw) {
+    const p = planObj(raw), life = p.plan === "lifetime";
+    const lim = isCustom(p) ? ` · ${p.max_streams ?? PLAN_DEFAULTS[life ? "lifetime" : "free"].streams} str./${p.max_devices ?? PLAN_DEFAULTS[life ? "lifetime" : "free"].devices} app.` : "";
+    return `<span class="chip ${life ? "plan-life" : "plan-free"}" title="${esc(life ? `Lifetime${p.source ? ", " + (PLAN_SOURCE[p.source] || p.source) : ""}` : "Gratis")}${isCustom(p) ? " met eigen limieten" : ""}">${PLAN_NAME[life ? "lifetime" : "free"]}${esc(lim)}</span>`;
+  }
   const errText = (e) => ERR[e.code] || ERR.server_error;
 
   let toastTimer;
@@ -133,7 +146,7 @@
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus, settings: loadSettings })[name](); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -145,7 +158,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "users", "support", "messages", "status"].includes(tab) ? tab : "overview");
+    showTab(["overview", "users", "support", "messages", "status", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -167,12 +180,17 @@
       ["Apparaten", s.devices_total, "gekoppeld"],
       ["Kijkt nu", s.watching_now, "streams", "live"],
     ];
+    const planKpis = s.plan_lifetime != null
+      ? `<button type="button" class="kpi plan" data-plan="free" title="Gratis accounts bekijken"><div class="l">Gratis</div><div class="v">${nf.format(s.plan_free ?? 0)}</div><div class="h">accounts</div></button>` +
+        `<button type="button" class="kpi plan life" data-plan="lifetime" title="Lifetime-accounts bekijken"><div class="l">Lifetime</div><div class="v">${nf.format(s.plan_lifetime ?? 0)}</div><div class="h">${s.plan_custom ? `${nf.format(s.plan_custom)} met eigen limieten` : "accounts"}</div></button>`
+      : "";
     const blockedKpi = s.blocked_users != null
       ? `<button type="button" id="kpiBlocked" class="kpi ${s.blocked_users ? "blocked" : ""}" title="Geblokkeerde accounts bekijken"><div class="l">Geblokkeerd</div><div class="v">${nf.format(s.blocked_users)}</div><div class="h">accounts</div></button>`
       : "";
     $("kpis").innerHTML = k.map(([l, v, h, cls]) =>
       `<div class="kpi ${cls || ""}"><div class="l">${esc(l)}</div><div class="v">${nf.format(v ?? 0)}</div><div class="h">${esc(h)}</div></div>`).join("") +
-      `<button type="button" id="kpiSup" class="kpi sup" title="Naar de tab Support"><div class="l">Open tickets</div><div class="v">${supCounts ? nf.format(supCounts.active ?? 0) : "—"}</div><div class="h">${supCountsText()}</div></button>` + blockedKpi;
+      `<button type="button" id="kpiSup" class="kpi sup" title="Naar de tab Support"><div class="l">Open tickets</div><div class="v">${supCounts ? nf.format(supCounts.active ?? 0) : "—"}</div><div class="h">${supCountsText()}</div></button>` + blockedKpi + planKpis;
+    $("kpis").querySelectorAll("button[data-plan]").forEach((b) => (b.onclick = () => { userFilter = b.dataset.plan; page = 0; const was = loaded.users; showTab("users"); if (was) loadUsers(); }));
     $("kpiSup").onclick = () => showTab("support");
     if ($("kpiBlocked")) $("kpiBlocked").onclick = () => { userFilter = "blocked"; page = 0; const was = loaded.users; showTab("users"); if (was) loadUsers(); };
     const days = s.days || [];
@@ -244,7 +262,7 @@
   }
 
   // ---- gebruikers ----
-  let page = 0, total = 0, searchTimer, userFilter = "", blockedTotal = null;
+  let page = 0, total = 0, searchTimer, userFilter = "", blockedTotal = null, freeTotal = null, lifetimeTotal = null;
   const PAGE = 25;
   $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page = 0; loadUsers(); }, 300); };
   $("prev").onclick = () => { if (page > 0) { page--; loadUsers(); } };
@@ -254,17 +272,19 @@
     try { r = await call("users", { q: $("search").value.trim(), page, page_size: PAGE, ...(userFilter ? { filter: userFilter } : {}) }); } catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
     total = r.total || 0;
     if (r.blocked_total != null) blockedTotal = r.blocked_total;
+    if (r.free_total != null) freeTotal = r.free_total;
+    if (r.lifetime_total != null) lifetimeTotal = r.lifetime_total;
     renderUserFilters();
     $("userCount").textContent = `${nf.format(total)} ${total === 1 ? "account" : "accounts"}`;
     $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0"${u.blocked ? ' class="is-blocked"' : ""}>
       <td class="em">${esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.blocked
-        ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""}</td>
+        ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""} ${planChip(u.plan)}</td>
       <td data-l="Aangemaakt">${esc(fmtDate(u.created_at))}</td>
       <td data-l="Laatst ingelogd">${esc(ago(u.last_sign_in_at))}</td>
       <td data-l="Apparaten">${nf.format(u.device_count || 0)} ${(u.platforms || []).map((p) => `<span class="chip">${esc(pname(p))}</span>`).join("")}</td>
       <td data-l="Profielen">${nf.format(u.profile_count || 0)}</td>
       <td data-l="Versies">${(u.app_versions || []).map((v) => `<span class="chip">${esc(v)}</span>`).join("") || '<span class="sub">—</span>'}</td>
-    </tr>`).join("") || `<tr><td colspan="6" class="empty">${userFilter === "blocked" ? "Geen geblokkeerde accounts." : "Geen accounts gevonden."}</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="6" class="empty">${({ blocked: "Geen geblokkeerde accounts.", free: "Geen Gratis-accounts gevonden.", lifetime: "Geen Lifetime-accounts gevonden.", custom: "Geen accounts met eigen limieten." })[userFilter] || "Geen accounts gevonden."}</td></tr>`;
     $("userRows").querySelectorAll("tr[data-id]").forEach((tr) => {
       tr.onclick = () => openUser(tr.dataset.id);
       tr.onkeydown = (e) => { if (e.key === "Enter") openUser(tr.dataset.id); };
@@ -275,7 +295,7 @@
   }
 
   function renderUserFilters() {
-    const f = [["", "Alle accounts", null], ["blocked", "Geblokkeerd", blockedTotal]];
+    const f = [["", "Alle accounts", null], ["free", "Gratis", freeTotal], ["lifetime", "Lifetime", lifetimeTotal], ["custom", "Eigen limieten", null], ["blocked", "Geblokkeerd", blockedTotal]];
     $("userFilters").innerHTML = f.map(([k, l, n]) => `<button type="button" data-f="${k}" class="${k === userFilter ? "on" : ""}" aria-pressed="${k === userFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`).join("");
     $("userFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => { userFilter = b.dataset.f; page = 0; loadUsers(); }));
   }
@@ -326,6 +346,7 @@
         <dt>Kijkt nu</dt><dd>${nf.format(u.watching_now || 0)}</dd>
         <dt>Berichten per e-mail</dt><dd>${u.email_opt_out ? "Afgemeld" : "Aan"}</dd>
       </dl>
+      ${planSection(u)}
       <h3>Apparaten (${(u.devices || []).length})</h3>
       ${(u.devices || []).map((d) => `<div class="dev"><div class="ic">${icon(d.platform)}</div><div>
         <div class="nm">${esc(d.name || pname(d.platform))}</div>
@@ -382,7 +403,50 @@
         } catch (e) { if (e.code !== "auth") $("ubErr").textContent = errText(e); $("ubBtn").disabled = false; }
       };
     } else wireBlockForm(u);
+    wirePlan(u);
     wireDelete(u);
+  }
+  // ---- abonnement in de lade: Gratis/Lifetime, eigen limieten (leeg = standaard) en een interne notitie
+  function planSection(u) {
+    const p = planObj(u.plan), life = p.plan === "lifetime";
+    const src = p.source ? (PLAN_SOURCE[p.source] || p.source) : "";
+    return `<section class="plan-box" aria-labelledby="plTitle">
+      <h3 id="plTitle">Abonnement ${planChip(p)}</h3>
+      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 2 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's."}</p>
+      <form id="planForm" class="plan-form" novalidate>
+        <label>Abonnement<select id="plPlan"><option value="free"${life ? "" : " selected"}>Gratis</option><option value="lifetime"${life ? " selected" : ""}>Lifetime (gratis gegeven)</option></select></label>
+        <div class="plan-nums">
+          <label>Tegelijk kijken <span class="sub" id="plSDef"></span><input id="plStreams" type="number" min="1" max="50" step="1" inputmode="numeric" value="${p.max_streams ?? ""}"></label>
+          <label>Apparaten <span class="sub" id="plDDef"></span><input id="plDevices" type="number" min="1" max="200" step="1" inputmode="numeric" value="${p.max_devices ?? ""}"></label>
+        </div>
+        <label>Notitie <span class="sub">intern, de klant ziet hem niet</span><input id="plNote" maxlength="500" autocomplete="off" value="${esc(p.note || "")}"></label>
+        <div id="plErr" class="err" role="alert"></div>
+        <div class="form-btns"><button id="plSave" class="btn" type="submit">Abonnement opslaan</button></div>
+      </form>
+    </section>`;
+  }
+  function wirePlan(u) {
+    const defs = () => {
+      const d = PLAN_DEFAULTS[$("plPlan").value] || PLAN_DEFAULTS.free;
+      $("plStreams").placeholder = `standaard ${d.streams}`; $("plDevices").placeholder = `standaard ${d.devices}`;
+      $("plSDef").textContent = `standaard ${d.streams}`; $("plDDef").textContent = `standaard ${d.devices}`;
+    };
+    defs(); $("plPlan").onchange = defs;
+    $("planForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const num = (v) => (v.trim() === "" ? null : Number(v));
+      const plan = $("plPlan").value, ms = num($("plStreams").value), md = num($("plDevices").value);
+      if (ms !== null && !(Number.isInteger(ms) && ms >= 1 && ms <= 50)) { $("plErr").textContent = ERR.bad_max_streams; return; }
+      if (md !== null && !(Number.isInteger(md) && md >= 1 && md <= 200)) { $("plErr").textContent = ERR.bad_max_devices; return; }
+      const was = planObj(u.plan).plan;
+      if (was === "lifetime" && plan === "free" && !confirm(`${u.email} terugzetten naar Gratis? Statistieken, nu aan het kijken, Trakt en thema's gaan dan op slot.`)) return;
+      $("plSave").disabled = true; $("plErr").textContent = "";
+      try {
+        await call("plan_set", { id: u.id, plan, max_streams: ms, max_devices: md, note: $("plNote").value.trim() });
+        toast(`Abonnement opgeslagen: ${PLAN_NAME[plan]}${ms != null || md != null ? " met eigen limieten" : ""}.`);
+        refreshUserViews(u.id);
+      } catch (err) { if (err.code !== "auth") $("plErr").textContent = errText(err); $("plSave").disabled = false; }
+    };
   }
   function refreshUserViews(id) {
     openUser(id);
@@ -458,6 +522,30 @@
   }
   document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = closeDrawer));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+  // ---- instellingen: upgrade-link per platform (app_settings.upgrade_link) ----
+  const LINK_PLATFORMS = [
+    ["apple", "Apple", "iPhone, iPad, Apple TV en Mac. Uit: de apps tonen de vergelijking, maar geen link, knop of QR-code."],
+    ["android", "Android", "Telefoons en tablets"], ["androidtv", "Android TV", "Android TV, Google TV en Fire TV"],
+    ["tizen", "Samsung TV", "Tizen"], ["web", "Web", "Webspeler en bingr.online"],
+  ];
+  async function loadSettings() {
+    const el = $("linkSettings");
+    el.innerHTML = '<p class="sub">Laden…</p>';
+    let r;
+    try { r = await call("app_settings_get"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    const v = r.upgrade_link || {};
+    el.innerHTML = LINK_PLATFORMS.map(([k, l, h]) => `<label class="switch link-sw"><input type="checkbox" data-k="${k}"${v[k] ? " checked" : ""}><span class="track"></span><span><b>${esc(l)}</b><br><span class="sub">${esc(h)}</span></span></label>`).join("") +
+      '<div id="linkErr" class="err" role="alert"></div><div class="form-btns"><button id="linkSave" class="btn">Opslaan</button></div>';
+    $("linkSave").onclick = async () => {
+      const upgrade_link = {};
+      el.querySelectorAll("input[data-k]").forEach((i) => { upgrade_link[i.dataset.k] = i.checked; });
+      $("linkSave").disabled = true; $("linkErr").textContent = "";
+      try { await call("app_settings_set", { upgrade_link }); toast("Upgrade-link opgeslagen. De apps nemen het binnen een paar minuten over."); }
+      catch (e) { if (e.code !== "auth") $("linkErr").textContent = errText(e); }
+      finally { $("linkSave").disabled = false; }
+    };
+  }
 
   // ---- support ----
   const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };

@@ -59,6 +59,10 @@ struct APIError: Error, LocalizedError {
         "unblock_failed": "Opheffen is mislukt. Probeer het opnieuw.",
         "confirm_mismatch": "Het e-mailadres klopt niet. Typ het volledige adres of precies het adres zoals hierboven.",
         "delete_failed": "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
+        "bad_plan": "Kies Gratis of Lifetime.",
+        "bad_max_streams": "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
+        "bad_max_devices": "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.",
+        "bad_settings": "Ongeldige instellingen.",
     ]
 }
 

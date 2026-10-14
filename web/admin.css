@@ -446,3 +446,17 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .danger-zone>label:not(.switch){margin-top:14px}
 .btn.danger-solid{background:#c40812}.btn.danger-solid:hover{background:var(--red)}
 .btn.danger-solid:disabled{background:#c4081266;cursor:not-allowed}
+
+/* abonnementen: chip in de lijst, tegels, sectie in de lade en upgrade-link */
+.chip.plan-free{background:#ffffff0f;color:#bdbdbd}
+.chip.plan-life{background:#f5c5181f;border-color:#f5c51840;color:#ffd54a}
+.kpi.plan.life .v{color:#ffd54a}
+.plan-box{margin-top:22px;padding:18px;border:1px solid var(--line);border-radius:12px;background:#ffffff06}
+.plan-box h3{margin:0 0 4px;display:flex;align-items:center;gap:8px}
+.plan-form label{display:block;margin-top:12px}
+.plan-form select,.plan-form input{margin-top:6px}
+.plan-nums{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:520px){.plan-nums{grid-template-columns:1fr}}
+.link-settings .link-sw{align-items:flex-start;margin-top:16px}
+.link-settings .link-sw .track{margin-top:2px}
+.link-settings .form-btns{margin-top:20px}

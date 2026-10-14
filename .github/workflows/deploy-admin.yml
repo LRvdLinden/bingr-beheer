@@ -124,7 +124,7 @@ jobs:
           code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"support_list"}')
           [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::support_list vraagt om inloggen" || { echo "::error::support_list zonder inloggen gaf HTTP $code"; fail=1; }
           # blokkeren, opheffen en verwijderen alleen na inloggen (ook met een vervalst token)
-          for a in user_block user_unblock user_delete; do
+          for a in user_block user_unblock user_delete plan_get plan_set app_settings_get app_settings_set; do
             code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://beheer.bingr.online" -H "Content-Type: application/json" \
               -d "{\"action\":\"$a\",\"token\":\"eyJ1IjoieCJ9.vervalst\",\"id\":\"00000000-0000-0000-0000-000000000000\",\"reason\":\"ci\",\"confirm\":\"x\"}")
             [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::$a vraagt om inloggen" || { echo "::error::$a zonder inloggen gaf HTTP $code"; fail=1; }

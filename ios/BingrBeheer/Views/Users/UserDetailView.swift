@@ -23,6 +23,14 @@ struct UserDetailView: View {
     @State private var deleting = false
     @State private var confirmDelete = false
     @State private var deleteError: String?
+    // abonnement
+    @State private var planChoice = "free"
+    @State private var planStreams = ""
+    @State private var planDevices = ""
+    @State private var planNote = ""
+    @State private var planSaving = false
+    @State private var planError: String?
+    @State private var confirmDowngrade = false
 
     var body: some View {
         ScrollView {
@@ -45,6 +53,8 @@ struct UserDetailView: View {
                         InfoRow("Berichten per e-mail", u.emailOptOut ? "Afgemeld" : "Aan")
                     }
                     .card()
+
+                    planCard(u)
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Apparaten (\(u.devices.count))").font(.headline)
@@ -116,6 +126,12 @@ struct UserDetailView: View {
         } message: {
             Text("\(user?.email ?? fallbackEmail) en alle gegevens worden verwijderd. Dit kan niet ongedaan worden gemaakt.")
         }
+        .alert("Terug naar Gratis?", isPresented: $confirmDowngrade) {
+            Button("Annuleren", role: .cancel) {}
+            Button("Gratis maken", role: .destructive) { Task { await savePlan() } }
+        } message: {
+            Text("Statistieken, nu aan het kijken, Trakt en thema's gaan dan op slot voor \(user?.email ?? fallbackEmail).")
+        }
         .alert("Wachtwoord-reset", isPresented: $confirmReset) {
             Button("Annuleren", role: .cancel) {}
             Button("Versturen") { Task { await sendReset() } }
@@ -126,11 +142,99 @@ struct UserDetailView: View {
 
     private func load() async {
         do {
-            user = UserDetail(try await session.call("user_detail", ["id": userID]))
+            let u = UserDetail(try await session.call("user_detail", ["id": userID]))
+            user = u
+            planChoice = u.plan.plan
+            planStreams = u.plan.maxStreams.map(String.init) ?? ""
+            planDevices = u.plan.maxDevices.map(String.init) ?? ""
+            planNote = u.plan.note ?? ""
+            planError = nil
             error = nil
         } catch {
             if error is CancellationError { return }
             self.error = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
+        }
+    }
+
+    // MARK: abonnement
+
+    private func planCard(_ u: UserDetail) -> some View {
+        let d = AccountPlan.defaults[planChoice] ?? AccountPlan.defaults["free"]!
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("Abonnement").font(.headline)
+                PlanChip(plan: u.plan)
+            }
+            Text(u.plan.isLifetime
+                 ? ["Lifetime", u.plan.sourceText, u.plan.updatedAt.map { Fmt.date($0) }].compactMap { $0 }.joined(separator: " · ")
+                 : "Gratis: 2 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's.")
+                .font(.caption).foregroundStyle(Color.textDim)
+            Picker("Abonnement", selection: $planChoice) {
+                ForEach(AccountPlan.options, id: \.key) { Text($0.label).tag($0.key) }
+            }
+            .pickerStyle(.segmented)
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tegelijk kijken").font(.subheadline)
+                    TextField("standaard \(d.streams)", text: $planStreams)
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.numberPad)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Apparaten").font(.subheadline)
+                    TextField("standaard \(d.devices)", text: $planDevices)
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.numberPad)
+                }
+            }
+            Text("Leeg = standaard van het abonnement (Gratis 2 / 8, Lifetime 6 / 15).").font(.caption).foregroundStyle(Color.textDim)
+            TextField("Notitie (intern, de klant ziet hem niet)", text: $planNote, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+            if let planError {
+                Text(planError).font(.subheadline).foregroundStyle(Color.warn)
+            }
+            Button {
+                if u.plan.isLifetime && planChoice == "free" { confirmDowngrade = true } else { Task { await savePlan() } }
+            } label: {
+                HStack {
+                    if planSaving { ProgressView().tint(.white) }
+                    Text("Abonnement opslaan")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bingr)
+            .disabled(planSaving)
+        }
+        .card(highlight: u.plan.isLifetime ? Color(hex: 0xF5C518) : nil)
+    }
+
+    /// Leeg = nil (standaard); anders een heel getal binnen [1, max], of een fout.
+    private func limit(_ text: String, max: Int) -> Int?? {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return .some(nil) }
+        guard let n = Int(t), (1...max).contains(n) else { return nil }
+        return .some(n)
+    }
+
+    private func savePlan() async {
+        guard let ms = limit(planStreams, max: 50) else { planError = APIError.text("bad_max_streams"); return }
+        guard let md = limit(planDevices, max: 200) else { planError = APIError.text("bad_max_devices"); return }
+        planSaving = true
+        planError = nil
+        defer { planSaving = false }
+        do {
+            // nil gaat niet mee in de aanvraag; de functie leest een ontbrekende limiet als standaard
+            try await session.call("plan_set", [
+                "id": userID, "plan": planChoice, "max_streams": ms, "max_devices": md,
+                "note": planNote.trimmingCharacters(in: .whitespacesAndNewlines),
+            ])
+            session.show("Abonnement opgeslagen: \(planChoice == "lifetime" ? "Lifetime" : "Gratis")\(ms != nil || md != nil ? " met eigen limieten" : "").")
+            session.usersRevision += 1
+            await load()
+        } catch {
+            if error is CancellationError { return }
+            if let e = error as? APIError, e.code == "auth" { return }
+            planError = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
         }
     }
 

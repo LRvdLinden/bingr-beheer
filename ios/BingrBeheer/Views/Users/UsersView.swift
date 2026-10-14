@@ -11,6 +11,8 @@ struct UsersView: View {
     @State private var loaded = false
     @State private var error: String?
     @State private var blockedTotal: Int?
+    @State private var freeTotal: Int?
+    @State private var lifetimeTotal: Int?
 
     private let pageSize = 50
 
@@ -33,7 +35,7 @@ struct UsersView: View {
                 }
             }
             if loaded && items.isEmpty && error == nil {
-                EmptyText(text: session.usersFilter == "blocked" ? "Geen geblokkeerde accounts." : "Geen accounts gevonden.")
+                EmptyText(text: Self.emptyText[session.usersFilter] ?? "Geen accounts gevonden.")
                     .listRowBackground(Color.surface1)
             }
             if loading {
@@ -63,9 +65,28 @@ struct UsersView: View {
         }
     }
 
-    private static let filters: [Option] = [.init("", "Alle accounts"), .init("blocked", "Geblokkeerd")]
+    private static let filters: [Option] = [
+        .init("", "Alle accounts"), .init("free", "Gratis"), .init("lifetime", "Lifetime"), .init("custom", "Eigen limieten"), .init("blocked", "Geblokkeerd"),
+    ]
+    private static let emptyText = [
+        "blocked": "Geen geblokkeerde accounts.", "free": "Geen Gratis-accounts gevonden.", "lifetime": "Geen Lifetime-accounts gevonden.",
+        "custom": "Geen accounts met eigen limieten.",
+    ]
+
+    private func count(_ key: String) -> Int? {
+        switch key {
+        case "blocked": return blockedTotal
+        case "free": return freeTotal
+        case "lifetime": return lifetimeTotal
+        default: return nil
+        }
+    }
 
     private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) { filterButtons }
+    }
+
+    private var filterButtons: some View {
         HStack(spacing: 8) {
             ForEach(Self.filters, id: \.key) { f in
                 let key = f.key, label = f.label
@@ -75,7 +96,7 @@ struct UsersView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(label)
-                        if key == "blocked", let n = blockedTotal {
+                        if let n = count(key) {
                             Text(Fmt.num(n))
                                 .font(.caption.weight(.bold))
                                 .padding(.horizontal, 6)
@@ -115,6 +136,8 @@ struct UsersView: View {
             let rows = r["items"].array.map(UserRow.init)
             total = r["total"].int ?? 0
             if let b = r["blocked_total"].int { blockedTotal = b }
+            if let n = r["free_total"].int { freeTotal = n }
+            if let n = r["lifetime_total"].int { lifetimeTotal = n }
             page = p
             if replace { items = rows } else { items += rows.filter { n in !items.contains { $0.id == n.id } } }
             error = nil
@@ -136,6 +159,7 @@ struct UserRowView: View {
                 Text(user.email).font(.body.weight(.semibold)).lineLimit(1)
                 if !user.confirmed { Chip(text: "onbevestigd", tone: .warn) }
                 if user.isBlocked { Chip(text: "Geblokkeerd", tone: .bad, icon: "nosign") }
+                PlanChip(plan: user.plan)
             }
             HStack(spacing: 10) {
                 Label(Fmt.date(user.createdAt), systemImage: "calendar")
@@ -170,6 +194,25 @@ struct CompactLabelStyle: LabelStyle {
         HStack(spacing: 3) {
             configuration.icon
             configuration.title
+        }
+    }
+}
+
+/// Abonnement als klein label: Lifetime goud, Gratis grijs.
+struct PlanChip: View {
+    let plan: AccountPlan
+
+    var body: some View {
+        if plan.isLifetime {
+            Text(plan.chipText)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .foregroundStyle(Color(hex: 0xFFD54A))
+                .background(Capsule().fill(Color(hex: 0xF5C518).opacity(0.14)))
+        } else {
+            Chip(text: plan.chipText)
         }
     }
 }

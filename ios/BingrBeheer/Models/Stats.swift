@@ -25,6 +25,10 @@ struct Stats {
     let watchingNow: Int
     /// Accounts met een actieve blokkade (nil bij een ouder schema).
     let blockedUsers: Int?
+    /// Abonnementen (nil bij een ouder schema): Gratis, Lifetime en accounts met eigen limieten.
+    let planFree: Int?
+    let planLifetime: Int?
+    let planCustom: Int?
     /// "audit": inlogs uit het inloglogboek; anders accounts met app-activiteit
     let signinsFromAudit: Bool
     let days: [Day]
@@ -41,6 +45,9 @@ struct Stats {
         devicesTotal = j["devices_total"].int ?? 0
         watchingNow = j["watching_now"].int ?? 0
         blockedUsers = j["blocked_users"].int
+        planFree = j["plan_free"].int
+        planLifetime = j["plan_lifetime"].int
+        planCustom = j["plan_custom"].int
         signinsFromAudit = j["signins_source"].text == "audit"
         days = j["days"].array.compactMap { d in
             guard let day = d["day"].date else { return nil }

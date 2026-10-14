@@ -3,8 +3,10 @@
 // Inloggegevens alleen als function-secrets BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD (uit de GitHub-secrets).
 //   login               {user, password}  -> {token, expires_at}   (5 fouten per IP = 15 min geblokkeerd: 429 {error:"locked", retry_after})
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
-//   users               {token, q?, page?, page_size?, filter?: "blocked"} -> {total, blocked_total, page, page_size, items:[…]}
-//                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade)
+//   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
+//                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
+//                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade;
+//                       items[].plan = {plan, max_streams?, max_devices?, source?})
 //   user_detail         {token, id}       -> {…, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
 //   user_block          {token, id, reason, until? (ISO; leeg/"onbepaald" = onbepaalde tijd), notify? (standaard true)}
 //                       -> {ok, until, streams_stopped, email_sent, email_error?}  (ban op het auth-account, record in
@@ -31,6 +33,14 @@
 //   support_poll        {token}           -> {ok, fetched, imported, …} | {skipped} | {busy}  (nu mails ophalen)
 //                       De support_*-acties gaan door naar de functie `support` (LRvdLinden/iptv-ios-appletv) met het geheim
 //                       SUPPORT_ADMIN_SECRET (zet de Backend-workflow daar klaar). Supporttickets komen nooit in de changelog.
+//   plan_get            {token, id}       -> {plan, max_streams, max_devices, source, note, granted_by, updated_at, defaults, effective}
+//   plan_set            {token, id, plan: "free"|"lifetime", max_streams: int|null, max_devices: int|null, note?}
+//                       -> {ok, …zoals plan_get}  (abonnement van een account; null = standaard van het abonnement;
+//                       granted_by "beheer" (niet de inlognaam: de klant kan zijn eigen rij lezen), source 'admin';
+//                       Gratis zonder eigen limieten en notitie = rij weg)
+//   app_settings_get    {token}           -> {upgrade_link:{apple, android, androidtv, tizen, web}}
+//   app_settings_set    {token, upgrade_link:{apple, android, androidtv, tizen, web}} -> {ok, upgrade_link}
+//                       Abonnementen: tabellen account_plans en app_settings (schema in iptv-ios-appletv, docs/ACCOUNT.md).
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -44,6 +54,31 @@ const admin = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY")
   auth: { autoRefreshToken: false, persistSession: false },
 });
 const TOKEN_TTL_MS = 12 * 3600 * 1000;
+
+// ---- abonnementen (zelfde standaarden als supabase/functions/_shared/plans.ts in iptv-ios-appletv) ----
+const PLAN_DEFAULTS = { free: { streams: 2, devices: 8, servers: 1 }, lifetime: { streams: 6, devices: 15, servers: null } } as const;
+const LINK_KEYS = ["apple", "android", "androidtv", "tizen", "web"] as const;
+const DEFAULT_LINK: Record<string, boolean> = { apple: false, android: true, androidtv: true, tizen: true, web: true };
+// eigen limiet: null/leeg = standaard; anders een geheel getal binnen [1, cap]; ongeldig = undefined (fout)
+function limitInput(v: unknown, cap: number): number | null | undefined {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).trim());
+  return Number.isInteger(n) && n >= 1 && n <= cap ? n : undefined;
+}
+function planView(row: Record<string, unknown> | null) {
+  const plan = row?.plan === "lifetime" ? "lifetime" : "free";
+  const d = PLAN_DEFAULTS[plan];
+  const ms = (row?.max_streams as number | null) ?? null, md = (row?.max_devices as number | null) ?? null;
+  return {
+    plan, max_streams: ms, max_devices: md, source: row?.source ?? null, note: row?.note ?? null, granted_by: row?.granted_by ?? null,
+    created_at: row?.created_at ?? null, updated_at: row?.updated_at ?? null,
+    defaults: PLAN_DEFAULTS, effective: { streams: ms ?? d.streams, devices: md ?? d.devices, servers: d.servers },
+  };
+}
+const linkView = (v: unknown) => {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+  return Object.fromEntries(LINK_KEYS.map((k) => [k, typeof o[k] === "boolean" ? o[k] : DEFAULT_LINK[k]]));
+};
 const BATCH = 25;
 
 // Het dashboard staat op https://beheer.bingr.online (http://localhost om te testen). De site bingr.online mag alleen
@@ -252,11 +287,15 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       const q = String(body.q ?? "").trim().toLowerCase().slice(0, 100);
       // filter alleen meesturen als hij gekozen is (zo werkt de lijst ook met een ouder schema)
       const { data, error } = await admin.rpc("bingr_admin_users", {
-        p_search: q, p_limit: size, p_offset: page * size, ...(body.filter === "blocked" ? { p_filter: "blocked" } : {}),
+        p_search: q, p_limit: size, p_offset: page * size,
+        ...(["blocked", "free", "lifetime", "custom"].includes(String(body.filter)) ? { p_filter: String(body.filter) } : {}),
       });
       if (error) throw new Error(error.message);
       const items = (data?.items ?? []).map((u: Record<string, unknown>) => ({ ...u, email: maskEmail(u.email) }));
-      return json({ total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, page, page_size: size, items });
+      return json({
+        total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null,
+        free_total: data?.free_total ?? null, page, page_size: size, items,
+      });
     }
     case "user_detail": {
       if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
@@ -264,6 +303,56 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       if (error) throw new Error(error.message);
       if (!data) return json({ error: "not_found" }, 404);
       return json({ ...data, email: maskEmail(data.email) });
+    }
+    case "plan_get": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const { data, error } = await admin.from("account_plans").select("*").eq("user_id", String(body.id).toLowerCase()).maybeSingle();
+      if (error) throw new Error(error.message);
+      return json(planView(data));
+    }
+    case "plan_set": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      if (body.plan !== "free" && body.plan !== "lifetime") return json({ error: "bad_plan" }, 400);
+      const ms = limitInput(body.max_streams, 50), md = limitInput(body.max_devices, 200);
+      if (ms === undefined) return json({ error: "bad_max_streams" }, 400);
+      if (md === undefined) return json({ error: "bad_max_devices" }, 400);
+      const note = String(body.note ?? "").trim().slice(0, 500) || null;
+      if (!(await authUser(id))) return json({ error: "not_found" }, 404);
+      const { data: before } = await admin.from("account_plans").select("plan,max_streams,max_devices,source").eq("user_id", id).maybeSingle();
+      let row: Record<string, unknown> | null = null;
+      if (body.plan === "free" && ms === null && md === null && !note) {
+        // gewoon Gratis: geen rij nodig
+        const { error } = await admin.from("account_plans").delete().eq("user_id", id);
+        if (error) throw new Error(error.message);
+      } else {
+        // bron: een gekochte Lifetime blijft 'purchase' zolang het Lifetime blijft; anders 'admin'
+        const source = before?.source === "purchase" && body.plan === "lifetime" ? "purchase" : "admin";
+        const { data, error } = await admin.from("account_plans").upsert({
+          user_id: id, plan: body.plan, max_streams: ms, max_devices: md, note, source,
+          granted_by: "beheer", updated_at: new Date().toISOString(),
+        }).select("*").single();
+        if (error) throw new Error(error.message);
+        row = data;
+      }
+      await audit("plan_set", ip, id, { from: before ?? { plan: "free" }, plan: body.plan, max_streams: ms, max_devices: md, note: note ? true : undefined });
+      return json({ ok: true, ...planView(row) });
+    }
+    case "app_settings_get": {
+      const { data, error } = await admin.from("app_settings").select("value").eq("key", "upgrade_link").maybeSingle();
+      if (error) throw new Error(error.message);
+      return json({ upgrade_link: linkView(data?.value) });
+    }
+    case "app_settings_set": {
+      const v = body.upgrade_link;
+      if (!v || typeof v !== "object" || Array.isArray(v)) return json({ error: "bad_settings" }, 400);
+      const o = v as Record<string, unknown>;
+      if (!LINK_KEYS.every((k) => typeof o[k] === "boolean")) return json({ error: "bad_settings" }, 400);
+      const value = Object.fromEntries(LINK_KEYS.map((k) => [k, o[k]]));
+      const { error } = await admin.from("app_settings").upsert({ key: "upgrade_link", value, updated_at: new Date().toISOString() });
+      if (error) throw new Error(error.message);
+      await audit("app_settings_set", ip, null, { upgrade_link: value });
+      return json({ ok: true, upgrade_link: value });
     }
     case "send_reset": {
       if (!isUuid(body.user_id)) return json({ error: "bad_id" }, 400);
