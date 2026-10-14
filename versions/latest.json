@@ -28,11 +28,11 @@
  },
  "beheer": {
   "version": "1.0.0",
-  "build": 4,
-  "file": "Bingr-Beheer-1.0.0-build4-Xcode.zip",
-  "path": "Beheer/v1.0.0/Bingr-Beheer-1.0.0-build4-Xcode.zip",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Beheer/v1.0.0/Bingr-Beheer-1.0.0-build4-Xcode.zip",
-  "size": 867042,
+  "build": 5,
+  "file": "Bingr-Beheer-1.0.0-build5-Xcode.zip",
+  "path": "Beheer/v1.0.0/Bingr-Beheer-1.0.0-build5-Xcode.zip",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Beheer/v1.0.0/Bingr-Beheer-1.0.0-build5-Xcode.zip",
+  "size": 875669,
   "date": "2026-10-14"
  }
 }
