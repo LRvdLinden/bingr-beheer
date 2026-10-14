@@ -7,7 +7,7 @@ struct LockView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            CoverWall().ignoresSafeArea()
             VStack(spacing: 28) {
                 BingrLogo(size: 34)
                 if showButton {
