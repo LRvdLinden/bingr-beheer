@@ -5,19 +5,22 @@ Indeling (per platform alleen de laatste build):
   versions/Android/v1.0.0/Bingr-1.0.0-build74.apk (+ notes.md)
   versions/Apple/v1.0.0/Bingr-1.0.0-build74-Xcode.zip (+ notes.md)
   versions/Samsung TV/v1.0.0/Bingr-1.0.0-build74-testsigned.wgt (+ notes.md)
+  versions/Beheer/v1.0.0/Bingr-Beheer-1.0.0-build1-Xcode.zip (+ notes.md)  (eigen buildnummers, los van Bingr)
 
 Gebruik: python3 tools/add_version.py <os> <build> <bestand> [--notes notes.md] [--version 1.0.0]
-<os>: android (APK, ook Android TV/Google TV/Fire TV), tizen (Samsung TV .wgt) of apple (Xcode-project iOS/iPadOS/tvOS/macOS).
-Wordt ook gebruikt door de workflows van bingr-android en iptv-ios-appletv.
+<os>: android (APK, ook Android TV/Google TV/Fire TV), tizen (Samsung TV .wgt), apple (Xcode-project iOS/iPadOS/tvOS/macOS)
+of beheer (Xcode-project van de app Bingr Beheer, ios/ in deze repo).
+Wordt ook gebruikt door de workflows van bingr-android en iptv-ios-appletv, en door de workflow Beheer-app hier.
 """
 import argparse, datetime, json, os, shutil, sys
 from urllib.parse import quote
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "versions")
-FOLDER = {"android": "Android", "apple": "Apple", "tizen": "Samsung TV"}
+FOLDER = {"android": "Android", "apple": "Apple", "tizen": "Samsung TV", "beheer": "Beheer"}
 DESC = {"android": "Android, Android TV, Google TV en Fire TV (APK)",
         "apple": "iOS, iPadOS, tvOS en macOS (Xcode-project)",
-        "tizen": "Samsung TV / Tizen (.wgt)"}
+        "tizen": "Samsung TV / Tizen (.wgt)",
+        "beheer": "Bingr Beheer (iOS/iPadOS, Xcode-project)"}
 RAW = "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/"
 
 
@@ -52,9 +55,10 @@ def readme(data):
     lines = ["# Versies", "",
              "De nieuwste build van Bingr per platform: `<Platform>/v<versie>/`.",
              "[`latest.json`](latest.json) beschrijft ze; de website gebruikt dat voor de downloadknoppen.",
-             "Bijgewerkt door de workflows van bingr-android en iptv-ios-appletv (tools/add_version.py).", "",
+             "Bijgewerkt door de workflows van bingr-android en iptv-ios-appletv (tools/add_version.py).",
+             "Bingr Beheer (de beheer-app, `ios/` in deze repo) heeft eigen buildnummers; workflow *Beheer-app*.", "",
              "| Platform | Versie | Build | Bestand |", "|---|---|---|---|"]
-    for k in ("android", "apple", "tizen"):
+    for k in ("android", "apple", "tizen", "beheer"):
         v = data.get(k)
         if v:
             lines.append(f"| {DESC[k]} | {v['version']} | {v['build']} | [{v['file']}]({quote(v['path'])}) |")

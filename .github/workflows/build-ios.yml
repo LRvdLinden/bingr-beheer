@@ -1,0 +1,124 @@
+name: Beheer-app
+
+# Bouwt de native app Bingr Beheer (ios/, iOS/iPadOS 17+, XcodeGen) voor een generiek iOS-apparaat zonder ondertekening.
+# Lukt dat, dan komt het Xcode-project (ios/ met het gegenereerde .xcodeproj) als
+# versions/Beheer/v<versie>/Bingr-Beheer-<versie>-build<N>-Xcode.zip in deze repo (alleen de nieuwste build),
+# met versions/latest.json (sleutel "beheer") en versions/README.md bijgewerkt via tools/add_version.py.
+# Build-rapport (fouten + staart van het log) op de branch ci-logs-beheer (latest.txt); fouten ook als annotaties.
+# Privé: nooit in de changelog, geen Bingr-buildnummer.
+
+on:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/build-ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beheer-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode-versie kiezen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Project genereren
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build iOS (generiek apparaat, zonder signing)
+        id: ios
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build -project BingrBeheer.xcodeproj -scheme BingrBeheer \
+            -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee "$RUNNER_TEMP/ios.log"
+
+      - name: Fouten als annotaties
+        if: always()
+        run: |
+          LOG="$RUNNER_TEMP/ios.log"
+          [ -f "$LOG" ] || exit 0
+          grep -E "^/.+:[0-9]+:[0-9]+: error: " "$LOG" | sort -u | head -40 | while IFS= read -r l; do
+            f="${l%%:*}"; rest="${l#*:}"; line="${rest%%:*}"; msg="${l#*: error: }"
+            echo "::error file=${f#$GITHUB_WORKSPACE/},line=$line::$msg"
+          done
+          grep -E "error:" "$LOG" | grep -vE "^/.+:[0-9]+:[0-9]+: error: " | sort -u | head -15 | while IFS= read -r l; do
+            echo "::error::$l"
+          done
+
+      - name: Build-rapport publiceren (branch ci-logs-beheer)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LOG="$RUNNER_TEMP/ios.log"; touch "$LOG"
+          R="$RUNNER_TEMP/report"; rm -rf "$R"; mkdir -p "$R"
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "ios: ${{ steps.ios.outcome }}"
+            echo
+            echo "=== errors ==="
+            grep -E "error:" "$LOG" | sort -u | head -300 || true
+            echo
+            echo "=== warnings (deprecated/unavailable) ==="
+            grep -E "warning: .*(unavailable|deprecated)" "$LOG" | sort -u | head -100 || true
+          } > "$R/latest.txt"
+          tail -n 300 "$LOG" > "$R/ios-tail.txt" || true
+          cd "$R"
+          git init -q -b ci-logs-beheer
+          git add latest.txt ios-tail.txt
+          git -c user.name=github-actions -c user.email=actions@github.com commit -qm "build $GITHUB_SHA ios=${{ steps.ios.outcome }}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ci-logs-beheer
+
+      - name: Xcode-project in versions/Beheer zetten
+        if: steps.ios.outcome == 'success'
+        run: |
+          V=$(grep -m1 'MARKETING_VERSION' ios/project.yml | grep -o '[0-9][0-9.]*' | head -1)
+          B=$(grep -m1 'CURRENT_PROJECT_VERSION' ios/project.yml | grep -o '[0-9]\+' | head -1)
+          Z="$RUNNER_TEMP/Bingr-Beheer-$V-build$B-Xcode.zip"
+          # ios/ met het gegenereerde BingrBeheer.xcodeproj (zonder build-mappen)
+          zip -qr "$Z" ios -x 'ios/build/*' 'ios/DerivedData/*' '*.DS_Store' 'ios/*.xcodeproj/xcuserdata/*' 'ios/*.xcodeproj/project.xcworkspace/xcuserdata/*'
+          N="$RUNNER_TEMP/notes.md"
+          {
+            echo "Bingr Beheer $V (build $B): Xcode-project voor iOS/iPadOS 17+."
+            echo
+            echo "Uitpakken, \`ios/BingrBeheer.xcodeproj\` openen, bij Signing & Capabilities je Team kiezen en op je iPhone/iPad draaien."
+            echo
+            echo "Commit $(echo $GITHUB_SHA | cut -c1-7)."
+          } > "$N"
+          git config user.name github-actions
+          git config user.email actions@github.com
+          for i in 1 2 3; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            python3 tools/add_version.py beheer "$B" "$Z" --notes "$N" --version "$V"
+            git add -A versions
+            if git diff --cached --quiet; then echo "::notice::Niets nieuws voor versions/"; exit 0; fi
+            git commit -qm "Versies: Bingr Beheer $V build $B ($(echo $GITHUB_SHA | cut -c1-7)) [skip ci]"
+            if git push -q origin HEAD:main 2>push.err; then
+              echo "::notice::In versions/Beheer/v$V gezet: $(basename "$Z")"; exit 0
+            fi
+            echo "::warning::Push mislukt (poging $i): $(head -c 300 push.err)"
+            sleep 5
+          done
+          echo "::error::Niet in versions/ gezet: push mislukt"; exit 1
+
+      - name: Status
+        if: steps.ios.outcome != 'success'
+        run: exit 1

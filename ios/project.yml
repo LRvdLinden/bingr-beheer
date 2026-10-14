@@ -1,0 +1,57 @@
+# Bingr Beheer: native app (iOS/iPadOS 17+) voor het beheer-dashboard (https://beheer.bingr.online).
+# Praat met dezelfde Edge Function `admin` als web/. Privé: nooit in de changelog en geen Bingr-buildnummer.
+# Genereren: `xcodegen generate` in deze map (de workflow Beheer-app doet dat ook en zet het Xcode-project in versions/Beheer/).
+name: BingrBeheer
+options:
+  bundleIdPrefix: nl.lrvdlinden
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Team van Léon van der Linden (zelfde als de Bingr-apps); automatisch ondertekenen
+    DEVELOPMENT_TEAM: EU3UY476T6
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  BingrBeheer:
+    type: application
+    platform: iOS
+    sources:
+      - path: BingrBeheer
+    info:
+      path: BingrBeheer/Info.plist
+      properties:
+        CFBundleDisplayName: Bingr Beheer
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: nl
+        CFBundleLocalizations: [nl]
+        LSApplicationCategoryType: public.app-category.business
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIUserInterfaceStyle: Dark
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSFaceIDUsageDescription: Bingr Beheer gebruikt Face ID om de app te ontgrendelen.
+        # bingrbeheer://support/1001 opent ticket #1001
+        CFBundleURLTypes:
+          - CFBundleURLName: nl.lrvdlinden.bingr.beheer
+            CFBundleURLSchemes: [bingrbeheer]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr.beheer
+        PRODUCT_NAME: BingrBeheer
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        ENABLE_PREVIEWS: YES
+    scheme: {}

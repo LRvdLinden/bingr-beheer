@@ -3,6 +3,7 @@
 Het beheer-dashboard van **Bingr**, op **https://beheer.bingr.online**. Deze repo is privé; het dashboard stond eerder op `bingr.online/admindashboard` in de openbare repo bingr-website.
 
 - `web/` — het dashboard zelf (statische HTML/JS/CSS, geen build-stap): overzicht, gebruikers, berichten, supporttickets en status. Alles staat erin (`config.js` met de publieke Supabase-URL en publishable key, favicon). `robots.txt` blokkeert alles en de pagina heeft `noindex`.
+- `ios/` — de native app **Bingr Beheer** (iOS/iPadOS 17+) met dezelfde onderdelen als het web-dashboard; zie *iOS-app* hieronder.
 - `supabase/functions/admin` — de Supabase Edge Function `admin` waar het dashboard mee praat (inloggen, statistieken, gebruikers, berichten en mail, de tab Status via de functie `status` en de tab Support via de functie `support`). `supabase/functions/_shared/mail.ts` is een kopie van die in iptv-ios-appletv.
 
 Wat er **niet** in staat: het databaseschema (ook de beheertabellen), de functies `device-auth`, `web-proxy` en `status`, en de statusplanning. Die staan in de openbare repo [LRvdLinden/iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv) (`supabase/`, workflow *Backend*). De afmeldpagina `bingr.online/unsubscribe/` staat op de gewone site en roept alleen de actie `unsubscribe` van `admin` aan; dat is het enige wat bingr.online mag.
@@ -51,6 +52,15 @@ De functie `support` haalt elke 2 minuten nieuwe mails uit de INBOX van support@
 - Genegeerd (blijven staan): onze eigen meldingen (X-Bingr-Ticket), afwezigheidsmeldingen, bounces, nieuwsbrieven en spam. Verwerkte mails worden gelezen en naar de map **Bingr-verwerkt** verplaatst als die bestaat (maak hem zelf aan in de mailbox). Bijlagen worden niet overgenomen (alleen een regel met de naam).
 
 Boven de ticketlijst staat de status van de import (laatste ronde, fout, *IMAP niet ingesteld*), een knop **Nu ophalen** en het logboek van de laatste mails. Zonder `BINGR_IMAP_*` blijft alles zoals vroeger (Reply-To van meldingen = de klant).
+
+## iOS-app (Bingr Beheer)
+
+Native SwiftUI-app voor iPhone en iPad (iOS/iPadOS 17+, bundle-id `nl.lrvdlinden.bingr.beheer`) in `ios/`, met een XcodeGen-project (`ios/project.yml`). Ze praat met dezelfde functie `admin` als het web-dashboard (publieke Supabase-URL en publishable key ingebouwd, geen geheimen) en heeft alle tabs: Overzicht (kengetallen en grafieken met Swift Charts), Gebruikers (zoeken, details, apparaten, wachtwoord-reset), Support (filters, zoeken, gesprek met interne notities, antwoorden, status/prioriteit, inbox-import en *Nu ophalen*), Berichten (NL/EN met voorbeeld, e-mailen in batches, verder verzenden, verwijderen) en Status (monitors, storingen, reactietijd, controleren, monitors toevoegen/bewerken). Tabbalk op de iPhone, zijbalk op de iPad. Het token staat in de Keychain (alleen dit apparaat, geen iCloud); optioneel vergrendelen met Face ID / toegangscode (Instellingen). `bingrbeheer://support/1001` opent een ticket.
+
+- **Workflow *Beheer-app*** (`.github/workflows/build-ios.yml`, bij een push naar `main` die `ios/` raakt): `xcodegen generate` en een build voor een generiek iOS-apparaat zonder ondertekening. Lukt dat, dan zet de workflow het Xcode-project (ios/ met het gegenereerde `BingrBeheer.xcodeproj`) als `versions/Beheer/v<versie>/Bingr-Beheer-<versie>-build<N>-Xcode.zip` in deze repo (alleen de nieuwste) en werkt `versions/latest.json` (sleutel `beheer`) en `versions/README.md` bij. Fouten staan als annotaties bij de run en in `latest.txt` op de branch `ci-logs-beheer`.
+- **Installeren**: zip uitpakken, `ios/BingrBeheer.xcodeproj` openen in Xcode 16, bij *Signing & Capabilities* je Team kiezen (staat standaard op het Bingr-team) en op je iPhone/iPad draaien. Zelf genereren kan ook: `brew install xcodegen && cd ios && xcodegen generate`.
+- Versie en build staan in `ios/project.yml` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`): een eigen reeks, los van de Bingr-buildnummers. App-icoon: `python3 ios/tools/make_icon.py`.
+- Nooit in de changelog van Bingr.
 
 ## Subdomein beheer.bingr.online instellen (eenmalig, bij de hoster)
 
