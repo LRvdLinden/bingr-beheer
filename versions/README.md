@@ -10,4 +10,4 @@ Bingr Beheer (de beheer-app, `ios/` in deze repo) heeft eigen buildnummers; work
 | Android, Android TV, Google TV en Fire TV (APK) | 1.0.0 | 86 | [Bingr-1.0.0-build86.apk](Android/v1.0.0/Bingr-1.0.0-build86.apk) |
 | iOS, iPadOS, tvOS en macOS (Xcode-project) | 1.0.0 | 87 | [Bingr-1.0.0-build87-Xcode.zip](Apple/v1.0.0/Bingr-1.0.0-build87-Xcode.zip) |
 | Samsung TV / Tizen (.wgt) | 1.0.0 | 86 | [Bingr-1.0.0-build86-testsigned.wgt](Samsung%20TV/v1.0.0/Bingr-1.0.0-build86-testsigned.wgt) |
-| Bingr Beheer (iOS/iPadOS, Xcode-project) | 1.0.0 | 3 | [Bingr-Beheer-1.0.0-build3-Xcode.zip](Beheer/v1.0.0/Bingr-Beheer-1.0.0-build3-Xcode.zip) |
+| Bingr Beheer (iOS/iPadOS, Xcode-project) | 1.0.0 | 4 | [Bingr-Beheer-1.0.0-build4-Xcode.zip](Beheer/v1.0.0/Bingr-Beheer-1.0.0-build4-Xcode.zip) |
