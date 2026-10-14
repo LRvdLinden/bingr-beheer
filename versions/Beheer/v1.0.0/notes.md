@@ -1,5 +1,5 @@
-Bingr Beheer 1.0.0 (build 1): Xcode-project voor iOS/iPadOS 17+.
+Bingr Beheer 1.0.0 (build 2): Xcode-project voor iOS/iPadOS 17+.
 
 Uitpakken, `ios/BingrBeheer.xcodeproj` openen, bij Signing & Capabilities je Team kiezen en op je iPhone/iPad draaien.
 
-Commit 7516510.
+Commit b582578.
