@@ -109,7 +109,6 @@ jobs:
               exit 1
             fi
             echo "::notice::Geen FTP_DIR: upload naar de hoofdmap van de FTP-login"
-            echo "::notice::Let op: de map van de FTP-login is de map waar het dashboard komt. Moet het in /public_html/beheer.bingr.online staan, zet dan in het FTP-account die map als hoofdmap."
           fi
           # begint de FTP-hoofdmap al in public_html (de webmap van bingr.online)? dan het voorvoegsel public_html/ weglaten,
           # anders ontstaat er een map public_html in de website
