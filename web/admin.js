@@ -475,6 +475,7 @@
         <dt>Klant</dt><dd>${esc(t.name || "—")}<br><a href="mailto:${esc(t.email)}">${esc(t.email)}</a></dd>
         <dt>Account</dt><dd>${acc}</dd>
         <dt>Categorie</dt><dd>${esc(SUP_CAT[t.category] || t.category)}${t.platform ? ` · ${esc(SUP_PLAT[t.platform] || t.platform)}` : ""}${t.app_version ? ` · Bingr ${esc(t.app_version)}` : ""}</dd>
+        ${t.device_name || t.os_version ? `<dt>Apparaat</dt><dd>${esc([t.device_name, t.os_version].filter(Boolean).join(" · "))}</dd>` : ""}
         <dt>Taal</dt><dd>${t.lang === "en" ? "Engels" : "Nederlands"} <a class="sub" href="${esc(t.customer_url)}" target="_blank" rel="noopener noreferrer">Klantweergave openen ↗</a></dd>
       </dl>
       <h3>Gesprek</h3>
