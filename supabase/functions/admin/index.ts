@@ -2,6 +2,7 @@
 // POST /functions/v1/admin met JSON {action, token?, ...}; header `apikey`.
 // Inloggegevens alleen als function-secrets BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD (uit de GitHub-secrets).
 //   login               {user, password}  -> {token, expires_at}   (5 fouten per IP = 15 min geblokkeerd: 429 {error:"locked", retry_after})
+//                       (build 95: 5 pogingen per IP per 15 min, en > 60 pogingen per uur van alle IP's samen = alles 15 min dicht)
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
 //   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
@@ -161,9 +162,12 @@ function maskEmail(e: unknown) {
   const md = dot > 0 ? `${domain[0]}***${domain.slice(dot)}` : "***";
   return `${ml}@${md}`;
 }
+// build 95: het IP voor de inlogblokkade. Niet meer de eerste waarde van X-Forwarded-For (die kiest de aanvaller zelf),
+// maar cf-connecting-ip, dan x-real-ip, dan de LAATSTE waarde van X-Forwarded-For (toegevoegd door de proxy vóór de functie).
 function clientIp(req: Request) {
-  const f = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
-  return (f || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "?").slice(0, 64);
+  const h = (k: string) => (req.headers.get(k) ?? "").trim();
+  const xff = h("x-forwarded-for").split(",").map((s) => s.trim()).filter(Boolean);
+  return (h("cf-connecting-ip") || h("x-real-ip") || xff[xff.length - 1] || "?").slice(0, 64);
 }
 // Accountmails (blokkeren, opheffen, verwijderen) gaan vanaf support@ (BINGR_SUPPORT_FROM, zoals de supportmails); weigert
 // de SMTP-server die afzender, dan met BINGR_SMTP_FROM als afzender en support@ als Reply-To. Antwoorden komen zo bij support.
@@ -255,14 +259,20 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
 
   if (action === "login") {
     if (!env("BINGR_ADMIN_USER") || !env("BINGR_ADMIN_PASSWORD")) return json({ error: "not_configured" }, 503);
-    const { data: gate, error: ge } = await admin.rpc("bingr_admin_gate", { p_ip: ip });
-    if (ge) throw new Error(ge.message);
-    if (gate?.locked) return json({ error: "locked", retry_after: gate.retry_after ?? 900 }, 429);
+    // build 95: één atomaire stap vóór de wachtwoordcontrole (bingr_admin_attempt): telt de poging alvast als fout, per IP
+    // en globaal, en zegt of hij door mag. Zo kunnen parallelle verzoeken niet langs de grens tussen controle en telling.
+    const { data: att, error: ae } = await admin.rpc("bingr_admin_attempt", { p_ip: ip });
+    if (ae) throw new Error(ae.message);
+    if (!att?.allowed) return json({ error: "locked", retry_after: att?.retry_after ?? 900 }, 429);
     // altijd allebei vergelijken, op hashes van gelijke lengte (geen timing-verschil)
     const [a, b, c, d] = await Promise.all([sha256(String(body.user ?? "")), sha256(env("BINGR_ADMIN_USER")),
       sha256(String(body.password ?? "")), sha256(env("BINGR_ADMIN_PASSWORD"))]);
     const ok = sameBytes(a, b) && sameBytes(c, d);
-    await admin.rpc("bingr_admin_result", { p_ip: ip, p_ok: ok });
+    // build 95: alleen gelukt hoeft nog terug naar de database (teller van dit IP weg); fout is al geteld
+    if (ok) {
+      const { error: re } = await admin.rpc("bingr_admin_result", { p_ip: ip, p_ok: true });
+      if (re) console.error("admin", "login reset", re.message);
+    }
     await audit(ok ? "login" : "login_failed", ip);
     if (!ok) return json({ error: "invalid_credentials" }, 401);
     return json(await makeToken());
@@ -319,7 +329,9 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       if (md === undefined) return json({ error: "bad_max_devices" }, 400);
       const note = String(body.note ?? "").trim().slice(0, 500) || null;
       if (!(await authUser(id))) return json({ error: "not_found" }, 404);
-      const { data: before } = await admin.from("account_plans").select("plan,max_streams,max_devices,source").eq("user_id", id).maybeSingle();
+      // build 95: leesfout niet negeren (anders kan een gekochte Lifetime als 'admin' worden overschreven)
+      const { data: before, error: pe } = await admin.from("account_plans").select("plan,max_streams,max_devices,source").eq("user_id", id).maybeSingle();
+      if (pe) throw new Error(pe.message);
       let row: Record<string, unknown> | null = null;
       if (body.plan === "free" && ms === null && md === null && !note) {
         // gewoon Gratis: geen rij nodig
@@ -377,13 +389,27 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       if (!u.ok) return json({ error: u.error }, 400);
       const user = await authUser(id);
       if (!user) return json({ error: "not_found" }, 404);
-      const { error: be } = await admin.auth.admin.updateUserById(id, { ban_duration: banDuration(u.until) });
-      if (be) { console.error("user_block", be.message); return json({ error: "block_failed" }, 502); }
       const until = u.until?.toISOString() ?? null;
-      // een vorige blokkade die nog liep, is hiermee vervangen
-      await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "vervangen" }).eq("user_id", id).is("lifted_at", null);
+      // build 95: eerst het record, dan pas de ban. Mislukt de ban, dan wordt het nieuwe record weer weggehaald en blijft
+      // een vorige blokkade gewoon staan; zo is er nooit een ban zonder record (of een record zonder ban).
       const { data: row, error: ie } = await admin.from("account_blocks").insert({ user_id: id, reason, until }).select("id").single();
       if (ie) throw new Error(ie.message);
+      const { error: be } = await admin.auth.admin.updateUserById(id, { ban_duration: banDuration(u.until) });
+      if (be) {
+        console.error("user_block", be.message);
+        const { error: ue } = await admin.from("account_blocks").delete().eq("id", row.id);
+        if (ue) {
+          // weghalen lukt niet: dan het record als mislukt afsluiten, zodat het niet als actieve blokkade telt
+          console.error("user_block undo", ue.message);
+          await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "mislukt" }).eq("id", row.id);
+        }
+        await audit("user_block_failed", ip, id, { until, stage: "ban" });
+        return json({ error: "block_failed" }, 502);
+      }
+      // een vorige blokkade die nog liep, is hiermee vervangen (build 95: fout niet meer negeren)
+      const { error: re } = await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "vervangen" })
+        .eq("user_id", id).is("lifted_at", null).neq("id", row.id);
+      if (re) console.error("user_block replaced", re.message);
       // Sessies NIET intrekken: met een bestaande sessie geeft het vernieuwen door de ban de fout user_banned, en daaraan
       // herkennen de apps (build 82) en de website dat het account geblokkeerd is (melding in plaats van gewoon uitloggen).
       // device-auth weigert lopende access tokens van een geblokkeerd account met 401 {error:"user_banned", banned:true}.
@@ -405,13 +431,15 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       if (!user) return json({ error: "not_found" }, 404);
       const { error: be } = await admin.auth.admin.updateUserById(id, { ban_duration: "none" });
       if (be) { console.error("user_unblock", be.message); return json({ error: "unblock_failed" }, 502); }
-      const { data: lifted } = await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "beheer" })
+      // build 95: fout niet negeren; de ban is al weg, dus wel doorgaan, maar loggen en melden in het logboek
+      const { data: lifted, error: le } = await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "beheer" })
         .eq("user_id", id).is("lifted_at", null).select("id");
+      if (le) console.error("user_unblock record", le.message);
       let mail: { ok: boolean; error?: string } = { ok: false };
       if (body.notify !== false && user.email) {
         mail = await sendAccountMail(user.email, unblockMail(accountLang(user.user_metadata?.lang), { email: user.email }));
       }
-      await audit("user_unblock", ip, id, { notify: body.notify !== false, email_sent: mail.ok, lifted: lifted?.length ?? 0 });
+      await audit("user_unblock", ip, id, { notify: body.notify !== false, email_sent: mail.ok, lifted: lifted?.length ?? 0, record_error: le ? true : undefined });
       return json({ ok: true, email_sent: mail.ok, email_error: mail.error });
     }
     case "user_delete": {
@@ -425,27 +453,37 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       const delTickets = body.delete_tickets === true;
       // e-mailadres en taal vastleggen vóór het verwijderen; de mail gaat pas als het verwijderen gelukt is
       const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets }) : null;
-      // profielfoto's (opslag gaat niet mee met de cascade)
+      // build 95: eerst de gebruiker zelf; alle tabellen (profielen, servers, instellingen, apparaten, sessies, streams,
+      // kijkgeschiedenis, statistieken, blokkades, e-mailvoorkeuren, tv-codes) gaan mee via on delete cascade. Mislukt dit,
+      // dan wordt er niets anders verwijderd (geen foto's, geen tickets) en komt de mislukking in het logboek.
+      const { error: de } = await admin.auth.admin.deleteUser(id);
+      if (de) {
+        console.error("user_delete", de.message);
+        await audit("user_delete_failed", ip, id, { email: maskEmail(email), stage: "auth" });
+        return json({ error: "delete_failed" }, 502);
+      }
+      // pas daarna de profielfoto's (opslag gaat niet mee met de cascade)
+      let avatarsOk = true;
       for (let i = 0; i < 20; i++) {
         const { data: files, error: le } = await admin.storage.from("avatars").list(id, { limit: 1000 });
-        if (le || !files?.length) break;
+        if (le) { console.error("user_delete avatars list", le.message); avatarsOk = false; break; }
+        if (!files?.length) break;
         const { error: rm } = await admin.storage.from("avatars").remove(files.map((f) => `${id}/${f.name}`));
-        if (rm) { console.error("user_delete avatars", rm.message); break; }
+        if (rm) { console.error("user_delete avatars", rm.message); avatarsOk = false; break; }
       }
-      // supporttickets: standaard bewaard (user_id wordt leeg via on delete set null); op verzoek ook verwijderd
-      let ticketsDeleted = 0;
+      // supporttickets: standaard bewaard (user_id is al leeg via on delete set null, daarom op e-mailadres); op verzoek
+      // ook verwijderd
+      let ticketsDeleted = 0, ticketsOk = true;
       if (delTickets) {
-        const { data: a } = await admin.from("support_tickets").delete().eq("user_id", id).select("id");
-        const { data: b } = email ? await admin.from("support_tickets").delete().ilike("email", email.replace(/[\\%_]/g, "\\$&")).select("id") : { data: [] };
+        const { data: a, error: ta } = await admin.from("support_tickets").delete().eq("user_id", id).select("id");
+        const { data: b, error: tb } = email ? await admin.from("support_tickets").delete().ilike("email", email.replace(/[\\%_]/g, "\\$&")).select("id") : { data: [], error: null };
+        if (ta || tb) { console.error("user_delete tickets", (ta ?? tb)?.message); ticketsOk = false; }
         ticketsDeleted = (a?.length ?? 0) + (b?.length ?? 0);
       }
-      // de gebruiker zelf; alle tabellen (profielen, servers, instellingen, apparaten, sessies, streams, kijkgeschiedenis,
-      // statistieken, blokkades, e-mailvoorkeuren, tv-codes) gaan mee via on delete cascade
-      const { error: de } = await admin.auth.admin.deleteUser(id);
-      if (de) { console.error("user_delete", de.message); return json({ error: "delete_failed" }, 502); }
       const sent = mail ? await sendAccountMail(email, mail) : { ok: false };
       await audit("user_delete", ip, id, {
         email: maskEmail(email), notify, email_sent: sent.ok, tickets_deleted: delTickets ? ticketsDeleted : undefined,
+        avatars_error: avatarsOk ? undefined : true, tickets_error: ticketsOk ? undefined : true,
         reason: cleanReason(body.reason).slice(0, 500) || undefined,
       });
       return json({ ok: true, email_sent: sent.ok, email_error: sent.error, tickets_deleted: ticketsDeleted });

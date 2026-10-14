@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// Tab Status: totaalstatus, planning en alerts, actieve apparaten, storingen en alle monitors (via `status`).
+/// Tab Status: totaalstatus, planning en alerts, meldingen (storingen en gepland onderhoud), actieve apparaten, storingen
+/// en alle monitors (via `status`).
 struct StatusView: View {
     @Environment(Session.self) private var session
     @State private var data: StatusOverview?
     @State private var error: String?
     @State private var running = false
     @State private var editing: MonitorEditTarget?
+    @State private var noticeEditing: NoticeEditTarget?
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
@@ -19,6 +21,7 @@ struct StatusView: View {
                 if let d = data {
                     banner(d)
                     LazyVGrid(columns: columns, spacing: 12) { infoTiles(d) }
+                    noticesCard(d)
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 12) { devicesCard(d); incidentsCard(d) }.frame(minWidth: 720)
                         VStack(spacing: 12) { devicesCard(d); incidentsCard(d) }
@@ -47,9 +50,18 @@ struct StatusView: View {
         .navigationDestination(for: Monitor.self) { m in
             MonitorDetailView(monitorID: m.id, initial: m, overview: $data, reload: { await load() })
         }
+        .navigationDestination(for: StatusNotice.self) { n in
+            NoticeDetailView(noticeID: n.id, initial: n, overview: $data, reload: { await load() })
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Menu {
+                    Button { noticeEditing = NoticeEditTarget(kind: "incident", notice: nil) } label: {
+                        Label("Storing melden", systemImage: "exclamationmark.triangle")
+                    }
+                    Button { noticeEditing = NoticeEditTarget(kind: "maintenance", notice: nil) } label: {
+                        Label("Onderhoud plannen", systemImage: "wrench.and.screwdriver")
+                    }
                     Button { editing = MonitorEditTarget(monitor: nil) } label: { Label("Monitor toevoegen", systemImage: "plus") }
                     Link(destination: Config.statusPage) { Label("Openbare pagina", systemImage: "safari") }
                 } label: {
@@ -66,6 +78,13 @@ struct StatusView: View {
         .sheet(item: $editing) { t in
             NavigationStack {
                 MonitorEditView(monitor: t.monitor, intervals: data?.intervals ?? [5, 10, 15, 30, 60, 360, 720, 1440]) {
+                    await load()
+                }
+            }
+        }
+        .sheet(item: $noticeEditing) { t in
+            NavigationStack {
+                NoticeEditView(kind: t.kind, notice: t.notice, overview: data) {
                     await load()
                 }
             }
@@ -110,6 +129,50 @@ struct StatusView: View {
                 valueColor: d.alertEmail != nil && d.alertSMTP ? .stateUp : .stateDegraded, small: true)
         KPITile(label: "Open storingen", value: "\(d.openIncidents)", hint: d.openIncidents > 0 ? "zie hieronder" : "geen",
                 valueColor: d.openIncidents > 0 ? .stateDown : .stateUp, small: true)
+    }
+
+    /// Meldingen op bingr.online/status: lopend, gepland en afgelopen (zoals renderNotices in web/admin.js).
+    private func noticesCard(_ d: StatusOverview) -> some View {
+        let open = d.notices.filter(\.isOpen)
+        let planned = d.notices.filter { $0.isPlanned && !$0.isOpen }
+            .sorted { ($0.windowStart ?? .distantFuture) < ($1.windowStart ?? .distantFuture) }
+        let past = Array(d.notices.filter { !$0.isOpen && !$0.isPlanned }.prefix(10))
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                CardHeader(title: "Meldingen", subtitle: "Storingen en gepland onderhoud op bingr.online/status")
+                Spacer()
+                Menu {
+                    Button { noticeEditing = NoticeEditTarget(kind: "incident", notice: nil) } label: {
+                        Label("Storing melden", systemImage: "exclamationmark.triangle")
+                    }
+                    Button { noticeEditing = NoticeEditTarget(kind: "maintenance", notice: nil) } label: {
+                        Label("Onderhoud plannen", systemImage: "wrench.and.screwdriver")
+                    }
+                } label: {
+                    Image(systemName: "plus.circle").font(.title3)
+                }
+                .accessibilityLabel("Melding toevoegen")
+            }
+            if open.isEmpty && planned.isEmpty && past.isEmpty {
+                EmptyText(text: "Nog geen meldingen. Storingen die de monitoring vindt, verschijnen hier vanzelf.")
+            }
+            noticeSection("Lopend", open, d)
+            noticeSection("Gepland", planned, d)
+            noticeSection("Afgelopen", past, d)
+        }
+        .card()
+    }
+
+    @ViewBuilder private func noticeSection(_ title: String, _ items: [StatusNotice], _ d: StatusOverview) -> some View {
+        if !items.isEmpty {
+            Text(title.uppercased(with: Fmt.nl)).font(.caption.weight(.bold)).foregroundStyle(Color.textDim).padding(.top, 6)
+            ForEach(items) { n in
+                NavigationLink(value: n) {
+                    NoticeRowView(notice: n, monitorName: d.monitorName)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func devicesCard(_ d: StatusOverview) -> some View {

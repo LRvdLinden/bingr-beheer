@@ -18,7 +18,7 @@ Wijzigingen in deze repo komen **nooit** in de openbare changelog (`docs/changel
 
 | Secret | Wat |
 | --- | --- |
-| `FTP_SERVER` | FTP-server: `ftp.bingr.online` (de workflow probeert die ook als terugval) |
+| `FTP_SERVER` | FTP-server, bij voorkeur de hostnaam die op het TLS-certificaat van de FTP-server staat. Alleen FTPS met een gecontroleerd certificaat (geen gewone FTP, geen andere server); staat het certificaat op een andere naam van dezelfde server, dan gebruikt de workflow die naam |
 | `FTP_USERNAME` | FTP-gebruikersnaam van het eigen FTP-account van beheer.bingr.online (komt direct uit in de map van het subdomein; dan is `FTP_DIR` niet nodig) |
 | `FTP_PASSWORD` | FTP-wachtwoord |
 | `FTP_DIR` | optioneel; leeg als de FTP-login (een eigen FTP-account van het subdomein) direct in de map van beheer.bingr.online uitkomt. Anders de map waar beheer.bingr.online naar wijst, gezien vanaf de FTP-login (bv. `beheer.bingr.online` of `domains/bingr.online/beheer`) |

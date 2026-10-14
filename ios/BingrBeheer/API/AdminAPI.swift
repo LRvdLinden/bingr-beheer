@@ -63,6 +63,14 @@ struct APIError: Error, LocalizedError {
         "bad_max_streams": "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
         "bad_max_devices": "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.",
         "bad_settings": "Ongeldige instellingen.",
+        // meldingen (status: notice_save / notice_update / notice_delete), zelfde teksten als web/admin.js
+        "title_missing": "Vul een Nederlandse titel in.",
+        "notice_message_missing": "Schrijf een bericht (Nederlands) voor de tijdlijn.",
+        "bad_window": "Kies een geldig tijdvak (einde na begin, max. 31 dagen).",
+        "bad_component": "Onbekend onderdeel.",
+        "bad_impact": "Ongeldige impact.",
+        "bad_time": "Ongeldige begintijd.",
+        "too_many_components": "Te veel onderdelen.",
     ]
 }
 
