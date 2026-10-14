@@ -97,7 +97,9 @@ jobs:
               | openssl x509 -noout -ext subjectAltName -subject 2>/dev/null \
               | grep -oE '(DNS:|CN ?= ?)[A-Za-z0-9*._-]+' | sed -E 's/^(DNS:|CN ?= ?)//' | tr 'A-Z' 'a-z' | sort -u) || true
             want=$(ips "$host"); [ -n "$want" ] || return 1
-            for n in $names; do
+            # build 95: ook de naam uit de reverse DNS (de echte servernaam onder het wildcard-certificaat van de hoster)
+            local ptr; ptr=$(getent hosts "$(echo "$want" | head -1)" 2>/dev/null | awk '{print $2}' | sed 's/\.$//' | tr 'A-Z' 'a-z' || true)
+            for n in $ptr $names; do
               if [[ "$n" == \*.* ]]; then n="${host%%.*}.${n#\*.}"; fi
               [[ "$n" == *\** || "$n" == "$host" ]] && continue
               got=$(ips "$n"); [ -n "$got" ] || continue
@@ -121,7 +123,7 @@ jobs:
               [ -z "$u" ] && continue
               if try_login "$srv" "$u"; then USER_OK="$u"; SERVER_OK="$srv"; break 3; fi
               last=$(classify)
-              if [ "$last" = hostname ]; then
+              if [ "$last" = hostname ] || [ "$last" = tls ]; then
                 if alt=$(cert_host "$base"); then
                   echo "::notice::Certificaat staat op een andere hostnaam van dezelfde server; die wordt gebruikt (met controle)."
                   srv="$alt"
