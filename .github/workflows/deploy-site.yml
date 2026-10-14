@@ -67,7 +67,7 @@ jobs:
           # Het log is openbaar: geen gebruikersnamen, mappen, IP-adressen of certificaatgegevens, alleen gelukt/mislukt.
           common="set cmd:fail-exit true; set net:max-retries 3; set net:timeout 30; set net:reconnect-interval-base 5; set ftp:passive-mode true"
           common="$common; set ftp:ssl-force true; set ftp:ssl-protect-data true; set ftp:ssl-protect-list true"
-          common="$common; set ssl:verify-certificate yes; set ssl:check-hostname yes; set ssl:ca-file /etc/ssl/certs/ca-certificates.crt"
+          common="$common; set ssl:verify-certificate yes; set ssl:check-hostname yes; set ssl:ca-file /tmp/ftp-ca.pem"
           # spaties, tabs en regeleinden rond de secrets weghalen (komt vaak mee bij plakken)
           trim(){ printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
           for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do
@@ -87,6 +87,18 @@ jobs:
           # inloggen (FTPS, certificaat gecontroleerd); bij succes staat de hoofdmap (alleen namen) in /tmp/root.txt
           try_login(){ lftp -e "$common; open --env-password -u \"$2\" \"$1\"; cls -1 > /tmp/root.txt; bye" >/dev/null 2>/tmp/err.txt; }
           ips(){ (getent ahosts "$1" || true) | awk '{print $1}' | sort -u; }
+          # build 95: onvolledige keten (tussencertificaat niet meegestuurd): via het AIA-adres in het certificaat ophalen en
+          # naast de standaard root-certificaten zetten; de controle tegen een vertrouwde root blijft volledig
+          CA=/tmp/ftp-ca.pem; cp /etc/ssl/certs/ca-certificates.crt "$CA"
+          add_chain(){
+            local h="$1" aia
+            aia=$(timeout 30 openssl s_client -connect "$h:21" -starttls ftp -servername "$h" </dev/null 2>/dev/null \
+              | openssl x509 -noout -text 2>/dev/null | grep -oE 'CA Issuers - URI:[^ ]+' | sed 's/CA Issuers - URI://' | head -1 || true)
+            [ -n "$aia" ] || return 0
+            curl -fsSL --max-time 20 "$aia" -o /tmp/inter.bin 2>/dev/null || return 0
+            openssl x509 -inform DER -in /tmp/inter.bin -out /tmp/inter.pem 2>/dev/null || openssl x509 -in /tmp/inter.bin -out /tmp/inter.pem 2>/dev/null || return 0
+            grep -q "$(sed -n 2p /tmp/inter.pem)" "$CA" || cat /tmp/inter.pem >> "$CA"
+          }
 
           # Gedeelde hosting toont vaak een certificaat op naam van de hoster. Mislukt de controle alleen op de hostnaam,
           # dan een naam uit het certificaat (SAN/CN, geen wildcard; bij een wildcard afgeleid van FTP_SERVER) die naar
@@ -118,7 +130,7 @@ jobs:
             # controleert het certificaat vóór er inloggegevens gaan (ftp:ssl-force + ssl:verify-certificate)
             for base in "$FTP_SERVER" ftp.bingr.online bingr.online; do
             [ -n "$(ips "$base")" ] || { [ "$base" = "$FTP_SERVER" ] && [ "$attempt" = 1 ] && echo "::warning::FTP_SERVER bestaat niet in DNS; ftp.bingr.online wordt geprobeerd."; continue; }
-            srv="$base"
+            srv="$base"; [ "$attempt" = 1 ] && add_chain "$base"
             for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
               [ -z "$u" ] && continue
               if try_login "$srv" "$u"; then USER_OK="$u"; SERVER_OK="$srv"; break 3; fi
