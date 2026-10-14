@@ -4,3 +4,4 @@
 *.env
 supabase/.temp/
 supabase/.branches/
+!versions/**/*.zip
