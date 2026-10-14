@@ -647,10 +647,14 @@
     const all = d.groups.flatMap((g) => g.monitors);
     const name = (id) => all.find((m) => m.id === id)?.name?.nl || id;
     const ov = d.overall || { state: "up", down: [], degraded: [] };
-    $("stBanner").className = `st-banner ${ov.state}`;
-    $("stBanner").innerHTML = `<span class="st-dot ${ov.state}"></span><div><b>${ov.state === "down" ? `Storing bij ${esc(ov.down.map(name).join(", "))}`
-      : ov.state === "degraded" ? `Verminderd: ${esc(ov.degraded.map(name).join(", "))}` : "Alle systemen werken"}</b>
-      <span class="sub">Bijgewerkt ${esc(fmtDateTime(d.generated_at))}</span></div>`;
+    const lvl = ov.level || ({ down: "major", degraded: "degraded" })[ov.state] || "operational";
+    const lcls = LVL_CLASS[lvl];
+    const ids = (k) => esc((ov[k] || []).map(name).join(", "));
+    $("stBanner").className = `st-banner ${lcls}`;
+    $("stBanner").innerHTML = `<span class="st-dot ${lcls}"></span><div><b>${lvl === "major" ? `Grote storing: ${ids("major")}`
+      : lvl === "partial" ? `Gedeeltelijke storing: ${ids("partial")}` : lvl === "degraded" ? `Verminderd: ${ids("degraded") || "zie meldingen"}`
+      : lvl === "maintenance" ? `Onderhoud: ${ids("maintenance")}` : "Alle systemen werken"}</b>
+      <span class="sub">Bijgewerkt ${esc(fmtDateTime(d.generated_at))} · zo staat het ook op bingr.online/status</span></div>`;
     const cron = d.scheduler?.cron;
     const lastRun = d.scheduler?.last_run_at;
     const openInc = (d.incidents || []).filter((i) => !i.ended_at).length;
@@ -659,14 +663,18 @@
       ["Laatste controle", lastRun ? ago(lastRun) : "nooit", d.scheduler?.last_source ? `door ${esc({ cron: "planning", admin: "beheer", deploy: "deploy" }[d.scheduler.last_source] || d.scheduler.last_source)}` : "", lastRun && Date.now() - Date.parse(lastRun) < 12 * 60000 ? "ok" : "bad"],
       ["Alert-e-mail", d.alerts?.email ? "Aan" : "Uit", d.alerts?.email ? `${esc(d.alerts.email)}${d.alerts.smtp ? "" : " · SMTP ontbreekt"}` : "BINGR_ALERT_EMAIL niet ingesteld", d.alerts?.email && d.alerts.smtp ? "ok" : "warn"],
       ["Open storingen", String(openInc), openInc ? "zie hieronder" : "geen", openInc ? "bad" : "ok"],
+      ["Abonnees", d.subscribers ? nf.format(d.subscribers.confirmed || 0) : "—", d.subscribers
+        ? `${nf.format(d.subscribers.pending || 0)} onbevestigd · ${nf.format(d.subscribers.nl || 0)} NL / ${nf.format(d.subscribers.en || 0)} EN${d.subscribers.queue ? ` · ${d.subscribers.queue} in wachtrij` : ""}${d.subscribers.smtp ? "" : " · SMTP ontbreekt"}`
+        : "niet beschikbaar", d.subscribers?.smtp === false ? "warn" : "ok"],
     ];
     $("stInfo").innerHTML = info.map(([l, v, h, c]) => `<div class="kpi st-${c}"><div class="l">${esc(l)}</div><div class="v sm">${esc(v)}</div><div class="h">${h}</div></div>`).join("");
+    renderNotices(d);
     hbars($("stDevices"), (d.devices || []).map((p) => ({ label: esc(pname(p.platform)), n: p.devices })));
     $("stIncidents").innerHTML = (d.incidents || []).slice(0, 12).map((i) => `<div class="si ${i.ended_at ? "" : "open"}">
       <div><b>${esc(i.name?.nl || i.monitor_id)}</b>${i.ended_at ? "" : ' <span class="chip bad">loopt nog</span>'}<div class="sub">${esc(i.cause || "onbekende oorzaak")}</div></div>
       <div class="r"><div>${esc(fmtDateTime(i.started_at))}</div><div class="sub">${esc(durTxt(i.duration_s))}</div></div></div>`).join("") || '<p class="empty">Geen storingen in de laatste 90 dagen.</p>';
     $("stGroups").innerHTML = d.groups.map((g) => `<div class="panel st-group"><h2>${esc(g.name?.nl || GRP[g.id] || g.id)}</h2>${g.monitors.map((m) => {
-      const st = m.kind === "devices" ? "info" : !m.enabled ? "off" : m.state || "none";
+      const st = m.kind === "devices" ? "info" : !m.enabled ? "off" : m.status ? LVL_CLASS[m.status] : m.state || "none";
       const days = (m.days || []).slice(-60);
       return `<div class="sm-row" data-id="${esc(m.id)}" tabindex="0">
         <div class="sm-name"><span class="st-dot ${st}"></span><div><b>${esc(m.name.nl)}</b>
@@ -685,6 +693,200 @@
       const open = () => openMonitor(all.find((m) => m.id === r.dataset.id));
       r.onclick = open; r.onkeydown = (e) => { if (e.key === "Enter") open(); };
     });
+  }
+
+  // ---- meldingen: storingen en gepland onderhoud ----
+  const LVL_CLASS = { operational: "up", maintenance: "maint", degraded: "degraded", partial: "partial", major: "down" };
+  const NST = { investigating: "Wordt onderzocht", identified: "Oorzaak bekend", monitoring: "Wordt gevolgd", resolved: "Opgelost",
+    scheduled: "Gepland", in_progress: "Bezig", completed: "Afgerond", cancelled: "Geannuleerd" };
+  const IMPACT = { none: "Geen", minor: "Klein", major: "Groot", critical: "Kritiek" };
+  const CIMP = { degraded: "Verminderd", partial: "Gedeeltelijk", major: "Storing" };
+  const INC_ST = ["investigating", "identified", "monitoring", "resolved"], MNT_ST = ["scheduled", "in_progress", "completed", "cancelled"];
+  // standaardteksten: één klik vult NL en EN, daarna aanpassen
+  const TPL = {
+    investigating: ["We onderzoeken een probleem met {c}. Zodra we meer weten, lees je het hier.", "We're investigating an issue with {c}. We'll post an update as soon as we know more."],
+    identified: ["We hebben de oorzaak gevonden en werken aan een oplossing.", "We've identified the cause and are working on a fix."],
+    monitoring: ["Er is een oplossing doorgevoerd. We houden in de gaten of alles weer normaal werkt.", "A fix has been implemented. We're monitoring the results."],
+    resolved: ["Het probleem is opgelost. Alles werkt weer normaal. Excuses voor het ongemak.", "This issue has been resolved. Everything is working normally again. Sorry for the inconvenience."],
+    scheduled: ["We voeren gepland onderhoud uit aan {c}. Tijdens het onderhoud kan dit even niet werken.", "We'll be performing scheduled maintenance on {c}. It may be briefly unavailable during this window."],
+    in_progress: ["Het onderhoud is begonnen.", "The maintenance has started."],
+    completed: ["Het onderhoud is afgerond. Alles werkt weer normaal.", "The maintenance has been completed. Everything is working normally."],
+    cancelled: ["Het geplande onderhoud gaat niet door.", "The scheduled maintenance has been cancelled."],
+  };
+  Object.assign(ERR, {
+    title_missing: "Vul een Nederlandse titel in.", message_missing: "Schrijf een bericht (Nederlands) voor de tijdlijn.", bad_window: "Kies een geldig tijdvak (einde na begin, max. 31 dagen).",
+    bad_component: "Onbekend onderdeel.", bad_impact: "Ongeldige impact.", bad_time: "Ongeldige begintijd.", too_many_components: "Te veel onderdelen.",
+  });
+  const allMonitors = () => (stData?.groups || []).flatMap((g) => g.monitors.filter((m) => m.kind !== "devices").map((m) => ({ ...m, grp: g.id })));
+  const mName = (id) => allMonitors().find((m) => m.id === id)?.name?.nl || id;
+  const ntTone = (n) => (n.kind === "maintenance" ? "maint" : n.status === "resolved" ? "ok" : ({ critical: "down", major: "partial", minor: "degraded" })[n.impact] || "");
+  const nChip = (st) => `<span class="chip st-${esc(st)}">${esc(NST[st] || st)}</span>`;
+  const localInput = (iso) => { if (!iso) return ""; const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+  const fromLocal = (v) => (v ? new Date(v).toISOString() : "");
+
+  function renderNotices(d) {
+    const all = d.all_notices || [];
+    const now = Date.now();
+    const open = all.filter((n) => (n.kind === "incident" && n.status !== "resolved") || n.status === "in_progress");
+    const planned = all.filter((n) => n.status === "scheduled").sort((a, b) => Date.parse(a.window_start) - Date.parse(b.window_start));
+    const past = all.filter((n) => !open.includes(n) && !planned.includes(n)).slice(0, 10);
+    const row = (n) => {
+      const when = n.kind === "maintenance" && n.window_start
+        ? `${fmtDateTime(n.window_start)} – ${new Date(n.window_end).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`
+        : `${fmtDateTime(n.started_at)}${n.resolved_at ? ` · ${durTxt((Date.parse(n.resolved_at) - Date.parse(n.started_at)) / 1000)}` : ` · loopt ${durTxt((now - Date.parse(n.started_at)) / 1000)}`}`;
+      return `<div class="nt-row" data-id="${n.id}" tabindex="0"><span class="nt-bar ${ntTone(n)}"></span>
+        <div class="nt-main"><b>${esc(n.title.nl)}</b><div class="sub">${n.kind === "maintenance" ? "Onderhoud" : `Storing · impact ${esc(IMPACT[n.impact] || n.impact)}`}${
+          n.components.length ? ` · ${esc(n.components.map((c) => mName(c.id)).join(", "))}` : ""}${n.auto ? ' · <span class="chip">automatisch</span>' : ""}${n.notify === false ? ' · <span class="chip">geen mail</span>' : ""}</div></div>
+        <div class="nt-r">${nChip(n.status)}<div>${esc(when)}</div></div></div>`;
+    };
+    $("ntList").innerHTML = (open.length ? `<div class="nt-sec">Lopend</div>${open.map(row).join("")}` : "")
+      + (planned.length ? `<div class="nt-sec">Gepland</div>${planned.map(row).join("")}` : "")
+      + (past.length ? `<div class="nt-sec">Afgelopen</div>${past.map(row).join("")}` : "")
+      || '<p class="empty">Nog geen meldingen. Storingen die de monitoring vindt, verschijnen hier vanzelf.</p>';
+    $("ntList").querySelectorAll(".nt-row").forEach((r) => {
+      const go = () => openNotice(all.find((n) => n.id === Number(r.dataset.id)));
+      r.onclick = go; r.onkeydown = (e) => { if (e.key === "Enter") go(); };
+    });
+  }
+  $("ntNew").onclick = () => editNotice("incident", null);
+  $("ntMaint").onclick = () => editNotice("maintenance", null);
+
+  // keuzelijst met onderdelen (per groep), bij storingen met impact per onderdeel
+  function compPicker(kind, sel) {
+    const chosen = new Map((sel || []).map((c) => [c.id, c.impact]));
+    const groups = stData?.groups || [];
+    return `<div class="nt-comps">${groups.map((g) => {
+      const ms = g.monitors.filter((m) => m.kind !== "devices");
+      return ms.length ? `<div class="g">${esc(g.name?.nl || g.id)}</div>${ms.map((m) => `<label class="nt-c"><input type="checkbox" value="${esc(m.id)}" ${chosen.has(m.id) ? "checked" : ""}>
+        <span>${esc(m.name.nl)}${m.public ? "" : ' <span class="chip">niet openbaar</span>'}</span>
+        ${kind === "incident" ? `<select ${chosen.has(m.id) ? "" : "disabled"} aria-label="Impact op ${esc(m.name.nl)}">${Object.entries(CIMP).map(([k, v]) =>
+          `<option value="${k}" ${(chosen.get(m.id) || "major") === k ? "selected" : ""}>${v}</option>`).join("")}</select>` : ""}</label>`).join("")}` : "";
+    }).join("")}</div>`;
+  }
+  function wirePicker(root) {
+    root.querySelectorAll(".nt-c input").forEach((cb) => { cb.onchange = () => { const s = cb.closest(".nt-c").querySelector("select"); if (s) s.disabled = !cb.checked; }; });
+  }
+  const readPicker = (root) => [...root.querySelectorAll(".nt-c input:checked")].map((cb) => ({ id: cb.value, impact: cb.closest(".nt-c").querySelector("select")?.value }));
+  const compNames = (root) => readPicker(root).map((c) => allMonitors().find((m) => m.id === c.id)?.name || { nl: c.id, en: c.id });
+  function fillTpl(st, root) {
+    const t = TPL[st]; if (!t) return;
+    const cs = compNames(root);
+    const nl = cs.map((c) => c.nl).join(", ") || "een deel van Bingr", en = cs.map((c) => c.en || c.nl).join(", ") || "part of Bingr";
+    $("nMsgNl").value = t[0].replace("{c}", nl); $("nMsgEn").value = t[1].replace("{c}", en);
+  }
+
+  // nieuwe storing / onderhoud plannen, of titel, impact, onderdelen en tijdvak wijzigen
+  function editNotice(kind, n) {
+    const isNew = !n, maint = kind === "maintenance";
+    const start = n?.window_start || new Date(Date.now() + 864e5).toISOString().replace(/T.*/, "T01:00:00.000Z");
+    const end = n?.window_end || new Date(Date.parse(start) + 3600e3).toISOString();
+    openDrawer(true);
+    $("drawerBody").innerHTML = `<h2 id="dTitle">${isNew ? (maint ? "Onderhoud plannen" : "Storing melden") : "Melding bewerken"}</h2>
+      <p class="sub">${isNew ? "Komt meteen op bingr.online/status en (als je dat aanzet) per e-mail naar de abonnees." : "Wijzigt alleen de gegevens; een update in de tijdlijn plaats je vanuit de melding zelf. Hier gaat geen mail uit."}</p>
+      <form id="nForm" novalidate>
+        <div class="nt-row2"><label>Titel (Nederlands)<input id="nTnl" maxlength="140" value="${esc(n?.title?.nl || "")}" required></label>
+        <label>Titel (Engels)<input id="nTen" maxlength="140" value="${esc(n && n.title.en !== n.title.nl ? n.title.en : "")}"></label></div>
+        ${maint ? `<div class="nt-row2"><label>Begin<input id="nWs" type="datetime-local" value="${localInput(start)}" required></label>
+          <label>Einde<input id="nWe" type="datetime-local" value="${localInput(end)}" required></label></div>`
+          : `<div class="nt-row2"><label>Impact<select id="nImp">${Object.entries(IMPACT).map(([k, v]) => `<option value="${k}" ${(n?.impact || "minor") === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+          ${isNew ? `<label>Status<select id="nSt">${INC_ST.slice(0, 3).map((k) => `<option value="${k}">${NST[k]}</option>`).join("")}</select></label>` : "<span></span>"}</div>`}
+        <label>Getroffen onderdelen</label>${compPicker(kind, n?.components)}
+        ${isNew ? `<label>Bericht (Nederlands) <span class="sub">eerste update in de tijdlijn</span><textarea id="nMsgNl" class="nt-ta" maxlength="4000" required></textarea></label>
+          <label>Bericht (Engels) <span class="sub">leeg = Nederlands</span><textarea id="nMsgEn" class="nt-ta" maxlength="4000"></textarea></label>
+          <p class="sub"><a href="#" id="nTpl">Standaardtekst invullen</a></p>` : ""}
+        <label class="switch"><input id="nNotify" type="checkbox" ${n?.notify === false ? "" : "checked"}><span class="track"></span><span>Abonnees mailen${stData?.subscribers ? ` (${nf.format(stData.subscribers.confirmed || 0)})` : ""}</span></label>
+        ${!maint && !isNew && n.auto ? `<label class="switch"><input id="nAuto" type="checkbox" ${n.auto_resolve ? "checked" : ""}><span class="track"></span><span>Vanzelf oplossen als de monitoring weer groen is</span></label>` : ""}
+        <div id="nErr" class="err" role="alert"></div>
+        <div class="form-btns"><button class="btn" type="submit">${isNew ? (maint ? "Onderhoud plannen" : "Melding plaatsen") : "Opslaan"}</button>
+          ${isNew ? "" : '<button id="nBack" class="btn ghost" type="button">Terug</button>'}</div>
+      </form>`;
+    const root = $("drawerBody");
+    wirePicker(root);
+    if ($("nTpl")) $("nTpl").onclick = (e) => { e.preventDefault(); fillTpl(maint ? "scheduled" : $("nSt").value, root); };
+    if ($("nBack")) $("nBack").onclick = () => openNotice(n);
+    $("nForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const data = { op: "notice_save", id: n?.id || null, kind, title_nl: $("nTnl").value.trim(), title_en: $("nTen").value.trim(),
+        components: readPicker(root), notify: $("nNotify").checked };
+      if (maint) { data.window_start = fromLocal($("nWs").value); data.window_end = fromLocal($("nWe").value); }
+      else { data.impact = $("nImp").value; if ($("nSt")) data.status = $("nSt").value; if ($("nAuto")) data.auto_resolve = $("nAuto").checked; }
+      if (isNew) { data.message_nl = $("nMsgNl").value.trim(); data.message_en = $("nMsgEn").value.trim(); }
+      if (!data.title_nl) { $("nErr").textContent = ERR.title_missing; return; }
+      if (isNew && !data.message_nl) { $("nErr").textContent = ERR.message_missing; return; }
+      if (maint && (!data.window_start || !data.window_end || data.window_end <= data.window_start)) { $("nErr").textContent = ERR.bad_window; return; }
+      const btn = $("nForm").querySelector("button[type=submit]"); btn.disabled = true;
+      try {
+        const r = await call("status", data);
+        toast(isNew ? `Melding geplaatst${r.queued ? (r.mailed?.sent ? `, ${r.mailed.sent} mail(s) verstuurd` : ", mail staat in de wachtrij") : ""}.` : "Melding opgeslagen.");
+        await loadStatus();
+        openNotice((stData?.all_notices || []).find((x) => x.id === (r.id || n?.id)));
+      } catch (err) { if (err.code !== "auth") $("nErr").textContent = errText(err); btn.disabled = false; }
+    };
+  }
+
+  // één melding: tijdlijn, update plaatsen (status + bericht), bewerken, verwijderen
+  function openNotice(n) {
+    if (!n) { closeDrawer(); return; }
+    const maint = n.kind === "maintenance";
+    const sts = maint ? MNT_ST : INC_ST;
+    const closed = ["resolved", "completed", "cancelled"].includes(n.status);
+    const next = maint ? (n.status === "scheduled" ? "in_progress" : "completed") : (n.status === "investigating" ? "identified" : n.status === "identified" ? "monitoring" : "resolved");
+    openDrawer(true);
+    $("drawerBody").innerHTML = `<h2 id="dTitle">${esc(n.title.nl)}</h2><p class="sub">${esc(n.title.en)}</p>
+      <dl class="dl">
+        <dt>Soort</dt><dd>${maint ? "Gepland onderhoud" : `Storing · impact ${esc(IMPACT[n.impact] || n.impact)}`}${n.auto ? ' <span class="chip">automatisch (monitoring)</span>' : ""}</dd>
+        <dt>Status</dt><dd>${nChip(n.status)}</dd>
+        <dt>${maint ? "Tijdvak" : "Begonnen"}</dt><dd>${maint ? `${esc(fmtDateTime(n.window_start))} – ${esc(fmtDateTime(n.window_end))}` : esc(fmtDateTime(n.started_at))}</dd>
+        ${n.resolved_at ? `<dt>${maint ? "Afgerond" : "Opgelost"}</dt><dd>${esc(fmtDateTime(n.resolved_at))}${maint ? "" : ` · ${esc(durTxt((Date.parse(n.resolved_at) - Date.parse(n.started_at)) / 1000))}`}</dd>` : ""}
+        <dt>Onderdelen</dt><dd>${n.components.length ? n.components.map((c) => `${esc(mName(c.id))}${maint ? "" : ` <span class="sub">(${esc(CIMP[c.impact] || c.impact)})</span>`}`).join(", ") : "—"}</dd>
+        <dt>E-mail</dt><dd>${n.notify === false ? "uit voor deze melding" : "abonnees krijgen elke update"}${!maint && n.auto ? ` · ${n.auto_resolve ? "sluit vanzelf als alles weer werkt" : "sluit niet vanzelf"}` : ""}</dd>
+        <dt>Openbaar</dt><dd><a href="https://bingr.online/status/incident/?id=${n.id}" target="_blank" rel="noopener">bingr.online/status/incident/?id=${n.id}</a></dd>
+      </dl>
+      <h3>Update plaatsen</h3>
+      <form id="uForm" novalidate>
+        <label>Status<select id="uSt">${sts.map((k) => `<option value="${k}" ${k === (closed ? n.status : next) ? "selected" : ""}>${NST[k]}</option>`).join("")}</select></label>
+        <label>Bericht (Nederlands)<textarea id="nMsgNl" class="nt-ta" maxlength="4000" required></textarea></label>
+        <label>Bericht (Engels) <span class="sub">leeg = Nederlands</span><textarea id="nMsgEn" class="nt-ta" maxlength="4000"></textarea></label>
+        <p class="sub"><a href="#" id="uTpl">Standaardtekst voor deze status</a></p>
+        ${maint ? "" : `<details><summary class="sub">Onderdelen en impact aanpassen</summary>${compPicker("incident", n.components)}</details>`}
+        <label class="switch"><input id="uNotify" type="checkbox" ${n.notify === false ? "disabled" : "checked"}><span class="track"></span><span>Abonnees mailen${n.notify === false ? " (uit voor deze melding)" : ""}</span></label>
+        <div id="uErr" class="err" role="alert"></div>
+        <div class="form-btns"><button class="btn" type="submit">Update plaatsen</button></div>
+      </form>
+      <h3>Tijdlijn</h3>
+      <ol class="nt-tl">${n.updates.map((u) => `<li class="st-${esc(u.status)}"><b>${esc(NST[u.status] || u.status)}</b><span class="sub">${esc(fmtDateTime(u.at))}</span>
+        <p>${esc(u.body.nl)}</p>${u.body.en && u.body.en !== u.body.nl ? `<p class="en">${esc(u.body.en)}</p>` : ""}</li>`).join("")}</ol>
+      <div class="actions"><button id="nEdit" class="btn ghost">Bewerken</button><button id="nDel" class="btn danger">Verwijderen</button></div>`;
+    const root = $("drawerBody");
+    wirePicker(root);
+    const pickRoot = root.querySelector("details");
+    $("uTpl").onclick = (e) => {
+      e.preventDefault();
+      const t = TPL[$("uSt").value]; if (!t) return;
+      const cs = n.components.map((c) => allMonitors().find((m) => m.id === c.id)?.name || { nl: c.id, en: c.id });
+      $("nMsgNl").value = t[0].replace("{c}", cs.map((c) => c.nl).join(", ") || "een deel van Bingr");
+      $("nMsgEn").value = t[1].replace("{c}", cs.map((c) => c.en || c.nl).join(", ") || "part of Bingr");
+    };
+    $("nEdit").onclick = () => editNotice(n.kind, n);
+    $("nDel").onclick = async () => {
+      if (!confirm(`"${n.title.nl}" verwijderen? Hij verdwijnt van de statuspagina en uit de geschiedenis (er gaat geen mail uit).`)) return;
+      try { await call("status", { op: "notice_delete", id: n.id }); toast("Melding verwijderd."); closeDrawer(); loadStatus(); }
+      catch (err) { if (err.code !== "auth") toast(errText(err), true); }
+    };
+    $("uForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const data = { op: "notice_update", id: n.id, status: $("uSt").value, message_nl: $("nMsgNl").value.trim(), message_en: $("nMsgEn").value.trim(),
+        notify: $("uNotify").checked };
+      if (pickRoot && pickRoot.open) data.components = readPicker(pickRoot);
+      if (!data.message_nl) { $("uErr").textContent = ERR.message_missing; return; }
+      const btn = $("uForm").querySelector("button[type=submit]"); btn.disabled = true;
+      try {
+        const r = await call("status", data);
+        toast(`Update geplaatst${r.queued ? (r.mailed?.sent ? `, ${r.mailed.sent} mail(s) verstuurd` : ", mail staat in de wachtrij") : ""}.`);
+        await loadStatus();
+        openNotice((stData?.all_notices || []).find((x) => x.id === n.id));
+      } catch (err) { if (err.code !== "auth") $("uErr").textContent = errText(err); btn.disabled = false; }
+    };
   }
 
   // reactietijd van de laatste 24 uur (inline SVG), punten gekleurd per toestand

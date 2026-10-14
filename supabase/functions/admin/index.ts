@@ -10,7 +10,8 @@
 //   announce_send       {token, id}       -> {email_total, email_sent, email_failed, done}  (volgende batch; herhalen tot done)
 //   announcements_list  {token}           -> {items:[…]}
 //   announcement_delete {token, id}       -> {ok}
-//   status              {token, op: overview|checks|monitor_save|monitor_delete|run, …} -> antwoord van de functie `status`
+//   status              {token, op: overview|checks|monitor_save|monitor_delete|run|notice_save|notice_update|notice_delete|
+//                        subscribers|mail_run, …} -> antwoord van de functie `status` (meldingen: storingen en gepland onderhoud)
 //   support_counts      {token}           -> {new, open, pending, resolved, closed, active, unread, total, last_7d, smtp}
 //   support_list        {token, status?: active|all|new|open|pending|resolved|closed, q?, page?, page_size?} -> {total, items:[…], counts}
 //   support_get         {token, number}   -> {ticket, messages (ook interne notities), account}
@@ -317,7 +318,10 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
     case "status": {
       // tab Status: doorgeven aan de functie `status` met het geheim (staat alleen op de server)
       const op = String(body.op ?? "");
-      const map: Record<string, string> = { overview: "admin", checks: "checks", monitor_save: "monitor_save", monitor_delete: "monitor_delete", run: "run" };
+      const map: Record<string, string> = {
+        overview: "admin", checks: "checks", monitor_save: "monitor_save", monitor_delete: "monitor_delete", run: "run",
+        notice_save: "notice_save", notice_update: "notice_update", notice_delete: "notice_delete", subscribers: "subscribers", mail_run: "mail_run",
+      };
       if (!map[op]) return json({ error: "unknown_action" }, 400);
       if (!env("STATUS_CRON_SECRET")) return json({ error: "status_not_configured" }, 503);
       const { action: _a, token: _t, op: _o, ...rest } = body;
@@ -328,8 +332,10 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
         signal: AbortSignal.timeout(60000),
       });
       const out = await res.json().catch(() => ({ error: "server_error" }));
-      if (["monitor_save", "monitor_delete", "run"].includes(op) && res.ok) {
-        await audit(`status_${op}`, ip, null, op === "run" ? { checked: out.checked, down: out.down } : { id: out.id ?? rest.id });
+      if (["monitor_save", "monitor_delete", "run", "notice_save", "notice_update", "notice_delete", "mail_run"].includes(op) && res.ok) {
+        await audit(`status_${op}`, ip, null, op === "run" ? { checked: out.checked, down: out.down }
+          : op === "mail_run" ? { sent: out.sent ?? 0 }
+          : op.startsWith("notice_") ? { id: out.id ?? rest.id, status: rest.status, notify: rest.notify !== false } : { id: out.id ?? rest.id });
       }
       return json(out, res.status);
     }
