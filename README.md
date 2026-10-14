@@ -38,6 +38,16 @@ De workflow uploadt naar `FTP_DIR`, of zonder `FTP_DIR` naar de hoofdmap van de 
 
 Function-secrets gelden voor het hele Supabase-project, dus voor alle functies tegelijk. De tab **Support** gebruikt het geheim `SUPPORT_ADMIN_SECRET`; dat maakt de workflow *Backend* in iptv-ios-appletv één keer zelf aan (hier niets voor nodig). De afzender van supportmails (`BINGR_SUPPORT_FROM`, standaard `Bingr Support <support@bingr.online>`) en het adres voor meldingen (`BINGR_SUPPORT_EMAIL`, standaard `support@bingr.online`) staan, als je ze wilt aanpassen, als secrets in iptv-ios-appletv. Zolang `BINGR_ADMIN_USER` / `BINGR_ADMIN_PASSWORD` hier nog niet staan, gebruikt de functie de waarden die al op de server staan. De `STATUS_CRON_SECRET` voor de tab Status zet de workflow *Backend* in iptv-ios-appletv; hier hoeft die niet.
 
+## Gebruikers: blokkeren en verwijderen
+
+In de lade van een gebruiker (web en app):
+
+- **Blokkeren…**: reden (de klant ziet hem), duur (1 dag, 7 dagen, 30 dagen, onbepaald of een eigen datum) en *Klant mailen*. De functie zet een inlogblokkade op het account, trekt alle sessies in (apps en website loggen uit) en bewaart reden en einddatum in `account_blocks`. De klant krijgt een mail vanaf support@bingr.online met reden, einddatum (Nederlandse tijd) en een link naar support.bingr.online/nieuw/ (een ticket kan zonder inloggen). Na de einddatum kan de klant vanzelf weer inloggen.
+- **Blokkade opheffen**, optioneel met de mail *Je Bingr-account is weer actief*. De lijst toont een chip *Geblokkeerd* en heeft het filter *Geblokkeerd*; het overzicht telt de geblokkeerde accounts. Elke blokkade staat in de geschiedenis.
+- **Account verwijderen** (gevarenzone): typ het e-mailadres (volledig, of precies zoals in het beheer). Alle accountgegevens gaan weg; supporttickets blijven standaard bewaard (los van het account), of worden op verzoek mee verwijderd. Daarna gaat de bevestiging *Je Bingr-account is verwijderd* naar de klant.
+
+Alle acties staan in het logboek (`admin_audit`). Niets hiervan komt in de changelog.
+
 ## Tab Support
 
 Supporttickets van https://support.bingr.online (repo LRvdLinden/bingr-support). Lijst met nummer (#1001), onderwerp, klant, status en leeftijd; een rode stip = de klant wacht op een reactie die je nog niet hebt gezien. Klik een ticket voor het gesprek, de accountgegevens van de klant (apparaten, platforms, versies), een antwoordvak (de klant krijgt een gebrande mail vanaf support@bingr.online met #nummer in het onderwerp), de status en prioriteit, en interne notities (nooit zichtbaar voor de klant). Een link als `https://beheer.bingr.online/#support/1001` (uit de meldingsmail) opent dat ticket direct. Supporttickets en wijzigingen hieraan komen nooit in de changelog.

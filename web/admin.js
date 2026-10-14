@@ -63,6 +63,11 @@
     support_forbidden: "De functie support weigerde de aanvraag (SUPPORT_ADMIN_SECRET klopt niet).",
     message_missing: "Typ eerst een bericht.", message_too_long: "Het bericht is te lang (max. 5000 tekens).",
     too_many_links: "Het bericht bevat te veel links.", bad_status: "Ongeldige status.", bad_number: "Ongeldig ticketnummer.",
+    bad_id: "Ongeldig account.", reason_missing: "Vul een reden in (de klant ziet hem in de mail).",
+    bad_until: "Kies een einddatum in de toekomst (minstens 1 minuut, hoogstens 10 jaar), of onbepaald.",
+    block_failed: "Blokkeren is mislukt. Probeer het opnieuw.", unblock_failed: "Opheffen is mislukt. Probeer het opnieuw.",
+    confirm_mismatch: "Het e-mailadres klopt niet. Typ het volledige adres of precies het adres zoals hierboven.",
+    delete_failed: "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
   };
   const errText = (e) => ERR[e.code] || ERR.server_error;
 
@@ -162,10 +167,14 @@
       ["Apparaten", s.devices_total, "gekoppeld"],
       ["Kijkt nu", s.watching_now, "streams", "live"],
     ];
+    const blockedKpi = s.blocked_users != null
+      ? `<button type="button" id="kpiBlocked" class="kpi ${s.blocked_users ? "blocked" : ""}" title="Geblokkeerde accounts bekijken"><div class="l">Geblokkeerd</div><div class="v">${nf.format(s.blocked_users)}</div><div class="h">accounts</div></button>`
+      : "";
     $("kpis").innerHTML = k.map(([l, v, h, cls]) =>
       `<div class="kpi ${cls || ""}"><div class="l">${esc(l)}</div><div class="v">${nf.format(v ?? 0)}</div><div class="h">${esc(h)}</div></div>`).join("") +
-      `<button type="button" id="kpiSup" class="kpi sup" title="Naar de tab Support"><div class="l">Open tickets</div><div class="v">${supCounts ? nf.format(supCounts.active ?? 0) : "—"}</div><div class="h">${supCountsText()}</div></button>`;
+      `<button type="button" id="kpiSup" class="kpi sup" title="Naar de tab Support"><div class="l">Open tickets</div><div class="v">${supCounts ? nf.format(supCounts.active ?? 0) : "—"}</div><div class="h">${supCountsText()}</div></button>` + blockedKpi;
     $("kpiSup").onclick = () => showTab("support");
+    if ($("kpiBlocked")) $("kpiBlocked").onclick = () => { userFilter = "blocked"; page = 0; const was = loaded.users; showTab("users"); if (was) loadUsers(); };
     const days = s.days || [];
     const audit = s.signins_source === "audit";
     lastCharts = () => {
@@ -235,24 +244,27 @@
   }
 
   // ---- gebruikers ----
-  let page = 0, total = 0, searchTimer;
+  let page = 0, total = 0, searchTimer, userFilter = "", blockedTotal = null;
   const PAGE = 25;
   $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page = 0; loadUsers(); }, 300); };
   $("prev").onclick = () => { if (page > 0) { page--; loadUsers(); } };
   $("next").onclick = () => { if ((page + 1) * PAGE < total) { page++; loadUsers(); } };
   async function loadUsers() {
     let r;
-    try { r = await call("users", { q: $("search").value.trim(), page, page_size: PAGE }); } catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
+    try { r = await call("users", { q: $("search").value.trim(), page, page_size: PAGE, ...(userFilter ? { filter: userFilter } : {}) }); } catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
     total = r.total || 0;
+    if (r.blocked_total != null) blockedTotal = r.blocked_total;
+    renderUserFilters();
     $("userCount").textContent = `${nf.format(total)} ${total === 1 ? "account" : "accounts"}`;
-    $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0">
-      <td class="em">${esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}</td>
+    $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0"${u.blocked ? ' class="is-blocked"' : ""}>
+      <td class="em">${esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.blocked
+        ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""}</td>
       <td data-l="Aangemaakt">${esc(fmtDate(u.created_at))}</td>
       <td data-l="Laatst ingelogd">${esc(ago(u.last_sign_in_at))}</td>
       <td data-l="Apparaten">${nf.format(u.device_count || 0)} ${(u.platforms || []).map((p) => `<span class="chip">${esc(pname(p))}</span>`).join("")}</td>
       <td data-l="Profielen">${nf.format(u.profile_count || 0)}</td>
       <td data-l="Versies">${(u.app_versions || []).map((v) => `<span class="chip">${esc(v)}</span>`).join("") || '<span class="sub">—</span>'}</td>
-    </tr>`).join("") || `<tr><td colspan="6" class="empty">Geen accounts gevonden.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="6" class="empty">${userFilter === "blocked" ? "Geen geblokkeerde accounts." : "Geen accounts gevonden."}</td></tr>`;
     $("userRows").querySelectorAll("tr[data-id]").forEach((tr) => {
       tr.onclick = () => openUser(tr.dataset.id);
       tr.onkeydown = (e) => { if (e.key === "Enter") openUser(tr.dataset.id); };
@@ -260,6 +272,12 @@
     const pages = Math.max(1, Math.ceil(total / PAGE));
     $("pageInfo").textContent = `Pagina ${page + 1} van ${pages}`;
     $("prev").disabled = page === 0; $("next").disabled = page + 1 >= pages;
+  }
+
+  function renderUserFilters() {
+    const f = [["", "Alle accounts", null], ["blocked", "Geblokkeerd", blockedTotal]];
+    $("userFilters").innerHTML = f.map(([k, l, n]) => `<button type="button" data-f="${k}" class="${k === userFilter ? "on" : ""}" aria-pressed="${k === userFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`).join("");
+    $("userFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => { userFilter = b.dataset.f; page = 0; loadUsers(); }));
   }
 
   const ICON = {
@@ -275,13 +293,29 @@
     const k = /^(apple ?tv|tvos)$/i.test(p || "") ? "appletv" : /iphone|^android$/i.test(p) ? "phone" : /ipad|tablet/i.test(p) ? "tablet" : /mac/i.test(p) ? "mac" : p === "browser" ? "globe" : "tv";
     return `<svg viewBox="0 0 24 24">${ICON[k]}</svg>`;
   }
+  // einde van een blokkade als tekst ("tot 21 okt. 2026 14:00" of "voor onbepaalde tijd")
+  const untilText = (v) => (v ? `tot ${fmtDateTime(v)}` : "voor onbepaalde tijd");
+  const LIFTED = { beheer: "opgeheven", verlopen: "verlopen", vervangen: "vervangen door een nieuwe blokkade" };
+  const PRESETS = [["1", "1 dag"], ["7", "7 dagen"], ["30", "30 dagen"], ["0", "Onbepaald"], ["custom", "Eigen datum"]];
+
   async function openUser(id) {
     $("drawerBody").innerHTML = '<p class="sub">Laden…</p>';
     openDrawer();
     let u;
     try { u = await call("user_detail", { id }); } catch (e) { if (e.code !== "auth") $("drawerBody").innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    const b = u.block, hist = (u.blocks || []).filter((x) => !b || x.id !== b.id);
+    const mailHint = smtpOk ? "" : '<p class="sub">E-mail is niet ingesteld op de server; er gaat geen mail uit.</p>';
     $("drawerBody").innerHTML = `
-      <h2 id="dTitle">${esc(u.email)}</h2>
+      <h2 id="dTitle">${esc(u.email)}${b ? ' <span class="chip bad">Geblokkeerd</span>' : ""}</h2>
+      ${b ? `<div class="block-banner" role="status">
+        <div class="bb-h"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+          <b>Geblokkeerd ${esc(untilText(b.until))}</b></div>
+        <div class="bb-r">${esc(b.reason)}</div>
+        <div class="bb-m">Sinds ${esc(fmtDateTime(b.created_at))} · ${b.notified ? "klant gemaild" : "klant niet gemaild"}</div>
+        <label class="switch"><input id="ubNotify" type="checkbox" ${smtpOk ? "checked" : "disabled"}><span class="track"></span><span>Klant mailen dat het account weer actief is</span></label>
+        <div class="form-btns"><button id="ubBtn" class="btn">Blokkade opheffen</button></div>
+        <div id="ubErr" class="err" role="alert"></div>
+      </div>` : ""}
       <dl class="dl">
         <dt>Aangemaakt</dt><dd>${esc(fmtDateTime(u.created_at))}</dd>
         <dt>Laatst ingelogd</dt><dd>${esc(u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : "nooit")}</dd>
@@ -299,14 +333,121 @@
         <div class="meta">Laatst gezien ${esc(ago(d.last_seen_at))} · gekoppeld ${esc(fmtDate(d.created_at))}</div></div></div>`).join("") || '<p class="empty">Geen apparaten.</p>'}
       <div class="actions">
         <button id="resetBtn" class="btn ghost">Stuur wachtwoord-reset</button>
+        ${b ? "" : '<button id="blockOpen" class="btn ghost" aria-expanded="false" aria-controls="blockForm">Blokkeren…</button>'}
         <p class="sub">De gebruiker krijgt de standaard reset-mail van Bingr en kiest zelf een nieuw wachtwoord. Je ziet of wijzigt nooit een wachtwoord.</p>
-      </div>`;
+      </div>
+      ${b ? "" : `<form id="blockForm" class="block-form hidden" novalidate>
+        <h3>Account blokkeren</h3>
+        <p class="sub">De klant kan niet meer inloggen en wordt op alle apparaten uitgelogd. De reden en de einddatum staan in de mail vanaf support@bingr.online.</p>
+        <label>Reden <span class="sub">de klant ziet deze tekst</span><textarea id="bReason" maxlength="1000" rows="3" placeholder="Bijvoorbeeld: je account is gedeeld met meer mensen dan toegestaan." required></textarea></label>
+        <label>Duur</label>
+        <div id="bPresets" class="seg presets" role="group" aria-label="Duur van de blokkade">${PRESETS.map(([k, l]) => `<button type="button" data-k="${k}" class="${k === "7" ? "on" : ""}" aria-pressed="${k === "7"}">${l}</button>`).join("")}</div>
+        <label class="until">Geblokkeerd tot<input id="bUntil" type="datetime-local"></label>
+        <p id="bUntilTxt" class="sub"></p>
+        <label class="switch"><input id="bNotify" type="checkbox" ${smtpOk ? "checked" : "disabled"}><span class="track"></span><span>Klant mailen (reden, einddatum en contact met support)</span></label>
+        ${mailHint}
+        <div id="bErr" class="err" role="alert"></div>
+        <div class="form-btns"><button class="btn" type="submit">Blokkeren</button><button id="bCancel" class="btn ghost" type="button">Annuleren</button></div>
+      </form>`}
+      ${(b || hist.length) ? `<h3>Blokkades</h3><div class="block-hist">${(b ? [b] : []).concat(hist).map((x) => `<div class="bh">
+        <div class="bh-h"><b>${esc(fmtDateTime(x.created_at))}</b> · ${esc(untilText(x.until))}
+          ${x.lifted_at ? `<span class="chip">${esc(LIFTED[x.lifted_by] || "beëindigd")} ${esc(fmtDate(x.lifted_at))}</span>` : '<span class="chip bad">actief</span>'}
+          ${x.notified ? '<span class="chip mail">gemaild</span>' : ""}</div>
+        <div class="bh-r">${esc(x.reason)}</div></div>`).join("")}</div>` : ""}
+      <section class="danger-zone" aria-labelledby="dzTitle">
+        <h3 id="dzTitle">Account verwijderen</h3>
+        <p class="sub">Verwijdert het account met profielen, apparaten en sessies, instellingen, servers, kijkgeschiedenis, statistieken en verzamelingen. Dit kan niet ongedaan worden gemaakt. De klant kan daarna altijd een nieuw account maken.</p>
+        <label class="switch"><input id="dNotify" type="checkbox" ${smtpOk ? "checked" : "disabled"}><span class="track"></span><span>Bevestiging mailen vanaf support@bingr.online</span></label>
+        <label class="switch"><input id="dTickets" type="checkbox"><span class="track"></span><span>Ook supporttickets verwijderen <span class="sub">(standaard bewaard, los van het account)</span></span></label>
+        <label>Interne notitie <span class="sub">optioneel, alleen in het logboek</span><input id="dReason" maxlength="500" autocomplete="off"></label>
+        <label>Typ het e-mailadres ter bevestiging <span class="sub">volledig, of precies zoals hierboven: ${esc(u.email)}</span>
+          <input id="dConfirm" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email"></label>
+        <div id="dErr" class="err" role="alert"></div>
+        <div class="form-btns"><button id="dBtn" class="btn danger-solid" disabled>Account definitief verwijderen</button></div>
+      </section>`;
     $("resetBtn").onclick = async () => {
       if (!confirm(`Een wachtwoord-reset-mail sturen naar ${u.email}?`)) return;
       $("resetBtn").disabled = true;
       try { await call("send_reset", { user_id: u.id }); toast("Reset-mail verstuurd."); }
       catch (e) { if (e.code !== "auth") toast(errText(e), true); }
       finally { $("resetBtn").disabled = false; }
+    };
+    if (b) {
+      $("ubBtn").onclick = async () => {
+        $("ubBtn").disabled = true; $("ubErr").textContent = "";
+        try {
+          const r = await call("user_unblock", { id: u.id, notify: $("ubNotify").checked });
+          toast(`Blokkade opgeheven${r.email_sent ? ", klant gemaild" : ""}.`);
+          refreshUserViews(u.id);
+        } catch (e) { if (e.code !== "auth") $("ubErr").textContent = errText(e); $("ubBtn").disabled = false; }
+      };
+    } else wireBlockForm(u);
+    wireDelete(u);
+  }
+  function refreshUserViews(id) {
+    openUser(id);
+    if (loaded.users) loadUsers();
+    if (loaded.overview) loadStats();
+  }
+  function wireBlockForm(u) {
+    const form = $("blockForm");
+    let preset = "7";
+    const setUntil = () => {
+      const custom = preset === "custom", forever = preset === "0";
+      $("bUntil").disabled = forever;
+      $("bUntil").closest("label").classList.toggle("hidden", forever);
+      if (!custom && !forever) $("bUntil").value = localInput(new Date(Date.now() + Number(preset) * 864e5).toISOString());
+      if (custom && !$("bUntil").value) $("bUntil").value = localInput(new Date(Date.now() + 864e5).toISOString());
+      const v = forever ? "" : fromLocal($("bUntil").value);
+      $("bUntilTxt").textContent = forever ? "De blokkade blijft staan tot je hem opheft." : v ? `Eindigt vanzelf op ${fmtDateTime(v)} (jouw tijd).` : "";
+    };
+    $("blockOpen").onclick = () => {
+      const open = form.classList.toggle("hidden") === false;
+      $("blockOpen").setAttribute("aria-expanded", String(open));
+      if (open) { setUntil(); $("bReason").focus(); form.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+    };
+    $("bCancel").onclick = () => { form.classList.add("hidden"); $("blockOpen").setAttribute("aria-expanded", "false"); };
+    $("bPresets").querySelectorAll("button").forEach((x) => (x.onclick = () => {
+      preset = x.dataset.k;
+      $("bPresets").querySelectorAll("button").forEach((y) => { y.classList.toggle("on", y === x); y.setAttribute("aria-pressed", String(y === x)); });
+      setUntil();
+      if (preset === "custom") $("bUntil").focus();
+    }));
+    $("bUntil").oninput = () => {
+      if (preset !== "custom") { preset = "custom"; $("bPresets").querySelectorAll("button").forEach((y) => { const on = y.dataset.k === "custom"; y.classList.toggle("on", on); y.setAttribute("aria-pressed", String(on)); }); }
+      setUntil();
+    };
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const reason = $("bReason").value.trim();
+      const until = preset === "0" ? "onbepaald" : fromLocal($("bUntil").value);
+      if (!reason) { $("bErr").textContent = ERR.reason_missing; $("bReason").focus(); return; }
+      if (until !== "onbepaald" && (!until || Date.parse(until) < Date.now() + 60000)) { $("bErr").textContent = ERR.bad_until; return; }
+      if (!confirm(`${u.email} blokkeren ${until === "onbepaald" ? "voor onbepaalde tijd" : `tot ${fmtDateTime(until)}`}? De klant wordt op alle apparaten uitgelogd.`)) return;
+      const btn = form.querySelector("button[type=submit]"); btn.disabled = true; $("bErr").textContent = "";
+      try {
+        const r = await call("user_block", { id: u.id, reason, until, notify: $("bNotify").checked });
+        toast(`Account geblokkeerd${r.email_sent ? ", klant gemaild" : $("bNotify").checked ? " (mail niet verstuurd)" : ""}.`, !r.email_sent && $("bNotify").checked);
+        refreshUserViews(u.id);
+      } catch (err) { if (err.code !== "auth") $("bErr").textContent = errText(err); btn.disabled = false; }
+    };
+  }
+  function wireDelete(u) {
+    // knop pas actief als het ingetypte adres lijkt te kloppen (de functie controleert het volledige adres)
+    const masked = String(u.email || "").toLowerCase();
+    const looksOk = (v) => v === masked || (/^[^\s@*]+@[^\s@*]+\.[^\s@*]+$/.test(v) && v[0] === masked[0] && v.slice(v.lastIndexOf(".")) === masked.slice(masked.lastIndexOf(".")));
+    $("dConfirm").oninput = () => { $("dBtn").disabled = !looksOk($("dConfirm").value.trim().toLowerCase()); $("dErr").textContent = ""; };
+    $("dBtn").onclick = async () => {
+      if (!confirm(`Account ${u.email} definitief verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
+      $("dBtn").disabled = true; $("dErr").textContent = "";
+      try {
+        const r = await call("user_delete", { id: u.id, confirm: $("dConfirm").value.trim(), notify: $("dNotify").checked,
+          delete_tickets: $("dTickets").checked, reason: $("dReason").value.trim() });
+        toast(`Account verwijderd${r.email_sent ? ", bevestiging gemaild" : ""}.`);
+        closeDrawer();
+        if (loaded.users) loadUsers();
+        if (loaded.overview) loadStats();
+      } catch (e) { if (e.code !== "auth") $("dErr").textContent = errText(e); $("dBtn").disabled = false; }
     };
   }
   function openDrawer(wide = false) { $("drawer").classList.toggle("wide", wide); $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }

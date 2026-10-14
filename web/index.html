@@ -52,7 +52,10 @@
 
     <section id="tab-users" class="tab hidden">
       <div class="row-head"><h1>Gebruikers</h1><span id="userCount" class="sub"></span></div>
-      <input id="search" class="search" type="search" placeholder="Zoek op begin van e-mailadres" autocomplete="off">
+      <div class="sup-bar">
+        <div id="userFilters" class="sup-filters" role="group" aria-label="Filter op accountstatus"></div>
+        <input id="search" class="search" type="search" placeholder="Zoek op begin van e-mailadres" autocomplete="off">
+      </div>
       <div class="table-wrap">
         <table class="users">
           <thead><tr><th>E-mail</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>

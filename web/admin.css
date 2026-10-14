@@ -413,3 +413,36 @@ legend .sub{font-weight:400}
 .nt-row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
 @media (max-width:560px){.nt-row2{grid-template-columns:1fr}}
 textarea.nt-ta{min-height:84px;resize:vertical}
+
+/* ---- accounts blokkeren en verwijderen (lade Gebruikers) ---- */
+.kpi.blocked{border-color:#ff3b4659}
+.kpi.blocked .v{color:#ff8a8f}
+table.users tr.is-blocked td.em{color:#ffb3b6}
+.block-banner{margin:18px 0 0;background:linear-gradient(150deg,#2a1013 0%,#171012 70%);border:1px solid #e5091466;border-radius:12px;padding:16px 18px}
+.block-banner .bb-h{display:flex;align-items:center;gap:10px;color:#fff;font-size:15px}
+.block-banner .bb-h svg{width:20px;height:20px;flex:none;fill:none;stroke:#ff6b6b;stroke-width:2.2;stroke-linecap:round}
+.block-banner .bb-r{margin-top:10px;padding:10px 12px;background:#00000059;border-left:3px solid var(--red);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-size:14px;color:#e6e6e6}
+.block-banner .bb-m{margin-top:8px;font-size:13px;color:var(--dim)}
+.block-banner .switch{margin-top:14px;font-size:14px}
+.block-banner .form-btns{margin-top:14px}
+.block-form{margin-top:18px;background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:16px 18px}
+.block-form h3{margin-top:0}
+.block-form>label{margin-top:14px}
+.block-form .seg.presets{display:flex;flex-wrap:wrap;margin-top:6px;width:100%}
+.block-form .seg.presets button{flex:1 1 auto;padding:9px 10px;border-right:1px solid #ffffff26}
+.block-form .seg.presets button:last-child{border-right:0}
+.block-form label.until{margin-top:12px}
+.block-form #bUntilTxt{margin-top:6px;font-size:13px}
+.block-form .switch{font-size:14px}
+.block-hist{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.block-hist .bh{background:var(--s2);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;font-size:13px}
+.block-hist .bh-h{color:var(--sec);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.block-hist .bh-h b{color:#fff;font-weight:700}
+.block-hist .bh-r{margin-top:6px;color:#d6d6d6;white-space:pre-wrap;word-break:break-word}
+.danger-zone{margin-top:30px;border:1px solid #ff3b4659;border-radius:12px;padding:16px 18px;background:#ff3b460a}
+.danger-zone h3{margin-top:0;color:#ff8a8f}
+.danger-zone .sub{font-size:13px;line-height:1.5}
+.danger-zone .switch{font-size:14px;margin-top:14px}
+.danger-zone>label:not(.switch){margin-top:14px}
+.btn.danger-solid{background:#c40812}.btn.danger-solid:hover{background:var(--red)}
+.btn.danger-solid:disabled{background:#c4081266;cursor:not-allowed}

@@ -3,8 +3,16 @@
 // Inloggegevens alleen als function-secrets BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD (uit de GitHub-secrets).
 //   login               {user, password}  -> {token, expires_at}   (5 fouten per IP = 15 min geblokkeerd: 429 {error:"locked", retry_after})
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
-//   users               {token, q?, page?, page_size?} -> {total, page, page_size, items:[…]} (e-mail gemaskeerd)
-//   user_detail         {token, id}       -> {…, devices:[…]}
+//   users               {token, q?, page?, page_size?, filter?: "blocked"} -> {total, blocked_total, page, page_size, items:[…]}
+//                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade)
+//   user_detail         {token, id}       -> {…, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
+//   user_block          {token, id, reason, until? (ISO; leeg/"onbepaald" = onbepaalde tijd), notify? (standaard true)}
+//                       -> {ok, until, sessions_revoked, email_sent, email_error?}  (ban op het auth-account, alle sessies
+//                       ingetrokken, record in account_blocks, mail vanaf support@ met reden en einddatum)
+//   user_unblock        {token, id, notify? (standaard true)} -> {ok, email_sent, email_error?}
+//   user_delete         {token, id, confirm (volledig of gemaskeerd e-mailadres), notify? (standaard true), delete_tickets?,
+//                       reason? (intern, alleen in het logboek)} -> {ok, email_sent, tickets_deleted}
+//                       (alle accountgegevens via on delete cascade, profielfoto's, daarna de bevestigingsmail vanaf support@)
 //   send_reset          {token, user_id}  -> {ok}    (standaard reset-mail van Supabase; beheer ziet of zet nooit wachtwoorden)
 //   announce            {token, title_nl, body_nl, title_en?, body_en?, expires_at?, email} -> {ok, id, email_total}
 //   announce_send       {token, id}       -> {email_total, email_sent, email_failed, done}  (volgende batch; herhalen tot done)
@@ -25,8 +33,9 @@
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { smtpConfigured, transport } from "../_shared/mail.ts";
-import { announcementMail } from "./mails.ts";
+import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { announcementMail, blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
+import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -120,6 +129,35 @@ function clientIp(req: Request) {
   const f = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   return (f || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "?").slice(0, 64);
 }
+// Accountmails (blokkeren, opheffen, verwijderen) gaan vanaf support@ (BINGR_SUPPORT_FROM, zoals de supportmails); weigert
+// de SMTP-server die afzender, dan met BINGR_SMTP_FROM als afzender en support@ als Reply-To. Antwoorden komen zo bij support.
+const SUPPORT_FROM = () => env("BINGR_SUPPORT_FROM") || "Bingr Support <support@bingr.online>";
+const addressOf = (s: string) => (s.match(/<([^>]+)>/)?.[1] ?? s).trim();
+async function sendAccountMail(to: string, m: Mail): Promise<{ ok: boolean; error?: string }> {
+  if (!smtpConfigured()) return { ok: false, error: "smtp_not_configured" };
+  const base = { to, subject: m.subject, html: m.html, text: m.text, headers: { "Auto-Submitted": "auto-generated" } };
+  const tx = transport();
+  try {
+    try {
+      await tx.sendMail({ ...base, from: SUPPORT_FROM(), replyTo: addressOf(SUPPORT_FROM()) });
+    } catch (e) {
+      if (!smtpFrom() || addressOf(smtpFrom()).toLowerCase() === addressOf(SUPPORT_FROM()).toLowerCase()) throw e;
+      console.error("account mail (support-afzender)", e instanceof Error ? e.message : e);
+      await tx.sendMail({ ...base, from: smtpFrom(), replyTo: addressOf(SUPPORT_FROM()) });
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("account mail", e instanceof Error ? e.message : e);
+    return { ok: false, error: "send_failed" };
+  } finally { tx.close(); }
+}
+type AuthUser = { id: string; email?: string; user_metadata?: Record<string, unknown> };
+async function authUser(id: string): Promise<AuthUser | null> {
+  const { data, error } = await admin.auth.admin.getUserById(id);
+  if (error && (error as { status?: number }).status !== 404) throw new Error(error.message);
+  return (data?.user as AuthUser | undefined) ?? null;
+}
+
 async function audit(action: string, ip: string, target?: string | null, detail?: unknown) {
   await admin.from("admin_audit").insert({ action, ip, target_user: target ?? null, detail: detail ?? null });
 }
@@ -211,10 +249,13 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       const size = Math.min(Math.max(Number(body.page_size ?? 25) || 25, 1), 50);
       const page = Math.max(Math.floor(Number(body.page ?? 0) || 0), 0);
       const q = String(body.q ?? "").trim().toLowerCase().slice(0, 100);
-      const { data, error } = await admin.rpc("bingr_admin_users", { p_search: q, p_limit: size, p_offset: page * size });
+      // filter alleen meesturen als hij gekozen is (zo werkt de lijst ook met een ouder schema)
+      const { data, error } = await admin.rpc("bingr_admin_users", {
+        p_search: q, p_limit: size, p_offset: page * size, ...(body.filter === "blocked" ? { p_filter: "blocked" } : {}),
+      });
       if (error) throw new Error(error.message);
       const items = (data?.items ?? []).map((u: Record<string, unknown>) => ({ ...u, email: maskEmail(u.email) }));
-      return json({ total: data?.total ?? 0, page, page_size: size, items });
+      return json({ total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, page, page_size: size, items });
     }
     case "user_detail": {
       if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
@@ -236,6 +277,85 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       }
       await audit("send_reset", ip, String(body.user_id));
       return json({ ok: true });
+    }
+    case "user_block": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const reason = cleanReason(body.reason);
+      if (!reason) return json({ error: "reason_missing" }, 400);
+      const u = parseUntil(body.until);
+      if (!u.ok) return json({ error: u.error }, 400);
+      const user = await authUser(id);
+      if (!user) return json({ error: "not_found" }, 404);
+      const { error: be } = await admin.auth.admin.updateUserById(id, { ban_duration: banDuration(u.until) });
+      if (be) { console.error("user_block", be.message); return json({ error: "block_failed" }, 502); }
+      const until = u.until?.toISOString() ?? null;
+      // een vorige blokkade die nog liep, is hiermee vervangen
+      await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "vervangen" }).eq("user_id", id).is("lifted_at", null);
+      const { data: row, error: ie } = await admin.from("account_blocks").insert({ user_id: id, reason, until }).select("id").single();
+      if (ie) throw new Error(ie.message);
+      // alle sessies intrekken: apps en website loggen uit (een nieuw access token krijgen lukt niet meer door de ban)
+      const { data: revoked, error: re } = await admin.rpc("bingr_revoke_user_sessions", { p_user: id });
+      if (re) console.error("user_block sessions", re.message);
+      let mail: { ok: boolean; error?: string } = { ok: false };
+      if (body.notify !== false && user.email) {
+        mail = await sendAccountMail(user.email, blockMail(accountLang(user.user_metadata?.lang), { email: user.email, reason, until: u.until }));
+        if (mail.ok) await admin.from("account_blocks").update({ notified: true }).eq("id", row.id);
+      }
+      await audit("user_block", ip, id, { until, notify: body.notify !== false, email_sent: mail.ok, sessions: revoked ?? null, length: reason.length });
+      return json({ ok: true, id: row.id, until, sessions_revoked: revoked ?? 0, email_sent: mail.ok, email_error: mail.error });
+    }
+    case "user_unblock": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const user = await authUser(id);
+      if (!user) return json({ error: "not_found" }, 404);
+      const { error: be } = await admin.auth.admin.updateUserById(id, { ban_duration: "none" });
+      if (be) { console.error("user_unblock", be.message); return json({ error: "unblock_failed" }, 502); }
+      const { data: lifted } = await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "beheer" })
+        .eq("user_id", id).is("lifted_at", null).select("id");
+      let mail: { ok: boolean; error?: string } = { ok: false };
+      if (body.notify !== false && user.email) {
+        mail = await sendAccountMail(user.email, unblockMail(accountLang(user.user_metadata?.lang), { email: user.email }));
+      }
+      await audit("user_unblock", ip, id, { notify: body.notify !== false, email_sent: mail.ok, lifted: lifted?.length ?? 0 });
+      return json({ ok: true, email_sent: mail.ok, email_error: mail.error });
+    }
+    case "user_delete": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const user = await authUser(id);
+      if (!user) return json({ error: "not_found" }, 404);
+      const email = user.email ?? "";
+      if (!confirmMatches(body.confirm, email, maskEmail(email))) return json({ error: "confirm_mismatch" }, 400);
+      const notify = body.notify !== false && !!email;
+      const delTickets = body.delete_tickets === true;
+      // e-mailadres en taal vastleggen vóór het verwijderen; de mail gaat pas als het verwijderen gelukt is
+      const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets }) : null;
+      // profielfoto's (opslag gaat niet mee met de cascade)
+      for (let i = 0; i < 20; i++) {
+        const { data: files, error: le } = await admin.storage.from("avatars").list(id, { limit: 1000 });
+        if (le || !files?.length) break;
+        const { error: rm } = await admin.storage.from("avatars").remove(files.map((f) => `${id}/${f.name}`));
+        if (rm) { console.error("user_delete avatars", rm.message); break; }
+      }
+      // supporttickets: standaard bewaard (user_id wordt leeg via on delete set null); op verzoek ook verwijderd
+      let ticketsDeleted = 0;
+      if (delTickets) {
+        const { data: a } = await admin.from("support_tickets").delete().eq("user_id", id).select("id");
+        const { data: b } = email ? await admin.from("support_tickets").delete().ilike("email", email.replace(/[\\%_]/g, "\\$&")).select("id") : { data: [] };
+        ticketsDeleted = (a?.length ?? 0) + (b?.length ?? 0);
+      }
+      // de gebruiker zelf; alle tabellen (profielen, servers, instellingen, apparaten, sessies, streams, kijkgeschiedenis,
+      // statistieken, blokkades, e-mailvoorkeuren, tv-codes) gaan mee via on delete cascade
+      const { error: de } = await admin.auth.admin.deleteUser(id);
+      if (de) { console.error("user_delete", de.message); return json({ error: "delete_failed" }, 502); }
+      const sent = mail ? await sendAccountMail(email, mail) : { ok: false };
+      await audit("user_delete", ip, id, {
+        email: maskEmail(email), notify, email_sent: sent.ok, tickets_deleted: delTickets ? ticketsDeleted : undefined,
+        reason: cleanReason(body.reason).slice(0, 500) || undefined,
+      });
+      return json({ ok: true, email_sent: sent.ok, email_error: sent.error, tickets_deleted: ticketsDeleted });
     }
     case "announce": {
       const t = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
