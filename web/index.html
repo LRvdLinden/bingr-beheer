@@ -28,6 +28,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Overzicht</button>
       <button role="tab" data-tab="users">Gebruikers</button>
+      <button role="tab" data-tab="support">Support<span id="supBadge" class="tab-badge hidden" aria-label="ongelezen"></span></button>
       <button role="tab" data-tab="messages">Berichten</button>
       <button role="tab" data-tab="status">Status</button>
     </nav>
@@ -58,6 +59,24 @@
         </table>
       </div>
       <div class="pager"><button id="prev" class="btn ghost small">Vorige</button><span id="pageInfo"></span><button id="next" class="btn ghost small">Volgende</button></div>
+    </section>
+
+    <section id="tab-support" class="tab hidden">
+      <div class="row-head"><h1>Support</h1>
+        <div class="head-btns"><a class="btn ghost small" href="https://support.bingr.online/" target="_blank" rel="noopener">Supportsite</a>
+          <button id="supRefresh" class="btn ghost small">Vernieuwen</button></div></div>
+      <div id="supNotice" class="sup-notice hidden"></div>
+      <div class="sup-bar">
+        <div id="supFilters" class="sup-filters" role="group" aria-label="Filter op status"></div>
+        <input id="supSearch" class="search" type="search" placeholder="Zoek op #nummer, onderwerp, naam of e-mail" autocomplete="off">
+      </div>
+      <div class="table-wrap">
+        <table class="users tickets">
+          <thead><tr><th>Ticket</th><th>Onderwerp</th><th>Status</th><th>Categorie</th><th>Laatste activiteit</th><th>Aangemaakt</th></tr></thead>
+          <tbody id="supRows"></tbody>
+        </table>
+      </div>
+      <div class="pager"><button id="supPrev" class="btn ghost small">Vorige</button><span id="supPage"></span><button id="supNext" class="btn ghost small">Volgende</button></div>
     </section>
 
     <section id="tab-messages" class="tab hidden">

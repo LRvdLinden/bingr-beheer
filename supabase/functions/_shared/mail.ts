@@ -1,5 +1,5 @@
-// Gedeelde e-mail via SMTP (admin: berichten). Kopie van supabase/functions/_shared/mail.ts in LRvdLinden/iptv-ios-appletv
-// (daar gebruikt door `status`); houd ze gelijk. Instellingen als function-secrets
+// Gedeelde e-mail via SMTP (admin: berichten; status: storingsmeldingen; support: supporttickets). Dit bestand staat
+// in LRvdLinden/iptv-ios-appletv en als kopie in LRvdLinden/bingr-beheer (functie admin); houd ze gelijk. Instellingen als function-secrets
 // BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER, BINGR_SMTP_PASSWORD, BINGR_SMTP_FROM.
 import nodemailer from "npm:nodemailer@7.0.13";
 

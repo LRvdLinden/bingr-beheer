@@ -2,8 +2,8 @@
 
 Het beheer-dashboard van **Bingr**, op **https://beheer.bingr.online**. Deze repo is privé; het dashboard stond eerder op `bingr.online/admindashboard` in de openbare repo bingr-website.
 
-- `web/` — het dashboard zelf (statische HTML/JS/CSS, geen build-stap): overzicht, gebruikers, berichten en status. Alles staat erin (`config.js` met de publieke Supabase-URL en publishable key, favicon). `robots.txt` blokkeert alles en de pagina heeft `noindex`.
-- `supabase/functions/admin` — de Supabase Edge Function `admin` waar het dashboard mee praat (inloggen, statistieken, gebruikers, berichten en mail, en de tab Status via de functie `status`). `supabase/functions/_shared/mail.ts` is een kopie van die in iptv-ios-appletv.
+- `web/` — het dashboard zelf (statische HTML/JS/CSS, geen build-stap): overzicht, gebruikers, berichten, supporttickets en status. Alles staat erin (`config.js` met de publieke Supabase-URL en publishable key, favicon). `robots.txt` blokkeert alles en de pagina heeft `noindex`.
+- `supabase/functions/admin` — de Supabase Edge Function `admin` waar het dashboard mee praat (inloggen, statistieken, gebruikers, berichten en mail, de tab Status via de functie `status` en de tab Support via de functie `support`). `supabase/functions/_shared/mail.ts` is een kopie van die in iptv-ios-appletv.
 
 Wat er **niet** in staat: het databaseschema (ook de beheertabellen), de functies `device-auth`, `web-proxy` en `status`, en de statusplanning. Die staan in de openbare repo [LRvdLinden/iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv) (`supabase/`, workflow *Backend*). De afmeldpagina `bingr.online/unsubscribe/` staat op de gewone site en roept alleen de actie `unsubscribe` van `admin` aan; dat is het enige wat bingr.online mag.
 
@@ -35,7 +35,11 @@ De workflow uploadt naar `FTP_DIR`, of zonder `FTP_DIR` naar de hoofdmap van de 
 | `SUPABASE_PROJECT_REF` | optioneel; standaard `vjewsncmsxmhmhnoxwqx` (uit de publieke Supabase-URL) |
 | `BINGR_SMTP_HOST`, `BINGR_SMTP_PORT` (465), `BINGR_SMTP_USER`, `BINGR_SMTP_PASSWORD`, `BINGR_SMTP_FROM` | optioneel: mail voor berichten. Staan ook in iptv-ios-appletv (de functie `status` mailt storingen); zet ze hier alleen als ze daar gelijk zijn |
 
-Function-secrets gelden voor het hele Supabase-project, dus voor alle functies tegelijk. Zolang `BINGR_ADMIN_USER` / `BINGR_ADMIN_PASSWORD` hier nog niet staan, gebruikt de functie de waarden die al op de server staan. De `STATUS_CRON_SECRET` voor de tab Status zet de workflow *Backend* in iptv-ios-appletv; hier hoeft die niet.
+Function-secrets gelden voor het hele Supabase-project, dus voor alle functies tegelijk. De tab **Support** gebruikt het geheim `SUPPORT_ADMIN_SECRET`; dat maakt de workflow *Backend* in iptv-ios-appletv één keer zelf aan (hier niets voor nodig). De afzender van supportmails (`BINGR_SUPPORT_FROM`, standaard `Bingr Support <support@bingr.online>`) en het adres voor meldingen (`BINGR_SUPPORT_EMAIL`, standaard `support@bingr.online`) staan, als je ze wilt aanpassen, als secrets in iptv-ios-appletv. Zolang `BINGR_ADMIN_USER` / `BINGR_ADMIN_PASSWORD` hier nog niet staan, gebruikt de functie de waarden die al op de server staan. De `STATUS_CRON_SECRET` voor de tab Status zet de workflow *Backend* in iptv-ios-appletv; hier hoeft die niet.
+
+## Tab Support
+
+Supporttickets van https://support.bingr.online (repo LRvdLinden/bingr-support). Lijst met nummer (#1001), onderwerp, klant, status en leeftijd; een rode stip = de klant wacht op een reactie die je nog niet hebt gezien. Klik een ticket voor het gesprek, de accountgegevens van de klant (apparaten, platforms, versies), een antwoordvak (de klant krijgt een gebrande mail vanaf support@bingr.online met #nummer in het onderwerp), de status en prioriteit, en interne notities (nooit zichtbaar voor de klant). Een link als `https://beheer.bingr.online/#support/1001` (uit de meldingsmail) opent dat ticket direct. Supporttickets en wijzigingen hieraan komen nooit in de changelog.
 
 ## Subdomein beheer.bingr.online instellen (eenmalig, bij de hoster)
 

@@ -58,6 +58,11 @@
     status_not_configured: "De statusmonitor is nog niet ingesteld (Backend-workflow draaien).", bad_url: "Vul een geldig http(s)-adres in (geen intern adres).",
     bad_interval: "Kies een geldig interval.", name_missing: "Vul een Nederlandse naam in.", bad_group: "Kies een groep.",
     builtin: "Een standaardmonitor kun je niet verwijderen; zet hem uit.", forbidden: "De statusfunctie weigerde de aanvraag.",
+    support_not_configured: "Support is nog niet ingesteld (workflow Backend in iptv-ios-appletv draaien).",
+    support_not_deployed: "De functie support staat nog niet online (workflow Backend in iptv-ios-appletv draaien).",
+    support_forbidden: "De functie support weigerde de aanvraag (SUPPORT_ADMIN_SECRET klopt niet).",
+    message_missing: "Typ eerst een bericht.", message_too_long: "Het bericht is te lang (max. 5000 tekens).",
+    too_many_links: "Het bericht bevat te veel links.", bad_status: "Ongeldige status.", bad_number: "Ongeldig ticketnummer.",
   };
   const errText = (e) => ERR[e.code] || ERR.server_error;
 
@@ -100,7 +105,7 @@
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, messages: loadAnnouncements, status: loadStatus })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus })[name](); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -109,8 +114,16 @@
     Object.keys(loaded).forEach((k) => delete loaded[k]);
     let tab = "overview";
     try { tab = sessionStorage.getItem(KEY + ".tab") || tab; } catch { /* */ }
-    showTab(["overview", "users", "messages", "status"].includes(tab) ? tab : "overview");
+    // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
+    const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
+    if (deep) tab = "support";
+    showTab(["overview", "users", "support", "messages", "status"].includes(tab) ? tab : "overview");
+    if (deep && deep[1]) openTicket(Number(deep[1]));
+    loadSupportCounts();
+    clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
   }
+  let supTimer;
+  window.addEventListener("hashchange", () => { const m = /^#support\/(\d+)$/.exec(location.hash); if (m && token()) { showTab("support"); openTicket(Number(m[1])); } });
 
   // ---- overzicht ----
   $("refresh").onclick = () => loadStats();
@@ -127,7 +140,9 @@
       ["Kijkt nu", s.watching_now, "streams", "live"],
     ];
     $("kpis").innerHTML = k.map(([l, v, h, cls]) =>
-      `<div class="kpi ${cls || ""}"><div class="l">${esc(l)}</div><div class="v">${nf.format(v ?? 0)}</div><div class="h">${esc(h)}</div></div>`).join("");
+      `<div class="kpi ${cls || ""}"><div class="l">${esc(l)}</div><div class="v">${nf.format(v ?? 0)}</div><div class="h">${esc(h)}</div></div>`).join("") +
+      `<button type="button" id="kpiSup" class="kpi sup" title="Naar de tab Support"><div class="l">Open tickets</div><div class="v">${supCounts ? nf.format(supCounts.active ?? 0) : "—"}</div><div class="h">${supCountsText()}</div></button>`;
+    $("kpiSup").onclick = () => showTab("support");
     const days = s.days || [];
     const audit = s.signins_source === "audit";
     lastCharts = () => {
@@ -271,10 +286,167 @@
       finally { $("resetBtn").disabled = false; }
     };
   }
-  function openDrawer() { $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }
-  function closeDrawer() { $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); }
+  function openDrawer(wide = false) { $("drawer").classList.toggle("wide", wide); $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }
+  function closeDrawer() {
+    if (!$("drawer").classList.contains("open")) return;
+    $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true");
+    if (/^#support\/\d+$/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search);
+  }
   document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = closeDrawer));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+  // ---- support ----
+  const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };
+  const SUP_FILTERS = [["active", "Actief"], ["new", "Nieuw"], ["open", "In behandeling"], ["pending", "Wacht op klant"], ["resolved", "Opgelost"], ["closed", "Gesloten"], ["all", "Alles"]];
+  const SUP_CAT = { account: "Account", afspelen: "Afspelen", apps: "Apps", website: "Website", overig: "Overig" };
+  const SUP_PLAT = { ios: "iPhone/iPad", tvos: "Apple TV", macos: "Mac", android: "Android", androidtv: "Android TV", tizen: "Samsung TV", web: "Browser" };
+  const SUP_PRIO = { low: "Laag", normal: "Normaal", high: "Hoog", urgent: "Urgent" };
+  const supBadge = (st) => `<span class="sbadge ${esc(st)}">${esc(SUP_ST[st] || st)}</span>`;
+  let supCounts = null, supFilter = "active", supPageNo = 0, supTotal = 0, supSearchTimer;
+  const SUP_PAGE = 50;
+  try { supFilter = sessionStorage.getItem(KEY + ".supFilter") || supFilter; } catch { /* */ }
+  function supCountsText() {
+    if (!supCounts) return "support";
+    const u = supCounts.unread || 0;
+    return u ? `${nf.format(u)} wacht${u === 1 ? "" : "en"} op reactie` : `${nf.format(supCounts.last_7d || 0)} nieuw in 7 dagen`;
+  }
+  function applySupportCounts(c) {
+    if (!c) return;
+    supCounts = c;
+    const b = $("supBadge"), u = c.unread || 0;
+    b.textContent = u > 99 ? "99+" : String(u); b.classList.toggle("hidden", !u);
+    if ($("kpiSup")) { $("kpiSup").querySelector(".v").textContent = nf.format(c.active ?? 0); $("kpiSup").querySelector(".h").textContent = supCountsText(); $("kpiSup").classList.toggle("alert", !!u); }
+    renderSupFilters();
+  }
+  async function loadSupportCounts() {
+    try { applySupportCounts(await call("support_counts")); } catch (e) { /* tab Support toont de fout */ }
+  }
+  function renderSupFilters() {
+    const c = supCounts || {};
+    $("supFilters").innerHTML = SUP_FILTERS.map(([k, l]) => {
+      const n = k === "all" ? c.total : c[k];
+      return `<button type="button" data-f="${k}" class="${k === supFilter ? "on" : ""}" aria-pressed="${k === supFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`;
+    }).join("");
+    $("supFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => {
+      supFilter = b.dataset.f; supPageNo = 0;
+      try { sessionStorage.setItem(KEY + ".supFilter", supFilter); } catch { /* */ }
+      loadTickets();
+    }));
+  }
+  $("supRefresh").onclick = () => loadTickets();
+  $("supSearch").oninput = () => { clearTimeout(supSearchTimer); supSearchTimer = setTimeout(() => { supPageNo = 0; loadTickets(); }, 300); };
+  $("supPrev").onclick = () => { if (supPageNo > 0) { supPageNo--; loadTickets(); } };
+  $("supNext").onclick = () => { if ((supPageNo + 1) * SUP_PAGE < supTotal) { supPageNo++; loadTickets(); } };
+  async function loadTickets() {
+    renderSupFilters();
+    let r;
+    try { r = await call("support_list", { status: supFilter, q: $("supSearch").value.trim(), page: supPageNo, page_size: SUP_PAGE }); }
+    catch (e) {
+      if (e.code === "auth") return;
+      $("supNotice").textContent = errText(e); $("supNotice").classList.remove("hidden");
+      $("supRows").innerHTML = `<tr><td colspan="6" class="empty">${esc(errText(e))}</td></tr>`; return;
+    }
+    $("supNotice").classList.toggle("hidden", r.smtp !== false);
+    $("supNotice").textContent = r.smtp === false ? "E-mail is niet ingesteld (BINGR_SMTP_*): tickets komen binnen, maar klanten en support@bingr.online krijgen geen mail." : "";
+    applySupportCounts(r.counts);
+    supTotal = r.total || 0;
+    $("supRows").innerHTML = (r.items || []).map((t) => `<tr data-n="${t.number}" tabindex="0" class="${t.unread ? "unread" : ""}">
+      <td class="em num">${t.unread ? '<span class="udot" title="Klant wacht op reactie"></span>' : ""}#${t.number}</td>
+      <td class="subj"><div class="st">${esc(t.subject)}</div><div class="sub">${esc(t.name || "")} · ${esc(t.email)}${t.has_account ? ' <span class="chip">account</span>' : ""}${t.priority === "high" || t.priority === "urgent" ? ` <span class="chip bad">${esc(SUP_PRIO[t.priority])}</span>` : ""}</div></td>
+      <td data-l="Status">${supBadge(t.status)}</td>
+      <td data-l="Categorie">${esc(SUP_CAT[t.category] || t.category)}${t.platform ? ` <span class="chip">${esc(SUP_PLAT[t.platform] || t.platform)}</span>` : ""}</td>
+      <td data-l="Laatste activiteit">${esc(ago(t.last_reply_at))}</td>
+      <td data-l="Aangemaakt">${esc(ago(t.created_at))}</td>
+    </tr>`).join("") || `<tr><td colspan="6" class="empty">${$("supSearch").value.trim() ? "Geen tickets gevonden." : supFilter === "active" ? "Geen open tickets. Alles is beantwoord." : "Geen tickets."}</td></tr>`;
+    $("supRows").querySelectorAll("tr[data-n]").forEach((tr) => {
+      tr.onclick = () => openTicket(Number(tr.dataset.n));
+      tr.onkeydown = (e) => { if (e.key === "Enter") openTicket(Number(tr.dataset.n)); };
+    });
+    const pages = Math.max(1, Math.ceil(supTotal / SUP_PAGE));
+    $("supPage").textContent = `Pagina ${supPageNo + 1} van ${pages} · ${nf.format(supTotal)} ticket${supTotal === 1 ? "" : "s"}`;
+    $("supPrev").disabled = supPageNo === 0; $("supNext").disabled = supPageNo + 1 >= pages;
+  }
+  function msgHtml(m) {
+    const when = esc(fmtDateTime(m.created_at));
+    if (m.author === "event") return `<div class="msg event"><span>Status: <b>${esc(SUP_ST[m.body] || m.body)}</b> · ${when}</span></div>`;
+    const who = { customer: "Klant", support: "Bingr Support", note: "Interne notitie" }[m.author] || m.author;
+    const mail = m.author === "support" ? (m.email_sent ? '<span class="chip">gemaild</span>' : `<span class="chip warn" title="${esc(m.email_error || "")}">niet gemaild</span>`) : "";
+    return `<div class="msg ${esc(m.author)}"><div class="mh"><b>${esc(who)}</b><span class="sub">${when}</span>${mail}</div><div class="mb">${esc(m.body)}</div></div>`;
+  }
+  let supOpen = null;
+  async function openTicket(n) {
+    if (!n) return;
+    supOpen = n;
+    if (location.hash !== `#support/${n}`) history.replaceState(null, "", `#support/${n}`);
+    $("drawerBody").innerHTML = '<p class="sub">Laden…</p>';
+    openDrawer(true);
+    let r;
+    try { r = await call("support_get", { number: n }); }
+    catch (e) { if (e.code !== "auth") $("drawerBody").innerHTML = `<h2 id="dTitle">#${esc(n)}</h2><p class="err">${esc(errText(e))}</p>`; return; }
+    if (supOpen !== n) return;
+    const t = r.ticket, a = r.account;
+    const acc = a ? `${a.linked ? "Gekoppeld" : "Gevonden op e-mailadres"} · ${nf.format(a.device_count || 0)} apparaten${(a.platforms || []).length ? ` · ${a.platforms.map((p) => esc(pname(p))).join(", ")}` : ""}${(a.app_versions || []).length ? `<br><span class="sub">Versies: ${a.app_versions.map(esc).join(", ")}</span>` : ""}<br><span class="sub">Account sinds ${esc(fmtDate(a.created_at))}${a.last_seen_at ? ` · laatst gezien ${esc(ago(a.last_seen_at))}` : ""}${a.confirmed ? "" : " · onbevestigd"} · ${nf.format(a.tickets || 0)} ticket(s)</span>` : "Geen Bingr-account met dit adres";
+    $("drawerBody").innerHTML = `
+      <h2 id="dTitle"><span class="tnum">#${t.number}</span> ${esc(t.subject)}</h2>
+      <div class="tmeta">${supBadge(t.status)}${t.priority !== "normal" ? ` <span class="chip ${t.priority === "low" ? "" : "bad"}">${esc(SUP_PRIO[t.priority] || t.priority)}</span>` : ""}<span class="sub">Aangemaakt ${esc(fmtDateTime(t.created_at))}</span></div>
+      <dl class="dl">
+        <dt>Klant</dt><dd>${esc(t.name || "—")}<br><a href="mailto:${esc(t.email)}">${esc(t.email)}</a></dd>
+        <dt>Account</dt><dd>${acc}</dd>
+        <dt>Categorie</dt><dd>${esc(SUP_CAT[t.category] || t.category)}${t.platform ? ` · ${esc(SUP_PLAT[t.platform] || t.platform)}` : ""}${t.app_version ? ` · Bingr ${esc(t.app_version)}` : ""}</dd>
+        <dt>Taal</dt><dd>${t.lang === "en" ? "Engels" : "Nederlands"} <a class="sub" href="${esc(t.customer_url)}" target="_blank" rel="noopener noreferrer">Klantweergave openen ↗</a></dd>
+      </dl>
+      <h3>Gesprek</h3>
+      <div class="thread">${(r.messages || []).map(msgHtml).join("") || '<p class="empty">Geen berichten.</p>'}</div>
+      <form id="supForm" class="composer" novalidate>
+        <div class="seg" role="group" aria-label="Soort bericht"><button type="button" data-k="reply" class="on" aria-pressed="true">Antwoord aan klant</button><button type="button" data-k="note" aria-pressed="false">Interne notitie</button></div>
+        <label><span class="sr">Bericht</span><textarea id="supMsg" rows="6" maxlength="5000" placeholder="Typ je antwoord aan ${esc(t.name || "de klant")}…"></textarea></label>
+        <div class="comp-row" id="supAfterRow"><label>Status na verzenden<select id="supAfter">
+          <option value="pending">Wacht op klant</option><option value="open">In behandeling</option><option value="resolved">Opgelost</option><option value="closed">Gesloten</option></select></label>
+          <button id="supSend" class="btn" type="submit">Versturen</button></div>
+        <p id="supHint" class="sub">De klant krijgt een mail vanaf support@bingr.online met #${t.number} in het onderwerp${t.lang === "en" ? " (in het Engels)" : ""}.${r.smtp === false ? " <b>Let op: e-mail is niet ingesteld.</b>" : ""}</p>
+        <div id="supErr" class="err" role="alert"></div>
+      </form>
+      <div class="actions sup-actions">
+        <label>Status<select id="supStatus">${Object.entries(SUP_ST).map(([k, v]) => `<option value="${k}" ${k === t.status ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label>Prioriteit<select id="supPrio">${Object.entries(SUP_PRIO).map(([k, v]) => `<option value="${k}" ${k === t.priority ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="switch"><input id="supNotify" type="checkbox" checked><span class="track"></span><span>Klant mailen bij opgelost of gesloten</span></label>
+        <button id="supSave" class="btn ghost" type="button">Opslaan</button>
+      </div>`;
+    let kind = "reply";
+    $("drawerBody").querySelectorAll(".composer .seg button").forEach((b) => (b.onclick = () => {
+      kind = b.dataset.k;
+      $("drawerBody").querySelectorAll(".composer .seg button").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", String(x === b)); });
+      $("supAfterRow").querySelector("label").classList.toggle("hidden", kind === "note");
+      $("supSend").textContent = kind === "note" ? "Notitie opslaan" : "Versturen";
+      $("supMsg").placeholder = kind === "note" ? "Alleen zichtbaar in het beheer…" : `Typ je antwoord aan ${t.name || "de klant"}…`;
+      $("supHint").classList.toggle("hidden", kind === "note");
+      $("supForm").classList.toggle("note", kind === "note");
+    }));
+    $("supForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const message = $("supMsg").value.trim();
+      if (!message) { $("supErr").textContent = ERR.message_missing; return; }
+      $("supSend").disabled = true; $("supErr").textContent = "";
+      try {
+        if (kind === "note") { await call("support_note", { number: t.number, message }); toast("Notitie opgeslagen."); }
+        else {
+          const x = await call("support_reply", { number: t.number, message, status: $("supAfter").value });
+          toast(x.email_sent ? `Antwoord verstuurd naar ${t.email}.` : `Antwoord opgeslagen, maar de mail is niet verstuurd${x.email_error ? ` (${x.email_error})` : ""}.`, !x.email_sent);
+        }
+        await openTicket(t.number); loadTickets();
+      } catch (err) { if (err.code !== "auth") $("supErr").textContent = errText(err); $("supSend").disabled = false; }
+    };
+    $("supSave").onclick = async () => {
+      const status = $("supStatus").value, priority = $("supPrio").value;
+      if (status === t.status && priority === t.priority) { toast("Niets gewijzigd."); return; }
+      $("supSave").disabled = true;
+      try {
+        const x = await call("support_status", { number: t.number, status: status !== t.status ? status : undefined, priority: priority !== t.priority ? priority : undefined, notify: $("supNotify").checked });
+        toast(x.email_sent ? `Opgeslagen; de klant is gemaild.` : x.email_sent === false ? `Opgeslagen, maar de mail is niet verstuurd.` : "Opgeslagen.", x.email_sent === false);
+        await openTicket(t.number); loadTickets();
+      } catch (err) { if (err.code !== "auth") toast(errText(err), true); $("supSave").disabled = false; }
+    };
+  }
 
   // ---- berichten ----
   let smtpOk = true, pvLang = "nl", sending = false;

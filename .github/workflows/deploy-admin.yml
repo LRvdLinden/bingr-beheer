@@ -74,6 +74,7 @@ jobs:
           [ -n "$A_PASS" ] && [ ${#A_PASS} -lt 12 ] && echo "::warning::BINGR_ADMIN_PASSWORD is korter dan 12 tekens; kies een langer wachtwoord."
           [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
           grep -qx STATUS_CRON_SECRET /tmp/names.txt || echo "::warning::STATUS_CRON_SECRET staat niet op de server: de tab Status werkt pas na de workflow Backend in iptv-ios-appletv."
+          grep -qx SUPPORT_ADMIN_SECRET /tmp/names.txt || echo "::warning::SUPPORT_ADMIN_SECRET staat niet op de server: de tab Support werkt pas na de workflow Backend in iptv-ios-appletv."
           true
       - name: Edge Function admin
         if: steps.check.outputs.skip != '1'
@@ -111,4 +112,9 @@ jobs:
           # 4. zonder inloggen geen gegevens
           curl -s -X POST "$F" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' | tee /tmp/b.json; echo
           grep -q not_signed_in /tmp/b.json && echo "::notice::status vraagt om inloggen" || { echo "::error::status zonder inloggen onverwacht"; fail=1; }
+          code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"support_list"}')
+          [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::support_list vraagt om inloggen" || { echo "::error::support_list zonder inloggen gaf HTTP $code"; fail=1; }
+          # 5. de functie support (iptv-ios-appletv) staat online en weigert beheer zonder geheim
+          code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/support" -H "Content-Type: application/json" -d '{"action":"admin_counts"}')
+          [ "$code" = 403 ] && echo "::notice::functie support staat online (beheer alleen met geheim)" || echo "::warning::functie support gaf HTTP $code (draai de workflow Backend in iptv-ios-appletv)"
           exit $fail
