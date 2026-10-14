@@ -25,7 +25,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Xcode-versie kiezen
         run: |
@@ -76,8 +76,8 @@ jobs:
             echo "=== errors ==="
             grep -E "error:" "$LOG" | sort -u | head -300 || true
             echo
-            echo "=== warnings (deprecated/unavailable) ==="
-            grep -E "warning: .*(unavailable|deprecated)" "$LOG" | sort -u | head -100 || true
+            echo "=== warnings (Swift) ==="
+            grep -E "^/.+:[0-9]+:[0-9]+: warning: " "$LOG" | sed "s#^$GITHUB_WORKSPACE/##" | sort -u | head -150 || true
           } > "$R/latest.txt"
           tail -n 300 "$LOG" > "$R/ios-tail.txt" || true
           cd "$R"
