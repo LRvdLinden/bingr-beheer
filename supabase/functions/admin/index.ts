@@ -7,8 +7,9 @@
 //                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade)
 //   user_detail         {token, id}       -> {…, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
 //   user_block          {token, id, reason, until? (ISO; leeg/"onbepaald" = onbepaalde tijd), notify? (standaard true)}
-//                       -> {ok, until, sessions_revoked, email_sent, email_error?}  (ban op het auth-account, alle sessies
-//                       ingetrokken, record in account_blocks, mail vanaf support@ met reden en einddatum)
+//                       -> {ok, until, streams_stopped, email_sent, email_error?}  (ban op het auth-account, record in
+//                       account_blocks, lopende streams gestopt, mail vanaf support@ met reden en einddatum). Sessies blijven
+//                       bestaan: vernieuwen geeft dan user_banned, zodat de apps de melding "geblokkeerd" tonen (ACCOUNT.md).
 //   user_unblock        {token, id, notify? (standaard true)} -> {ok, email_sent, email_error?}
 //   user_delete         {token, id, confirm (volledig of gemaskeerd e-mailadres), notify? (standaard true), delete_tickets?,
 //                       reason? (intern, alleen in het logboek)} -> {ok, email_sent, tickets_deleted}
@@ -294,16 +295,19 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       await admin.from("account_blocks").update({ lifted_at: new Date().toISOString(), lifted_by: "vervangen" }).eq("user_id", id).is("lifted_at", null);
       const { data: row, error: ie } = await admin.from("account_blocks").insert({ user_id: id, reason, until }).select("id").single();
       if (ie) throw new Error(ie.message);
-      // alle sessies intrekken: apps en website loggen uit (een nieuw access token krijgen lukt niet meer door de ban)
-      const { data: revoked, error: re } = await admin.rpc("bingr_revoke_user_sessions", { p_user: id });
-      if (re) console.error("user_block sessions", re.message);
+      // Sessies NIET intrekken: met een bestaande sessie geeft het vernieuwen door de ban de fout user_banned, en daaraan
+      // herkennen de apps (build 82) en de website dat het account geblokkeerd is (melding in plaats van gewoon uitloggen).
+      // device-auth weigert lopende access tokens van een geblokkeerd account met 401 {error:"user_banned", banned:true}.
+      // Lopende streams tellen meteen niet meer mee.
+      const { data: stopped, error: se } = await admin.from("account_streams").delete().eq("user_id", id).select("user_id");
+      if (se) console.error("user_block streams", se.message);
       let mail: { ok: boolean; error?: string } = { ok: false };
       if (body.notify !== false && user.email) {
         mail = await sendAccountMail(user.email, blockMail(accountLang(user.user_metadata?.lang), { email: user.email, reason, until: u.until }));
         if (mail.ok) await admin.from("account_blocks").update({ notified: true }).eq("id", row.id);
       }
-      await audit("user_block", ip, id, { until, notify: body.notify !== false, email_sent: mail.ok, sessions: revoked ?? null, length: reason.length });
-      return json({ ok: true, id: row.id, until, sessions_revoked: revoked ?? 0, email_sent: mail.ok, email_error: mail.error });
+      await audit("user_block", ip, id, { until, notify: body.notify !== false, email_sent: mail.ok, streams: stopped?.length ?? null, length: reason.length });
+      return json({ ok: true, id: row.id, until, streams_stopped: stopped?.length ?? 0, email_sent: mail.ok, email_error: mail.error });
     }
     case "user_unblock": {
       if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
