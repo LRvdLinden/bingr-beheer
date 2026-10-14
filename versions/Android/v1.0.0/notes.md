@@ -22,3 +22,5 @@
 
 - Films via de doorgifte van Bingr spelen ook in Safari en bij servers die geen deelverzoeken ondersteunen
 
+
+Alle versies: https://bingr.online/changelog/?p=android
