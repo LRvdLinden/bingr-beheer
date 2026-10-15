@@ -3,7 +3,7 @@
 
 **Opgelost**
 
-- Samsung TV: profielfoto's uit je account worden weer getoond; lukt het ophalen bij het opstarten niet, dan probeert de app het vanzelf opnieuw
+- Samsung TV: in het ondertitelmenu staat weer welke taal elk spoor is (en anders het soort ondertitel), ook op tv's die de taalgegevens anders aanleveren
 
 
 Alle versies: https://bingr.online/changelog/?p=android
