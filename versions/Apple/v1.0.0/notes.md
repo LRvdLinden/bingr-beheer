@@ -1,21 +1,14 @@
 
-### iOS, iPadOS, tvOS, macOS en Website
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Beveiliging: wachtwoorden, tokens en pincodes staan alleen nog in de iCloud-sleutelhanger (versleuteld), niet meer in de gewone iCloud-opslag; die raakt ook niet meer vol
+- Minder werk bij terugkeren naar de app, betere zoekresultaten in de tv-gids, betere VoiceOver-labels en juiste vertalingen (o.a. "Cast" in het Arabisch)
 
 **Opgelost**
 
-- Ondertitels die je zelf kiest of uitzet, worden niet meer overschreven door de automatische ondertitels
-- Ondertitelinstellingen per profiel: een ander profiel verandert niet meer de instellingen van het hoofdprofiel, en na een profielwissel gelden de juiste talen
-- OpenSubtitles logt je niet meer onterecht uit op al je apparaten, en je ziet een melding als je niet bent ingelogd of je downloads voor vandaag op zijn
-
-### Website
-
-**Opgelost**
-
-- Webspeler: de gekozen ondertiteltaal wordt meteen gebruikt als de stream die heeft, ondertitels die later binnenkomen worden nog gevonden, OpenSubtitles zoekt ook op TMDB, gedownloade ondertitels worden bewaard (spaart je dagquotum) en ze staan ook in beeld bij volledig scherm op de iPhone
-
-### Website en Server
-
-**Opgelost**
-
-- OpenSubtitles werkt nu in de webspeler: inloggen, zoeken en downloaden lopen via de Bingr-server, zodat de browser ze niet meer blokkeert
+- Het scherm blijft aan tijdens het kijken, ook met de VLC-speler, in multiview en beeld-in-beeld: geen vergrendeling of schermbeveiliging meer midden in een film
+- Synchroniseren gaat niet meer halverwege mis als Trakt traag is, een Lifetime-account valt niet meer onterecht terug naar Gratis, en een geblokkeerd apparaat stopt ook beeld-in-beeld
+- Voortgang komt bij het juiste profiel, ook als je wisselt tijdens beeld-in-beeld; een nieuw hoofdprofiel wordt betrouwbaarder overgenomen; een verkeerde klok op het apparaat verstoort de sync niet meer
 
