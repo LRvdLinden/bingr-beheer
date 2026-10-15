@@ -1,12 +1,28 @@
-# Bingr-beheer (privé)
+# Bingr-beheer
 
-Het beheer-dashboard van **Bingr**, op **https://beheer.bingr.online**. Deze repo is privé; het dashboard stond eerder op `bingr.online/admindashboard` in de openbare repo bingr-website.
+Het beheer-dashboard van **Bingr**, op **https://beheer.bingr.online**. Het dashboard stond eerder op `bingr.online/admindashboard` in de repo bingr-website.
+
+**Deze repo is openbaar.** Iedereen kan de code, de commits en de logs van de workflows lezen. Daarom:
+
+- **Geen geheimen**: wachtwoorden, tokens, SMTP-gegevens, `service_role`-sleutels en dergelijke alleen als GitHub-secrets (zie hieronder), nooit in een bestand, commit, issue of log. Wel toegestaan: de publieke Supabase-URL en de publishable key (`web/config.js`, `ios/…/AdminAPI.swift`) en de project-ref die daarin staat.
+- **Geen persoonsgegevens**: geen e-mailadressen, namen, account-id's, tickets of exports van gebruikers, ook niet als testdata of in screenshots.
+- **Geen logs met servergegevens**: workflows en scripts schrijven geen secrets, interne adressen, FTP-mappen, volledige serverantwoorden met gebruikersgegevens of stacktraces met configuratie naar het log; zet zulke stappen op een korte melding (`::notice::` / `::warning::`) zonder waarden.
+- De beveiliging hangt niet af van geheimhouding van de code: alles achter het inloggen loopt via de functie `admin` met een ondertekend token.
 
 - `web/` — het dashboard zelf (statische HTML/JS/CSS, geen build-stap): overzicht, gebruikers, berichten, supporttickets en status. Alles staat erin (`config.js` met de publieke Supabase-URL en publishable key, favicon). `robots.txt` blokkeert alles en de pagina heeft `noindex`.
 - `ios/` — de native app **Bingr Beheer** (iOS/iPadOS 17+) met dezelfde onderdelen als het web-dashboard; zie *iOS-app* hieronder.
 - `supabase/functions/admin` — de Supabase Edge Function `admin` waar het dashboard mee praat (inloggen, statistieken, gebruikers, berichten en mail, de tab Status via de functie `status` en de tab Support via de functie `support`). `supabase/functions/_shared/mail.ts` is een kopie van die in iptv-ios-appletv.
 
 Wat er **niet** in staat: het databaseschema (ook de beheertabellen), de functies `device-auth`, `web-proxy` en `status`, en de statusplanning. Die staan in de openbare repo [LRvdLinden/iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv) (`supabase/`, workflow *Backend*). De afmeldpagina `bingr.online/unsubscribe/` staat op de gewone site en roept alleen de actie `unsubscribe` van `admin` aan; dat is het enige wat bingr.online mag.
+
+Beveiliging (build 97):
+
+- Het token (12 uur) bevat geen inlognaam meer, wel een **tokenversie** (tabel `admin_token_state`); elk verzoek controleert die. **Overal uitloggen** (Instellingen, web en app; actie `logout_all`) verhoogt de versie: alle sessies vervallen meteen. Een ander `BINGR_ADMIN_PASSWORD` doet dat vanzelf.
+- Limieten per IP: na inloggen 300 verzoeken per minuut, afmelden (`unsubscribe`) 20 per 10 minuten (one-click vanaf mailservers 200 per 10 minuten).
+- Het logboek (`admin_audit`) bevat ook inzage van persoonsgegevens (`user_view`, `users_search`, `support_view`: alleen actie en id/nummer, geen inhoud), geblokkeerde inlogpogingen (`login_locked`) en mislukte acties (`<actie>_failed` met foutcode).
+- Het dashboard heeft een strikte Content-Security-Policy (`web/.htaccess`, ook als meta in `index.html`): geen inline scripts of styles, alleen verbinding met de eigen Supabase-URL.
+- Bulkmail houdt per ontvanger bij wat verstuurd is (`announcement_sends`); stopt de functie midden in een batch, dan komen de overgebleven ontvangers na 10 minuten opnieuw aan de beurt.
+- De GitHub Actions staan vast op een commit-SHA en de Supabase CLI op een vaste versie; de unittests blokkeren de deploy.
 
 Wijzigingen in deze repo komen **nooit** in de openbare changelog (`docs/changelog.json`), niet op bingr.online en niet in de release-notities.
 
@@ -65,7 +81,7 @@ Boven de ticketlijst staat de status van de import (laatste ronde, fout, *IMAP n
 
 ## iOS-app (Bingr Beheer)
 
-Native SwiftUI-app voor iPhone en iPad (iOS/iPadOS 17+, bundle-id `nl.lrvdlinden.bingr.beheer`) in `ios/`, met een XcodeGen-project (`ios/project.yml`). Ze praat met dezelfde functie `admin` als het web-dashboard (publieke Supabase-URL en publishable key ingebouwd, geen geheimen) en heeft alle tabs: Overzicht (kengetallen en grafieken met Swift Charts), Gebruikers (zoeken, details, apparaten, wachtwoord-reset), Support (filters, zoeken, gesprek met interne notities, antwoorden, status/prioriteit, inbox-import en *Nu ophalen*), Berichten (NL/EN met voorbeeld, e-mailen in batches, verder verzenden, verwijderen) en Status (monitors, storingen, reactietijd, controleren, monitors toevoegen/bewerken). Tabbalk op de iPhone, zijbalk op de iPad. Het token staat in de Keychain (alleen dit apparaat, geen iCloud); optioneel vergrendelen met Face ID / toegangscode (Instellingen). `bingrbeheer://support/1001` opent een ticket.
+Native SwiftUI-app voor iPhone en iPad (iOS/iPadOS 17+, bundle-id `nl.lrvdlinden.bingr.beheer`) in `ios/`, met een XcodeGen-project (`ios/project.yml`). Ze praat met dezelfde functie `admin` als het web-dashboard (publieke Supabase-URL en publishable key ingebouwd, geen geheimen) en heeft alle tabs: Overzicht (kengetallen en grafieken met Swift Charts), Gebruikers (zoeken, details, apparaten, wachtwoord-reset), Support (filters, zoeken, gesprek met interne notities, antwoorden, status/prioriteit, inbox-import en *Nu ophalen*), Berichten (NL/EN met voorbeeld, e-mailen in batches, verder verzenden, verwijderen) en Status (monitors, storingen, reactietijd, controleren, monitors toevoegen/bewerken). Tabbalk op de iPhone, zijbalk op de iPad. Het token staat in de Keychain (alleen dit apparaat, geen iCloud); vergrendelen met Face ID / toegangscode staat sinds build 6 standaard aan bij de eerste keer inloggen (uit te zetten in Instellingen). In Instellingen ook **Overal uitloggen**. `bingrbeheer://support/1001` opent een ticket.
 
 - **Workflow *Beheer-app*** (`.github/workflows/build-ios.yml`, bij een push naar `main` die `ios/` raakt): `xcodegen generate` en een build voor een generiek iOS-apparaat zonder ondertekening. Lukt dat, dan zet de workflow het Xcode-project (ios/ met het gegenereerde `BingrBeheer.xcodeproj`) als `versions/Beheer/v<versie>/Bingr-Beheer-<versie>-build<N>-Xcode.zip` in deze repo (alleen de nieuwste) en werkt `versions/latest.json` (sleutel `beheer`) en `versions/README.md` bij. Fouten staan als annotaties bij de run en in `latest.txt` op de branch `ci-logs-beheer`.
 - **Installeren**: zip uitpakken, `ios/BingrBeheer.xcodeproj` openen in Xcode 16, bij *Signing & Capabilities* je Team kiezen (staat standaard op het Bingr-team) en op je iPhone/iPad draaien. Zelf genereren kan ook: `brew install xcodegen && cd ios && xcodegen generate`.
@@ -80,9 +96,12 @@ Native SwiftUI-app voor iPhone en iPad (iOS/iPadOS 17+, bundle-id `nl.lrvdlinden
 4. Vraag in het hostingpaneel een SSL-certificaat aan voor beheer.bingr.online (meestal *SSL / Let's Encrypt*, gratis). Zet, als het paneel dat kan, *HTTPS forceren* aan.
 5. Start *Actions → Dashboard → Run workflow*. Bij een groen vinkje zonder waarschuwing staat het dashboard op https://beheer.bingr.online.
 
-## GitHub Actions in een privé-repo
+## GitHub Actions in een openbare repo
 
-Workflows in een privé-repo gebruiken de Actions-minuten van het account (openbare repo's zijn gratis). Staat er bij een run *"The job was not started because recent account payments have failed or your spending limit needs to be increased"*, regel dat dan eerst bij GitHub onder *Settings → Billing and plans* (betaalmethode of uitgavenlimiet voor Actions).
+- De logs van elke run zijn openbaar: schrijf nooit secrets, interne adressen, FTP-mappen of gebruikersgegevens naar het log (GitHub maskeert secrets, maar niet wat ervan is afgeleid).
+- Secrets gaan niet naar workflows van pull requests uit forks; de deploys draaien alleen bij een push naar `main` of handmatig.
+- Elke `uses:` staat vast op een commit-SHA (met de tag erachter als commentaar); werk die bij door de SHA van de nieuwe tag op te zoeken (`git ls-remote https://github.com/<eigenaar>/<action> refs/tags/<tag>`, bij een geannoteerde tag de regel met `^{}`).
+- Openbare repo's gebruiken geen betaalde Actions-minuten.
 
 ## Lokaal testen
 

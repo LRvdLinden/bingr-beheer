@@ -70,6 +70,9 @@
     delete_failed: "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
     bad_plan: "Kies Gratis of Lifetime.", bad_max_streams: "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
     bad_max_devices: "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.", bad_settings: "Ongeldige instellingen.",
+    // build 97
+    invalid_token: "Ongeldige of verlopen link.", unknown_action: "Onbekende actie (vernieuw de pagina; het dashboard is misschien bijgewerkt).",
+    bad_priority: "Ongeldige prioriteit.", rate_limited: "Te veel verzoeken achter elkaar. Wacht een minuut en probeer het opnieuw.",
   };
   // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
   const PLAN_DEFAULTS = { free: { streams: 2, devices: 8 }, lifetime: { streams: 6, devices: 15 } };
@@ -257,8 +260,10 @@
     if (!rows.length) { el.innerHTML = '<p class="empty">Nog geen gegevens.</p>'; return; }
     const max = Math.max(...rows.map((r) => r.n), 1);
     el.innerHTML = rows.slice(0, 14).map((r) =>
-      `<div class="hbar"><span class="n">${r.label}</span><span class="t"><span style="width:${Math.max(2, (r.n / max) * 100)}%"></span></span><span class="c">${nf.format(r.n)}</span></div>`).join("") +
+      `<div class="hbar"><span class="n">${r.label}</span><span class="t"><span data-w="${Math.max(2, (r.n / max) * 100).toFixed(1)}"></span></span><span class="c">${nf.format(r.n)}</span></div>`).join("") +
       (rows.length > 14 ? `<p class="sub">+ ${rows.length - 14} meer</p>` : "");
+    // build 97: breedte via de CSSOM in plaats van een style-attribuut (Content-Security-Policy: style-src 'self')
+    el.querySelectorAll("span[data-w]").forEach((b) => { b.style.width = `${b.dataset.w}%`; });
   }
 
   // ---- gebruikers ----
@@ -546,6 +551,14 @@
       finally { $("linkSave").disabled = false; }
     };
   }
+  // build 97: overal uitloggen (alle browsers en de app): de functie verhoogt de tokenversie, alle tokens vervallen
+  $("logoutAll").onclick = async () => {
+    if (!confirm("Overal uitloggen? Alle sessies van het beheer (ook in de app en in andere browsers) vervallen meteen.")) return;
+    $("logoutAll").disabled = true;
+    try { await call("logout_all"); logout("Je bent overal uitgelogd."); }
+    catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { $("logoutAll").disabled = false; }
+  };
 
   // ---- support ----
   const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };

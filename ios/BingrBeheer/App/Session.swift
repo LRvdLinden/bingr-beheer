@@ -121,7 +121,18 @@ final class Session {
         expiresAt = exp
         loginMessage = nil
         isLocked = false
+        // build 97: vergrendelen staat standaard aan bij de eerste keer inloggen (als het apparaat een toegangscode heeft);
+        // zet je hem zelf uit in Instellingen, dan blijft hij uit
+        if UserDefaults.standard.object(forKey: "lockEnabled") == nil && canLock {
+            UserDefaults.standard.set(true, forKey: "lockEnabled")
+        }
         startCountsPolling()
+    }
+
+    /// build 97: overal uitloggen (actie logout_all): alle beheer-tokens vervallen, ook op het web en andere apparaten.
+    func logoutAll() async throws {
+        try await call("logout_all")
+        logout("Je bent overal uitgelogd.")
     }
 
     func logout(_ message: String? = nil) {

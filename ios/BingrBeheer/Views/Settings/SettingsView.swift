@@ -6,6 +6,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("lockEnabled") private var lockEnabled = false
     @State private var confirmLogout = false
+    @State private var confirmLogoutAll = false
+    @State private var loggingOutAll = false
     // upgrade-link per platform (acties app_settings_get / app_settings_set)
     @State private var links: [String: Bool]?
     @State private var linksError: String?
@@ -80,6 +82,14 @@ struct SettingsView: View {
                 Button(role: .destructive) { confirmLogout = true } label: {
                     Label("Uitloggen", systemImage: "rectangle.portrait.and.arrow.right")
                 }
+                // build 97: alle sessies (web en app, alle apparaten) intrekken
+                Button(role: .destructive) { confirmLogoutAll = true } label: {
+                    HStack {
+                        Label("Overal uitloggen", systemImage: "rectangle.portrait.and.arrow.right.fill")
+                        if loggingOutAll { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(loggingOutAll)
             }
 
             Section("Links") {
@@ -109,6 +119,13 @@ struct SettingsView: View {
                 session.logout()
             }
         }
+        .confirmationDialog("Overal uitloggen?", isPresented: $confirmLogoutAll, titleVisibility: .visible) {
+            Button("Overal uitloggen", role: .destructive) {
+                Task { await logoutAll() }
+            }
+        } message: {
+            Text("Alle sessies van het beheer (deze app, andere apparaten en het web-dashboard) vervallen meteen.")
+        }
     }
 
     private func loadLinks() async {
@@ -121,6 +138,17 @@ struct SettingsView: View {
         } catch {
             if error is CancellationError { return }
             linksError = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
+        }
+    }
+
+    private func logoutAll() async {
+        loggingOutAll = true
+        defer { loggingOutAll = false }
+        do {
+            try await session.logoutAll()
+            dismiss()
+        } catch {
+            session.report(error)
         }
     }
 

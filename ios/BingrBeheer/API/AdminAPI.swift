@@ -63,6 +63,10 @@ struct APIError: Error, LocalizedError {
         "bad_max_streams": "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
         "bad_max_devices": "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.",
         "bad_settings": "Ongeldige instellingen.",
+        // build 97
+        "invalid_token": "Ongeldige of verlopen link.",
+        "unknown_action": "Onbekende actie (werk de app bij; de server is misschien nieuwer).",
+        "rate_limited": "Te veel verzoeken achter elkaar. Wacht een minuut en probeer het opnieuw.",
         // meldingen (status: notice_save / notice_update / notice_delete), zelfde teksten als web/admin.js
         "title_missing": "Vul een Nederlandse titel in.",
         "notice_message_missing": "Schrijf een bericht (Nederlands) voor de tijdlijn.",

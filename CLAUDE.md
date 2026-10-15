@@ -1,10 +1,12 @@
 # Bingr-beheer: werkafspraken
 
-- Privé-repo met het beheer-dashboard van Bingr (https://beheer.bingr.online) en de Supabase Edge Function `admin`. Niets hiervan hoort in de openbare repo's (iptv-ios-appletv, bingr-website, bingr-android).
+- Openbare repo met het beheer-dashboard van Bingr (https://beheer.bingr.online) en de Supabase Edge Function `admin`. Het beheer hoort niet in de andere repo's (iptv-ios-appletv, bingr-website, bingr-android), behalve het schema (zie onder).
+- Openbaar betekent: geen geheimen, geen persoonsgegevens (e-mailadressen, namen, account-id's, tickets, exports, ook niet als testdata of in screenshots) en geen logs met servergegevens (secrets, interne adressen, FTP-mappen, serverantwoorden met gebruikersgegevens) in bestanden, commits of workflow-logs.
 - Wijzigingen hier komen **nooit** in de changelog (`docs/changelog.json` in iptv-ios-appletv), niet op bingr.online en niet in release-notities. Ze krijgen ook geen buildnummer.
 - Geheimen alleen als GitHub-secrets (zie README.md), nooit in de repo of in een log. De publieke Supabase-URL en de publishable key (`web/config.js`) mogen er wel in.
+- GitHub Actions vast op een commit-SHA (tag als commentaar), de Supabase CLI op een vaste versie; unittests van `admin` blokkeren de deploy.
 - Deploy:
-  - `web/` → workflow *Dashboard* (`deploy-site.yml`): FTPS-upload naar `FTP_DIR` (de map van het subdomein), of zonder `FTP_DIR` naar de hoofdmap van de FTP-login (eigen FTP-account van het subdomein; nooit als dat de webmap van bingr.online is), daarna controle van https://beheer.bingr.online/. Houd `noindex` in `web/index.html` en `Disallow: /` in `web/robots.txt`.
+  - `web/` → workflow *Dashboard* (`deploy-site.yml`): FTPS-upload naar `FTP_DIR` (de map van het subdomein), of zonder `FTP_DIR` naar de hoofdmap van de FTP-login (eigen FTP-account van het subdomein; nooit als dat de webmap van bingr.online is), daarna controle van https://beheer.bingr.online/. Houd `noindex` in `web/index.html` en `Disallow: /` in `web/robots.txt`. Houd de Content-Security-Policy (`web/.htaccess` en de meta in `web/index.html`) strikt: geen inline scripts, styles of `style=`-attributen (breedtes e.d. via `element.style`).
   - `supabase/functions/admin` → workflow *Admin-functie* (`deploy-admin.yml`): deploy van `admin`, de secrets BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD (en optioneel BINGR_SMTP_*), en een rooktest (fout wachtwoord = 401 met CORS voor https://beheer.bingr.online).
   - Controleer na elke push met `gh run list -R LRvdLinden/bingr-beheer` dat de workflows geslaagd zijn.
 - `ios/` is de native app Bingr Beheer (SwiftUI, iOS/iPadOS 17+, XcodeGen; eigen versie/build in `ios/project.yml`): workflow *Beheer-app* (`build-ios.yml`) bouwt hem en zet het Xcode-project in `versions/Beheer/` (latest.json-sleutel `beheer`); nieuwe functies van het web-dashboard ook in de app overnemen. Nooit in de changelog.

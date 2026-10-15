@@ -4,6 +4,10 @@
   Header always set X-Frame-Options "DENY"
   Header always set Referrer-Policy "no-referrer"
   Header always set X-Content-Type-Options "nosniff"
+  # build 97: strikte Content-Security-Policy (geen inline scripts of styles; alleen de functie admin op Supabase)
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://vjewsncmsxmhmhnoxwqx.supabase.co; img-src 'self' data: blob: https:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
 </IfModule>
 
 # Alleen via https://beheer.bingr.online: ligt de map van het subdomein binnen de webmap van bingr.online

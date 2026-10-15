@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://vjewsncmsxmhmhnoxwqx.supabase.co; img-src 'self' data: blob: https:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <title>Beheer · Bingr</title>
 <meta name="bingr-app" content="beheer">
 <link rel="icon" href="favicon.png">
@@ -137,6 +138,11 @@
         <h2>Upgrade-link per platform</h2>
         <p class="sub">Of de apps een link, knop of QR-code naar bingr.online/upgrade/ tonen bij Lifetime-functies. De vergelijking Gratis / Lifetime zien ze altijd.</p>
         <div id="linkSettings" class="link-settings"></div>
+      </div>
+      <div class="panel">
+        <h2>Sessies</h2>
+        <p class="sub">Log overal uit: alle sessies van het beheer (deze browser, andere browsers en de app Bingr Beheer) vervallen meteen. Daarna moet je opnieuw inloggen.</p>
+        <div class="form-btns"><button id="logoutAll" class="btn danger" type="button">Overal uitloggen</button></div>
       </div>
     </section>
   </main>

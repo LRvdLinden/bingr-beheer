@@ -1,8 +1,15 @@
-// Bingr: beheer (https://beheer.bingr.online, privé-repo LRvdLinden/bingr-beheer). Los van device-auth; nooit in de changelog.
+// Bingr: beheer (https://beheer.bingr.online, openbare repo LRvdLinden/bingr-beheer; geheimen alleen als function-secrets).
+// Los van device-auth; nooit in de changelog.
 // POST /functions/v1/admin met JSON {action, token?, ...}; header `apikey`.
 // Inloggegevens alleen als function-secrets BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD (uit de GitHub-secrets).
 //   login               {user, password}  -> {token, expires_at}   (5 fouten per IP = 15 min geblokkeerd: 429 {error:"locked", retry_after})
 //                       (build 95: 5 pogingen per IP per 15 min, en > 60 pogingen per uur van alle IP's samen = alles 15 min dicht)
+//                       (build 97: het token bevat geen inlognaam meer, wel de tokenversie v uit admin_token_state; elk
+//                       verzoek controleert v. Een ander wachtwoord verhoogt de versie vanzelf.)
+//   logout_all          {token}           -> {ok}    (build 97: overal uitloggen: versie + 1, alle tokens vervallen)
+//   build 97: na inloggen max. 300 verzoeken per minuut per IP (429 {error:"rate_limited", retry_after}); unsubscribe
+//   max. 20 per 10 min per IP (one-click vanaf mailservers: 200 per 10 min). Inzage van persoonsgegevens (user_detail,
+//   users met zoekterm, support_get), geblokkeerde inlogpogingen en mislukte acties (met foutcode) staan in admin_audit.
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
 //   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
@@ -118,25 +125,41 @@ async function hmacKey(material: string) {
 async function hmac(material: string, data: string) {
   return new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey(material), enc.encode(data)));
 }
-// sleutel voor beheer-tokens: wijzigt het wachtwoord, dan vervallen alle tokens
-const adminMaterial = () => `bingr-admin-v1|${env("BINGR_ADMIN_PASSWORD")}|${env("SUPABASE_SERVICE_ROLE_KEY")}`;
+// sleutel voor beheer-tokens: wijzigt het wachtwoord (of build 97: de gebruikersnaam), dan vervallen alle tokens
+const adminMaterial = () => `bingr-admin-v2|${env("BINGR_ADMIN_USER")}|${env("BINGR_ADMIN_PASSWORD")}|${env("SUPABASE_SERVICE_ROLE_KEY")}`;
 // sleutel voor afmeldlinks: blijft geldig (BINGR_SOURCES_KEY wordt nooit vervangen)
 const unsubMaterial = () => `bingr-unsub-v1|${env("BINGR_SOURCES_KEY") || env("SUPABASE_SERVICE_ROLE_KEY")}`;
 
+// build 97: tokenversie (tabel admin_token_state, schema in iptv-ios-appletv). De functie geeft de sleutel-hash van het
+// wachtwoord mee (HMAC met de service-role-sleutel, nooit het wachtwoord zelf); is die anders dan de opgeslagen, dan verhoogt
+// de database eerst de versie, zodat een nieuw wachtwoord alle oude tokens intrekt (ook als de sleutel zelf gelijk zou blijven).
+async function pwHash() {
+  return b64u(await hmac(`bingr-admin-pw|${env("SUPABASE_SERVICE_ROLE_KEY")}`, env("BINGR_ADMIN_PASSWORD")));
+}
+async function tokenVersion(): Promise<number> {
+  const { data, error } = await admin.rpc("bingr_admin_token_version", { p_pw_hash: await pwHash() });
+  if (error) throw new Error(`token_version: ${error.message}`);
+  return Number(data);
+}
+// build 97: geen inlognaam meer in het token (het payload-deel is gewoon leesbaar); wel versie v en een willekeurige id
 async function makeToken() {
   const exp = Date.now() + TOKEN_TTL_MS;
-  const payload = b64u(enc.encode(JSON.stringify({ u: env("BINGR_ADMIN_USER"), exp })));
+  const v = await tokenVersion();
+  const payload = b64u(enc.encode(JSON.stringify({ v, exp, j: b64u(crypto.getRandomValues(new Uint8Array(9))) })));
   return { token: `${payload}.${b64u(await hmac(adminMaterial(), payload))}`, expires_at: new Date(exp).toISOString() };
 }
 async function validToken(token: unknown) {
   if (!env("BINGR_ADMIN_PASSWORD") || typeof token !== "string" || token.length > 500) return false;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return false;
+  let p: { v?: unknown; exp?: unknown };
   try {
     if (!sameBytes(unb64u(sig), await hmac(adminMaterial(), payload))) return false;
-    const p = JSON.parse(new TextDecoder().decode(unb64u(payload)));
-    return p.u === env("BINGR_ADMIN_USER") && typeof p.exp === "number" && p.exp > Date.now();
+    p = JSON.parse(new TextDecoder().decode(unb64u(payload)));
   } catch { return false; }
+  if (typeof p.exp !== "number" || p.exp <= Date.now() || typeof p.v !== "number") return false;
+  // pas na een geldige handtekening naar de database (een vervalst token kost geen databaseverzoek)
+  return p.v === await tokenVersion();
 }
 async function unsubToken(userId: string) {
   return `${userId}.${b64u((await hmac(unsubMaterial(), `unsub:${userId}`)).subarray(0, 18))}`;
@@ -198,9 +221,20 @@ async function authUser(id: string): Promise<AuthUser | null> {
   return (data?.user as AuthUser | undefined) ?? null;
 }
 
+// build 97: een mislukte insert niet meer stil negeren (wel doorgaan: de actie zelf is al gebeurd)
 async function audit(action: string, ip: string, target?: string | null, detail?: unknown) {
-  await admin.from("admin_audit").insert({ action, ip, target_user: target ?? null, detail: detail ?? null });
+  try {
+    const { error } = await admin.from("admin_audit").insert({ action, ip, target_user: target ?? null, detail: detail ?? null });
+    if (error) console.error("admin", "audit", action, error.message);
+  } catch (e) { console.error("admin", "audit", action, e instanceof Error ? e.message : e); }
 }
+// build 97: limiet per sleutel (bingr_rate_hit, schema in iptv-ios-appletv). Werkt de teller niet, dan doorlaten (en loggen).
+async function rateOk(key: string, max: number, windowSec: number): Promise<boolean> {
+  const { data, error } = await admin.rpc("bingr_rate_hit", { p_key: key, p_max: max, p_window: windowSec });
+  if (error) { console.error("admin", "rate", key.split(":")[0], error.message); return true; }
+  return data !== false;
+}
+const UNSUB_MAX = 20, UNSUB_ONECLICK_MAX = 200, UNSUB_WINDOW = 600, AUTHED_MAX = 300, AUTHED_WINDOW = 60;
 // afmelden met één klik (RFC 8058): de mailclient doet POST <functie-URL>?unsubscribe=<token> met List-Unsubscribe=One-Click.
 // Een GET (oudere clients openen de link in de browser) gaat door naar de afmeldpagina op bingr.online; die vraagt eerst.
 const oneClickUrl = (t: string) => `${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/admin?unsubscribe=${encodeURIComponent(t)}`;
@@ -226,6 +260,8 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return plain("method not allowed", 405);
     try {
+      // build 97: limiet per IP; ruimer dan de afmeldpagina, want one-click komt van (gedeelde) mailservers
+      if (!(await rateOk(`admin-unsub1:${clientIp(req)}`, UNSUB_ONECLICK_MAX, UNSUB_WINDOW))) return plain("too many requests", 429);
       return (await unsubscribe(oneClick)) ? plain("unsubscribed", 200) : plain("invalid link", 400);
     } catch (e) {
       console.error("admin", "one-click unsubscribe", e instanceof Error ? e.message : e);
@@ -263,7 +299,11 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
     // en globaal, en zegt of hij door mag. Zo kunnen parallelle verzoeken niet langs de grens tussen controle en telling.
     const { data: att, error: ae } = await admin.rpc("bingr_admin_attempt", { p_ip: ip });
     if (ae) throw new Error(ae.message);
-    if (!att?.allowed) return json({ error: "locked", retry_after: att?.retry_after ?? 900 }, 429);
+    if (!att?.allowed) {
+      // build 97: geblokkeerde pogingen ook in het logboek, hoogstens 5 per IP per 15 min (geen logboek vol bij een aanval)
+      if (await rateOk(`admin-auditlock:${ip}`, 5, 900)) await audit("login_locked", ip, null, { retry_after: att?.retry_after ?? 900 });
+      return json({ error: "locked", retry_after: att?.retry_after ?? 900 }, 429);
+    }
     // altijd allebei vergelijken, op hashes van gelijke lengte (geen timing-verschil)
     const [a, b, c, d] = await Promise.all([sha256(String(body.user ?? "")), sha256(env("BINGR_ADMIN_USER")),
       sha256(String(body.password ?? "")), sha256(env("BINGR_ADMIN_PASSWORD"))]);
@@ -279,13 +319,47 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
   }
 
   if (action === "unsubscribe") {
+    // build 97: max. 20 per 10 minuten per IP
+    if (!(await rateOk(`admin-unsub:${ip}`, UNSUB_MAX, UNSUB_WINDOW))) return json({ error: "rate_limited", retry_after: UNSUB_WINDOW }, 429);
     if (!(await unsubscribe(body.t))) return json({ error: "invalid_token" }, 400);
     return json({ ok: true });
   }
 
   if (!(await validToken(body.token))) return json({ error: "not_signed_in" }, 401);
+  // build 97: na inloggen max. 300 verzoeken per minuut per IP
+  if (!(await rateOk(`admin:${ip}`, AUTHED_MAX, AUTHED_WINDOW))) return json({ error: "rate_limited", retry_after: AUTHED_WINDOW }, 429);
 
+  // build 97: mislukte acties (ook serverfouten) met foutcode in het logboek; user_block/user_delete loggen hun eigen
+  // mislukking al (user_block_failed, user_delete_failed)
+  let res: Response;
+  try {
+    res = await authed(action, body, ip, json);
+  } catch (e) {
+    console.error("admin", action, e instanceof Error ? e.message : e);
+    res = json({ error: "server_error" }, 500);
+  }
+  if (res.status >= 400) {
+    const code = String((await res.clone().json().catch(() => ({})))?.error ?? res.status).slice(0, 60);
+    if (!(code === "block_failed" || code === "delete_failed")) {
+      const t = [body.id, body.user_id].find(isUuid) as string | undefined;
+      await audit(`${action.slice(0, 40) || "?"}_failed`, ip, t?.toLowerCase() ?? null, {
+        error: code, status: res.status, number: typeof body.number === "number" ? body.number : undefined,
+        op: action === "status" ? String(body.op ?? "").slice(0, 30) : undefined,
+      });
+    }
+  }
+  return res;
+}
+
+async function authed(action: string, body: Record<string, unknown>, ip: string, json: (b: unknown, s?: number) => Response): Promise<Response> {
   switch (action) {
+    case "logout_all": {
+      // build 97: overal uitloggen (web en app): tokenversie + 1
+      const { data, error } = await admin.rpc("bingr_admin_logout_all");
+      if (error) throw new Error(error.message);
+      await audit("logout_all", ip, null, { version: data });
+      return json({ ok: true });
+    }
     case "stats": {
       const { data, error } = await admin.rpc("bingr_admin_stats");
       if (error) throw new Error(error.message);
@@ -301,6 +375,8 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
         ...(["blocked", "free", "lifetime", "custom"].includes(String(body.filter)) ? { p_filter: String(body.filter) } : {}),
       });
       if (error) throw new Error(error.message);
+      // build 97: zoeken in accounts (op e-mailadres) in het logboek; alleen lengte van de zoekterm, niet de term zelf
+      if (q) await audit("users_search", ip, null, { q_length: q.length, filter: body.filter || undefined, page, results: data?.total ?? 0 });
       const items = (data?.items ?? []).map((u: Record<string, unknown>) => ({ ...u, email: maskEmail(u.email) }));
       return json({
         total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null,
@@ -312,6 +388,8 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       const { data, error } = await admin.rpc("bingr_admin_user", { p_id: body.id });
       if (error) throw new Error(error.message);
       if (!data) return json({ error: "not_found" }, 404);
+      // build 97: inzage van een account in het logboek (wie, geen inhoud)
+      await audit("user_view", ip, String(body.id).toLowerCase());
       return json({ ...data, email: maskEmail(data.email) });
     }
     case "plan_get": {
@@ -517,9 +595,18 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 400);
       const { data: a } = await admin.from("announcements").select("title_nl,body_nl,title_en,body_en").eq("id", body.id).maybeSingle();
       if (!a) return json({ error: "not_found" }, 404);
-      const { data: claim, error } = await admin.rpc("bingr_announce_claim", { p_id: body.id, p_batch: BATCH });
+      // build 97: per ontvanger bijhouden (announcement_sends). bingr_announce_take claimt een batch als 'sending'; na
+      // elke mail zet bingr_announce_mark die ontvanger op 'sent' of 'failed'. Stopt de functie halverwege, dan komen de
+      // ontvangers die nog op 'sending' staan na 10 minuten opnieuw aan de beurt (vroeger kregen ze nooit een mail).
+      const { data: claim, error } = await admin.rpc("bingr_announce_take", { p_id: body.id, p_batch: BATCH });
       if (error) throw new Error(error.message);
       let sent = 0, failed = 0;
+      // meldingen die niet in de database kwamen: aan het eind nog één keer samen
+      const unsent: string[] = [], unfailed: string[] = [];
+      const mark = async (id: string, ok: boolean) => {
+        const { error: me } = await admin.rpc("bingr_announce_mark", { p_id: body.id, p_sent: ok ? [id] : [], p_failed: ok ? [] : [id] });
+        if (me) { console.error("announce_send mark", me.message); (ok ? unsent : unfailed).push(id); }
+      };
       const items: { id: string; email: string; lang: string | null }[] = claim?.items ?? [];
       if (items.length) {
         const tx = transport();
@@ -529,24 +616,31 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
             const tok = await unsubToken(r.id);
             const url = `${SITE}/unsubscribe/?t=${encodeURIComponent(tok)}`;
             const m = announcementMail(en ? "en" : "nl", en ? a.title_en : a.title_nl, en ? a.body_en : a.body_nl, url);
+            let ok = false;
             try {
               await tx.sendMail({
-                from: env("BINGR_SMTP_FROM"), to: r.email, subject: m.subject, text: m.text, html: m.html,
+                from: smtpFrom(), to: r.email, subject: m.subject, text: m.text, html: m.html,
                 headers: { "List-Unsubscribe": `<${oneClickUrl(tok)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
               });
-              sent++;
+              ok = true; sent++;
             } catch (e) {
               failed++;
               console.error("announce_send", e instanceof Error ? e.message : e);
             }
+            await mark(r.id, ok);
             await new Promise((r) => setTimeout(r, 150));
           }
         } finally { tx.close(); }
       }
-      const { data: rep, error: re } = await admin.rpc("bingr_announce_report", { p_id: body.id, p_sent: sent, p_failed: failed });
+      // altijd melden (ook bij een lege batch): eerst wat nog niet gemeld was, dan de tellers ophalen
+      if (unsent.length || unfailed.length) {
+        const { error: me } = await admin.rpc("bingr_announce_mark", { p_id: body.id, p_sent: unsent, p_failed: unfailed });
+        if (me) console.error("announce_send mark (opnieuw)", me.message);
+      }
+      const { data: rep, error: re } = await admin.rpc("bingr_announce_report", { p_id: body.id, p_sent: 0, p_failed: 0 });
       if (re) throw new Error(re.message);
       if (rep?.done || claim?.done) await audit("announce_email", ip, null, { id: body.id, ...rep });
-      return json({ ...rep, done: !!(rep?.done || claim?.done), batch_sent: sent, batch_failed: failed });
+      return json({ ...rep, done: !!(rep?.done || claim?.done), busy: !!claim?.busy, batch_sent: sent, batch_failed: failed });
     }
     case "announcements_list": {
       const { data, error } = await admin.from("announcements")
@@ -604,6 +698,8 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       const out = await res.json().catch(() => ({ error: "server_error" }));
       if (res.status === 403) return json({ error: "support_forbidden" }, 502);
       if (res.status === 404 && !out?.error) return json({ error: "support_not_deployed" }, 503);
+      // build 97: inzage van een ticket (met berichten en accountgegevens) in het logboek: alleen het nummer
+      if (res.ok && action === "support_get") await audit("support_view", ip, null, { number: rest.number });
       if (res.ok && action === "support_poll") {
         await audit(action, ip, null, { ok: out.ok ?? null, fetched: out.fetched, imported: out.imported, agent: out.agent, new_tickets: out.new_tickets, skipped: out.skipped ? true : undefined });
       }
