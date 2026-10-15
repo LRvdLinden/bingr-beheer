@@ -1,21 +1,21 @@
 {
  "android": {
   "version": "1.0.0",
-  "build": 92,
-  "file": "Bingr-1.0.0-build92.apk",
-  "path": "Android/v1.0.0/Bingr-1.0.0-build92.apk",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Android/v1.0.0/Bingr-1.0.0-build92.apk",
-  "size": 58628019,
-  "date": "2026-10-14"
+  "build": 99,
+  "file": "Bingr-1.0.0-build99.apk",
+  "path": "Android/v1.0.0/Bingr-1.0.0-build99.apk",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Android/v1.0.0/Bingr-1.0.0-build99.apk",
+  "size": 58144622,
+  "date": "2026-10-15"
  },
  "tizen": {
   "version": "1.0.0",
-  "build": 92,
-  "file": "Bingr-1.0.0-build92-testsigned.wgt",
-  "path": "Samsung TV/v1.0.0/Bingr-1.0.0-build92-testsigned.wgt",
-  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Samsung%20TV/v1.0.0/Bingr-1.0.0-build92-testsigned.wgt",
-  "size": 656920,
-  "date": "2026-10-14"
+  "build": 99,
+  "file": "Bingr-1.0.0-build99-testsigned.wgt",
+  "path": "Samsung TV/v1.0.0/Bingr-1.0.0-build99-testsigned.wgt",
+  "url": "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/Samsung%20TV/v1.0.0/Bingr-1.0.0-build99-testsigned.wgt",
+  "size": 608489,
+  "date": "2026-10-15"
  },
  "apple": {
   "version": "1.0.0",
