@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bericht uit `announcements_list`.
+/// Bericht uit `announcements_list`: e-mails en de oude berichten (in-app banner, vervallen sinds de pushmeldingen).
 struct Announcement: Identifiable {
     let id: String
     let titleNl: String
@@ -15,6 +15,8 @@ struct Announcement: Identifiable {
     let emailFailed: Int
     let emailDoneAt: Date?
     let active: Bool
+    /// Sinds de pushmeldingen: alleen per e-mail (nooit als in-app banner getoond).
+    let mailOnly: Bool
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
@@ -30,6 +32,7 @@ struct Announcement: Identifiable {
         emailFailed = j["email_failed"].int ?? 0
         emailDoneAt = j["email_done_at"].date
         active = j["active"].bool ?? false
+        mailOnly = j["mail_only"].bool ?? false
     }
 
     /// E-mail gestart maar nog niet afgerond: "Verder verzenden".

@@ -197,7 +197,7 @@
     appMenu.querySelectorAll("[data-go]").forEach((b) => (b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadPushTab, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -1407,51 +1407,207 @@
     };
   }
 
-  // ---- berichten ----
-  let smtpOk = true, pvLang = "nl", sending = false;
+  // ---- pushmeldingen (tab "messages"; contract docs/PUSH.md in iptv-ios-appletv) ----
+  // Versturen via push_send (functie admin -> push), voortgang via push_progress, geschiedenis via push_history.
+  // "Ook per e-mail sturen" gebruikt de oude berichten-mail (announce + announce_send), zonder in-app banner.
+  let smtpOk = true, pvLang = "nl", sending = false, phPage = 0;
+  const PUSH_PF = { ios: "iPhone", ipados: "iPad", macos: "Mac", android: "Android", web: "Web" };
+  const PUSH_GROUP = { apple: "Apple (iPhone, iPad, Mac)", android: "Android" };
+  const PUSH_KIND = { release: ["Release", "rel"], admin: ["Beheer", "adm"], reminder: ["Herinnering", "rem"] };
+  const PUSH_NOTE = {
+    apns_not_configured: "APNs (Apple) niet ingesteld", fcm_not_configured: "FCM (Android) niet ingesteld",
+    webpush_not_configured: "Web Push niet ingesteld", vapid_not_configured: "Web Push niet ingesteld",
+  };
+  const accSel = new Map(); // id -> label (naam en gemaskeerd e-mailadres, zoals op de pagina Gebruikers)
+  Object.assign(ERR, {
+    push_not_configured: "Pushmeldingen zijn nog niet ingesteld (PUSH_ADMIN_SECRET; workflow Backend in iptv-ios-appletv draaien).",
+    push_not_deployed: "De functie push staat nog niet online (workflow Backend in iptv-ios-appletv draaien).",
+    push_forbidden: "De functie push weigerde de aanvraag (PUSH_ADMIN_SECRET klopt niet).",
+    push_unreachable: "De functie push is niet bereikbaar. Probeer het later opnieuw.",
+    title_too_long: "De titel is te lang (max. 100 tekens).", body_too_long: "De tekst is te lang (max. 600 tekens).",
+    en_incomplete: "Vul bij Engels zowel titel als tekst in (of laat beide leeg).", text_too_large: "De tekst is te lang voor een pushmelding.",
+    bad_link: "De link moet met https:// beginnen en naar een echte website gaan.", bad_target: "Kies een doelgroep.",
+    no_accounts: "Kies minstens één account.", too_many_accounts: "Kies hoogstens 500 accounts.", bad_account: "Ongeldig account in de lijst.",
+    no_platforms: "Kies minstens één platform.", no_push_platform: "Apple TV, Android TV en Samsung TV hebben geen systeem-push.",
+    email_required: "Berichten in de apps bestaan niet meer; gebruik een pushmelding (eventueel ook per e-mail).",
+  });
+
+  const targetMode = () => document.querySelector('input[name="pTarget"]:checked')?.value || "all";
   function applySmtp() {
-    $("mail").disabled = !smtpOk; if (!smtpOk) $("mail").checked = false;
+    const allUsers = targetMode() === "all";
+    $("mail").disabled = !smtpOk || !allUsers;
+    if ($("mail").disabled) $("mail").checked = false;
     $("smtpHint").classList.toggle("hidden", smtpOk);
+    $("mailHint").classList.toggle("dim", !allUsers);
+    sendLabel();
   }
+  function sendLabel() { $("sendBtn").textContent = $("mail").checked ? "Versturen en e-mailen" : "Versturen"; }
   function preview() {
     const en = pvLang === "en" && $("tEn").value.trim() && $("bEn").value.trim();
     $("pvTitle").textContent = (en ? $("tEn") : $("tNl")).value.trim() || "Titel";
-    $("pvBody").textContent = (en ? $("bEn") : $("bNl")).value.trim() || "Tekst van het bericht";
+    $("pvBody").textContent = (en ? $("bEn") : $("bNl")).value.trim() || "Tekst van de melding";
+    let host = "";
+    try { const u = new URL($("pUrl").value.trim()); if (u.protocol === "https:") host = u.hostname; } catch { /* geen link */ }
+    $("pvLink").textContent = host ? `Opent ${host}` : "";
+    $("pvLink").classList.toggle("hidden", !host);
   }
-  ["tNl", "bNl", "tEn", "bEn"].forEach((id) => $(id).addEventListener("input", preview));
-  document.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => {
-    pvLang = b.dataset.lang; document.querySelectorAll(".seg button").forEach((x) => x.classList.toggle("on", x === b)); preview();
+  ["tNl", "bNl", "tEn", "bEn", "pUrl"].forEach((id) => $(id).addEventListener("input", preview));
+  document.querySelectorAll("#pvSeg button").forEach((b) => (b.onclick = () => {
+    pvLang = b.dataset.lang; document.querySelectorAll("#pvSeg button").forEach((x) => x.classList.toggle("on", x === b)); preview();
   }));
-  $("mail").onchange = () => { $("sendBtn").textContent = $("mail").checked ? "Plaatsen en e-mailen" : "Plaatsen"; };
+  $("mail").onchange = sendLabel;
+  document.querySelectorAll('input[name="pTarget"]').forEach((r) => (r.onchange = () => {
+    const m = targetMode();
+    $("pAccounts").classList.toggle("hidden", m !== "accounts");
+    $("pPlatforms").classList.toggle("hidden", m !== "platforms");
+    applySmtp();
+    if (m === "accounts") $("pAccQ").focus();
+  }));
+
+  // doelgroep: accounts zoeken zoals op de pagina Gebruikers (actie users met q), meerdere kiezen
+  let accTimer, accSeq = 0;
+  function renderAccSel() {
+    $("pAccSel").innerHTML = accSel.size
+      ? [...accSel].map(([id, l]) => `<span class="acc-chip" data-id="${esc(id)}">${esc(l)}<button type="button" aria-label="${esc(l)} weghalen">×</button></span>`).join("")
+        + `<span class="sub">${nf.format(accSel.size)} ${accSel.size === 1 ? "account" : "accounts"} gekozen</span>`
+      : '<span class="sub">Nog geen accounts gekozen.</span>';
+    $("pAccSel").querySelectorAll(".acc-chip button").forEach((b) => (b.onclick = () => { accSel.delete(b.parentElement.dataset.id); renderAccSel(); }));
+  }
+  function closeAccRes() { $("pAccRes").classList.add("hidden"); $("pAccRes").innerHTML = ""; }
+  async function searchAccounts() {
+    const q = $("pAccQ").value.trim(), seq = ++accSeq;
+    if (q.length < 2) { closeAccRes(); return; }
+    let r;
+    try { r = await call("users", { q, page: 0, page_size: 8 }); } catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
+    if (seq !== accSeq) return;
+    const items = r.items || [];
+    $("pAccRes").innerHTML = items.length ? items.map((u) => {
+      const name = fullName(u), label = name ? `${name} (${u.email})` : u.email, on = accSel.has(u.id);
+      return `<li role="option" aria-selected="${on}"><button type="button" data-id="${esc(u.id)}" data-l="${esc(label)}"${on ? ' class="on"' : ""}>
+        ${name ? `<b>${esc(name)}</b> <span class="sub">${esc(u.email)}</span>` : `<b>${esc(u.email)}</b>`}${on ? '<span class="chk">gekozen</span>' : ""}</button></li>`;
+    }).join("") : '<li class="empty">Geen accounts gevonden.</li>';
+    $("pAccRes").classList.remove("hidden");
+    $("pAccRes").querySelectorAll("button[data-id]").forEach((b) => (b.onclick = () => {
+      const id = b.dataset.id;
+      if (accSel.has(id)) accSel.delete(id);
+      else if (accSel.size >= 500) { toast(ERR.too_many_accounts, true); return; }
+      else accSel.set(id, b.dataset.l);
+      renderAccSel(); searchAccounts(); $("pAccQ").focus();
+    }));
+  }
+  $("pAccQ").addEventListener("input", () => { clearTimeout(accTimer); accTimer = setTimeout(searchAccounts, 250); });
+  $("pAccQ").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeAccRes();
+    if (e.key === "Enter") { e.preventDefault(); $("pAccRes").querySelector("button[data-id]")?.click(); }
+    if (e.key === "ArrowDown") { e.preventDefault(); $("pAccRes").querySelector("button[data-id]")?.focus(); }
+  });
+  $("pAccRes").addEventListener("keydown", (e) => {
+    const all = [...$("pAccRes").querySelectorAll("button[data-id]")], i = all.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" && i >= 0) { e.preventDefault(); all[Math.min(i + 1, all.length - 1)].focus(); }
+    if (e.key === "ArrowUp" && i >= 0) { e.preventDefault(); (i === 0 ? $("pAccQ") : all[i - 1]).focus(); }
+    if (e.key === "Escape") { closeAccRes(); $("pAccQ").focus(); }
+  });
+  document.addEventListener("click", (e) => { if (!e.target.closest?.(".acc-search")) closeAccRes(); });
+  renderAccSel();
+
+  function readTarget() {
+    const m = targetMode();
+    if (m === "accounts") return accSel.size ? { accounts: [...accSel.keys()] } : null;
+    if (m === "platforms") {
+      const p = [...$("pPlatforms").querySelectorAll("input:checked:not(:disabled)")].flatMap((c) => c.value.split(","));
+      return p.length ? { platforms: p } : null;
+    }
+    return { all: true };
+  }
+  const pfList = (ps) => [...new Set((ps || []).map((p) => ({ ios: "iPhone/iPad", ipados: "iPhone/iPad" })[p] || PUSH_PF[p] || p))].join(", ");
+  function targetText(t, item) {
+    if (item?.kind === "release") return item.platform_group ? `${PUSH_GROUP[item.platform_group] || item.platform_group}, wie nog niet bijgewerkt is` : "Wie nog niet bijgewerkt is";
+    if (!t || t.type === "unknown") return item?.kind === "reminder" ? "Eén account" : "—";
+    if (t.type === "all" || t.all) return "Alle gebruikers";
+    if (t.type === "accounts") return `${nf.format(t.count ?? 0)} ${t.count === 1 ? "account" : "accounts"}`;
+    return pfList(t.platforms);
+  }
+
   $("composeForm").onsubmit = async (e) => {
     e.preventDefault();
     if (sending) return;
-    const data = {
-      title_nl: $("tNl").value.trim(), body_nl: $("bNl").value.trim(), title_en: $("tEn").value.trim(), body_en: $("bEn").value.trim(),
-      email: $("mail").checked, expires_at: $("exp").value ? new Date($("exp").value + "T23:59:59").toISOString() : null,
-    };
-    $("composeErr").textContent = "";
-    if (!data.title_nl || !data.body_nl) { $("composeErr").textContent = ERR.text_missing; return; }
-    if ((data.title_en && !data.body_en) || (!data.title_en && data.body_en)) { $("composeErr").textContent = "Vul bij Engels zowel titel als tekst in (of laat beide leeg)."; return; }
-    if (!confirm(data.email ? "Dit bericht plaatsen in de apps én e-mailen naar alle gebruikers?" : "Dit bericht plaatsen in de apps?")) return;
+    const err = (m) => { $("composeErr").textContent = m; };
+    const data = { title_nl: $("tNl").value.trim(), body_nl: $("bNl").value.trim(), title_en: $("tEn").value.trim(), body_en: $("bEn").value.trim(), url: $("pUrl").value.trim() };
+    err("");
+    if (!data.title_nl || !data.body_nl) return err(ERR.text_missing);
+    if (!!data.title_en !== !!data.body_en) return err(ERR.en_incomplete);
+    if (data.url && !/^https:\/\/[^\s/]+\.[^\s/]+/i.test(data.url)) return err(ERR.bad_link);
+    const target = readTarget();
+    if (!target) return err(targetMode() === "accounts" ? ERR.no_accounts : ERR.no_platforms);
+    const mail = $("mail").checked && "all" in target;
     sending = true; $("sendBtn").disabled = true;
     try {
-      const r = await call("announce", data);
-      ["tNl", "bNl", "tEn", "bEn", "exp"].forEach((id) => ($(id).value = ""));
-      preview();
-      if (data.email) await sendMails(r.id, r.email_total);
-      else toast("Bericht geplaatst.");
-      loadAnnouncements();
-    } catch (err) { if (err.code !== "auth") $("composeErr").textContent = errText(err); }
+      // bevestiging met het aantal apparaten (push_count)
+      let c = null;
+      try { c = await call("push_count", { target }); } catch (x) { if (x.code === "auth") return; if (x.body?.error && x.code !== "server_error") return err(errText(x)); }
+      const n = c?.devices;
+      const parts = c?.by_platform ? Object.entries(c.by_platform).filter(([, v]) => v > 0).map(([k, v]) => `${PUSH_PF[k] || k} ${nf.format(v)}`).join(", ") : "";
+      const acc = "accounts" in target && c?.accounts != null
+        ? `\n\n${nf.format(c.accounts)} van de ${nf.format(target.accounts.length)} gekozen accounts ${c.accounts === 1 ? "heeft" : "hebben"} pushmeldingen aan.` : "";
+      if (n === 0 && !mail) return err("Geen apparaten met pushmeldingen in deze doelgroep; er is niets verstuurd.");
+      const q = n == null ? "Het aantal apparaten is nog niet bekend. Toch versturen?"
+        : n === 0 ? "Geen apparaten met pushmeldingen in deze doelgroep. Alleen de e-mail versturen?"
+        : `Pushmelding versturen naar ${nf.format(n)} ${n === 1 ? "apparaat" : "apparaten"}${parts ? ` (${parts})` : ""}?${acc}`;
+      if (!confirm(mail ? `${q}\n\nDaarna gaat hetzelfde bericht ook per e-mail naar alle accounts met berichtenmail aan.` : q)) return;
+      let r = null;
+      if (n !== 0) {
+        r = await call("push_send", { title_nl: data.title_nl, body_nl: data.body_nl, ...(data.title_en ? { title_en: data.title_en, body_en: data.body_en } : {}), ...(data.url ? { url: data.url } : {}), target });
+      }
+      let annId = null, annTotal = 0;
+      if (mail) {
+        try { const a = await call("announce", { title_nl: data.title_nl, body_nl: data.body_nl, title_en: data.title_en, body_en: data.body_en, email: true }); annId = a.id; annTotal = a.email_total; }
+        catch (x) { if (x.code !== "auth") toast(`Pushmelding verstuurd, maar de e-mail niet: ${errText(x)}`, true); }
+      }
+      ["tNl", "bNl", "tEn", "bEn", "pUrl"].forEach((id) => ($(id).value = ""));
+      $("mail").checked = false; sendLabel(); preview();
+      phPage = 0; loadPushHistory();
+      await Promise.all([r ? followPush(r) : null, annId ? sendMails(annId, annTotal) : null]);
+      loadPushHistory(); if (annId) loadAnnouncements();
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
     finally { sending = false; $("sendBtn").disabled = false; }
   };
-  async function sendMails(id, totalHint) {
+
+  function countsText(r) {
+    const bits = [`${nf.format(r.sent || 0)} verstuurd`];
+    if (r.failed) bits.push(`${nf.format(r.failed)} mislukt`);
+    if (r.invalid) bits.push(`${nf.format(r.invalid)} ongeldig`);
+    if (r.queued) bits.push(`${nf.format(r.queued)} in wachtrij`);
+    return bits.join(", ");
+  }
+  // voortgang van een verstuurd bericht: push_progress herhalen tot done (versturen gaat in batches)
+  async function followPush(first) {
     const box = $("progress"), bar = box.querySelector(".bar span"), txt = box.querySelector(".sub");
+    box.classList.remove("hidden");
+    const show = (r) => {
+      const tot = r.devices || 0, done = (r.sent || 0) + (r.failed || 0) + (r.invalid || 0);
+      bar.style.width = `${tot ? Math.min(100, (done / tot) * 100) : r.done ? 100 : 0}%`;
+      txt.textContent = `Push: ${countsText(r)} van ${nf.format(tot)} ${tot === 1 ? "apparaat" : "apparaten"}${r.done ? " · klaar" : "…"}`
+        + ((r.notes || []).length ? ` · ${(r.notes || []).map((n) => PUSH_NOTE[n] || n).join(", ")}` : "");
+    };
+    let r = first;
+    show(r);
+    for (let i = 0; i < 600 && !r.done && r.message_id; i++) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      try { r = await call("push_progress", { message_id: r.message_id }); }
+      catch (e) { if (e.code !== "auth") toast(`${errText(e)} De voortgang staat ook in de geschiedenis.`, true); return; }
+      show(r);
+    }
+    toast(`Pushmelding: ${countsText(r)}.`, !!r.failed);
+  }
+
+  // e-mail in batches (announce_send herhalen tot done), zoals vroeger bij berichten
+  async function sendMails(id, totalHint) {
+    const box = $("mailProgress"), bar = box.querySelector(".bar span"), txt = box.querySelector(".sub");
     box.classList.remove("hidden");
     const show = (r) => {
       const tot = r.email_total ?? totalHint ?? 0, done = (r.email_sent || 0) + (r.email_failed || 0);
       bar.style.width = `${tot ? Math.min(100, (done / tot) * 100) : 100}%`;
-      txt.textContent = `${nf.format(r.email_sent || 0)} verstuurd${r.email_failed ? `, ${nf.format(r.email_failed)} mislukt` : ""} van ${nf.format(tot)}${r.done ? " · klaar" : "…"}`;
+      txt.textContent = `E-mail: ${nf.format(r.email_sent || 0)} verstuurd${r.email_failed ? `, ${nf.format(r.email_failed)} mislukt` : ""} van ${nf.format(tot)}${r.done ? " · klaar" : "…"}`;
     };
     show({ email_total: totalHint });
     let r = {};
@@ -1464,6 +1620,38 @@
     }
     toast(`E-mail klaar: ${nf.format(r.email_sent || 0)} verstuurd${r.email_failed ? `, ${nf.format(r.email_failed)} mislukt` : ""}.`, !!r.email_failed);
   }
+
+  function loadPushTab() { loadPushHistory(); loadAnnouncements(); preview(); }
+  $("pushRefresh").onclick = loadPushTab;
+  $("phPrev").onclick = () => { if (phPage > 0) { phPage--; loadPushHistory(); } };
+  $("phNext").onclick = () => { phPage++; loadPushHistory(); };
+  async function loadPushHistory() {
+    let r;
+    try { r = await call("push_history", { page: phPage }); }
+    catch (e) {
+      if (e.code === "auth") return;
+      $("pushList").innerHTML = `<p class="empty">${esc(errText(e))}</p>`;
+      $("phPrev").disabled = $("phNext").disabled = true; $("phPage").textContent = "";
+      return;
+    }
+    const items = r.items || [];
+    $("pushList").innerHTML = items.map((m) => {
+      const [kl, kc] = PUSH_KIND[m.kind] || PUSH_KIND.admin;
+      const title = m.kind === "release" ? `Bingr ${m.version || ""} (Build ${m.build ?? "?"}) is beschikbaar` : m.title || (m.kind === "reminder" ? "Programmaherinnering" : "—");
+      const n = (k, label, cls) => `<span class="ph-n ${cls}"><b>${nf.format(m[k] || 0)}</b> ${label}</span>`;
+      return `<div class="ph"><div class="ph-main">
+          <div class="ph-top"><span class="kind ${kc}">${kl}</span><span class="tt">${esc(title)}</span></div>
+          ${m.body && m.kind !== "release" ? `<div class="bd">${esc(m.body)}</div>` : ""}
+          <div class="meta"><span>${esc(fmtDateTime(m.created_at))}</span><span>· ${esc(targetText(m.target, m))}</span>
+            ${m.url ? `<span>· link naar ${esc((() => { try { return new URL(m.url).hostname; } catch { return "?"; } })())}</span>` : ""}
+            ${(m.notes || []).map((x) => `<span class="chip warn">${esc(PUSH_NOTE[x] || x)}</span>`).join("")}</div></div>
+        <div class="ph-nums" aria-label="Aantallen">${n("queued", "in wachtrij", "q")}${n("sent", "verstuurd", "s")}${n("failed", "mislukt", "f")}${n("invalid", "ongeldig", "i")}
+          <span class="ph-tot">${nf.format(m.devices || 0)} ${m.devices === 1 ? "apparaat" : "apparaten"}${m.done ? "" : " · bezig"}</span></div></div>`;
+    }).join("") || `<p class="empty">${phPage ? "Geen oudere meldingen." : "Nog geen pushmeldingen."}</p>`;
+    $("phPrev").disabled = phPage === 0; $("phNext").disabled = !r.has_more;
+    $("phPage").textContent = `Pagina ${phPage + 1}`;
+  }
+
   async function loadAnnouncements() {
     let r;
     try { r = await call("announcements_list"); } catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
@@ -1472,18 +1660,18 @@
     $("annList").innerHTML = items.map((a) => {
       const mail = a.email
         ? `<span>· e-mail: ${nf.format(a.email_sent)} / ${nf.format(a.email_total)}${a.email_failed ? `, ${nf.format(a.email_failed)} mislukt` : ""}${a.email_done_at ? "" : " (niet afgerond)"}</span>` : "";
+      const badge = a.mail_only ? '<span class="badge mail">E-mail</span>' : '<span class="badge off">Banner (oud)</span>';
       return `<div class="ann" data-id="${esc(a.id)}"><div class="main">
         <div class="tt">${esc(a.title_nl)}${a.title_en ? ` <span class="sub">/ ${esc(a.title_en)}</span>` : ""}</div>
         <div class="bd">${esc(a.body_nl)}</div>
-        <div class="meta"><span class="badge ${a.active ? "on" : "off"}">${a.active ? "Actief" : "Verlopen"}</span>
-          <span>${esc(fmtDateTime(a.created_at))}</span>${a.expires_at ? `<span>· tot ${esc(fmtDate(a.expires_at))}</span>` : ""}${mail}</div></div>
+        <div class="meta">${badge}<span>${esc(fmtDateTime(a.created_at))}</span>${mail}</div></div>
         <div class="btns">${a.email && !a.email_done_at ? '<button class="btn ghost small" data-act="resume">Verder verzenden</button>' : ""}
           <button class="btn danger small" data-act="del">Verwijderen</button></div></div>`;
     }).join("") || '<p class="empty">Nog geen berichten.</p>';
     $("annList").querySelectorAll(".ann").forEach((row) => {
       const id = row.dataset.id, a = items.find((x) => x.id === id);
       row.querySelector('[data-act="del"]').onclick = async () => {
-        if (!confirm(`"${a.title_nl}" verwijderen? Apps tonen het dan niet meer.`)) return;
+        if (!confirm(`"${a.title_nl}" uit de lijst verwijderen?`)) return;
         try { await call("announcement_delete", { id }); toast("Bericht verwijderd."); loadAnnouncements(); }
         catch (e) { if (e.code !== "auth") toast(errText(e), true); }
       };

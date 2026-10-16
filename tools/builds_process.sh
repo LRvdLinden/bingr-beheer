@@ -171,6 +171,7 @@ sys.exit(0 if ok else 1)
 PY
     then echo "::warning::$plat: controle van het pakket mislukt (checksum of gegevens)"; continue; fi
     builds_add "$plat" "$d/pkg" "$d/meta.json" || continue
+    builds_note_release "$plat" "$d/meta.json"
     rm -rf "$d"
     # branch weg, alleen als er intussen niets nieuws op staat
     src_git "$src" push -q --force-with-lease="refs/heads/inbox-$plat:$sha" "$remote" ":refs/heads/inbox-$plat" 2>/dev/null \
@@ -183,4 +184,69 @@ builds_finish(){
     srv_put "$BW/srv/manifest.json" manifest.json 600 || { echo "::error::Manifest niet op de server gezet."; return 1; }
   fi
   rm -rf "$BW"
+  # pas na het manifest: het pakket staat dan echt klaar
+  builds_release_push
+}
+
+# --- releasemelding (pushmelding, docs/PUSH.md in iptv-ios-appletv) ---
+# Alleen voor Bingr-pakketten uit de inbox: apple (iOS, iPadOS, macOS) en android; niet tizen (geen push) en niet beheer.
+# De functie push zoekt zelf de apparaten met een lagere build en stuurt één melding per (platform_group, build): een
+# tweede aanroep met dezelfde build (bv. als de inbox-branch niet weg kon) doet niets.
+PUSH_RELEASES=""
+builds_note_release(){
+  local plat="$1" meta="$2" vb
+  case "$plat" in apple|android) ;; *) return 0;; esac
+  vb=$(python3 - "$meta" <<'PY'
+import json, re, sys
+m = json.load(open(sys.argv[1]))
+v, b = str(m.get("version") or ""), m.get("build")
+ok = re.fullmatch(r"[0-9A-Za-z.+-]{1,20}", v) and isinstance(b, int) and not isinstance(b, bool) and 0 < b < 10**7
+print(f"{v}:{b}" if ok else "")
+PY
+) || vb=""
+  [ -n "$vb" ] || { echo "::warning::$plat: geen geldige versie/build in het pakket; geen releasemelding."; return 0; }
+  # per platform alleen de laatste (inbox van deze repo en de privé inbox kunnen allebei iets hebben)
+  PUSH_RELEASES="$(printf '%s\n' $PUSH_RELEASES | grep -v "^$plat:" || true) $plat:$vb"
+}
+
+# Roept push aan met {action:"release", platform_group, version, build} en header x-push-secret = PUSH_RELEASE_SECRET
+# (GitHub-secret van deze repo; dezelfde waarde staat als function-secret PUSH_RELEASE_SECRET, zie README.md). Ontbreekt
+# het secret of mislukt de aanroep: waarschuwing, nooit een fout (het pakket staat al klaar). Het secret gaat via stdin
+# naar curl (niet in argv of een URL) en wordt gemaskeerd; in het log alleen platform, build, HTTP-code en aantallen.
+builds_release_push(){
+  local e plat v b secret url body out code res
+  [ -n "${PUSH_RELEASES// /}" ] || return 0
+  secret=$(printf '%s' "${PUSH_RELEASE_SECRET:-}" | tr -d '\r\n')
+  if [ -z "$secret" ]; then
+    echo "::warning::Secret PUSH_RELEASE_SECRET ontbreekt: geen releasemelding (pushmelding) verstuurd. Zie README.md."
+    return 0
+  fi
+  [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$secret"
+  url="${PUSH_FUNCTION_URL:-https://${REF:-vjewsncmsxmhmhnoxwqx}.supabase.co/functions/v1/push}"   # PUSH_FUNCTION_URL alleen voor tests
+  for e in $PUSH_RELEASES; do
+    IFS=: read -r plat v b <<<"$e"
+    body=$(python3 -c 'import json,sys; print(json.dumps({"action":"release","platform_group":sys.argv[1],"version":sys.argv[2],"build":int(sys.argv[3])}))' "$plat" "$v" "$b")
+    out=$(mktemp)
+    code=$(printf 'x-push-secret: %s\n' "$secret" | curl -s --max-time 60 -o "$out" -w '%{http_code}' -X POST "$url" \
+      -H @- -H "Content-Type: application/json" --data-binary "$body" 2>/dev/null) || code=000
+    if [ "${code:0:1}" = 2 ]; then
+      # alleen aantallen uit het antwoord
+      res=$(python3 - "$out" <<'PY' 2>/dev/null || true
+import json, sys
+try: o = json.load(open(sys.argv[1]))
+except Exception: o = {}
+if not isinstance(o, dict): o = {}
+n = lambda k: o.get(k) if isinstance(o.get(k), int) and not isinstance(o.get(k), bool) else None
+if o.get("duplicate") or o.get("skipped") == "duplicate": print("al eerder verstuurd")
+elif n("devices") is not None: print(f"{n('devices')} apparaten")
+else: print("aangenomen")
+PY
+)
+      echo "::notice::Releasemelding $plat build $b: ${res:-aangenomen}."
+    else
+      echo "::warning::Releasemelding $plat build $b niet verstuurd (HTTP $code). Klopt PUSH_RELEASE_SECRET en staat de functie push online?"
+    fi
+    rm -f "$out"
+  done
+  PUSH_RELEASES=""
 }

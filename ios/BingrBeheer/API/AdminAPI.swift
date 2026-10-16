@@ -85,6 +85,23 @@ struct APIError: Error, LocalizedError {
         "bad_name": "Ongeldige naam: gebruik geen regeleinden of tekens als < en >.",
         "name_too_long": "Een naam mag hoogstens 50 tekens zijn.",
         "name_failed": "De naam kon niet worden opgeslagen. Probeer het opnieuw.",
+        // pushmeldingen (push_count / push_send / push_progress / push_history), zelfde teksten als web/admin.js
+        "push_not_configured": "Pushmeldingen zijn nog niet ingesteld (PUSH_ADMIN_SECRET; workflow Backend in iptv-ios-appletv draaien).",
+        "push_not_deployed": "De functie push staat nog niet online (workflow Backend in iptv-ios-appletv draaien).",
+        "push_forbidden": "De functie push weigerde de aanvraag (PUSH_ADMIN_SECRET klopt niet).",
+        "push_unreachable": "De functie push is niet bereikbaar. Probeer het later opnieuw.",
+        "title_too_long": "De titel is te lang (max. 100 tekens).",
+        "body_too_long": "De tekst is te lang (max. 600 tekens).",
+        "en_incomplete": "Vul bij Engels zowel titel als tekst in (of laat beide leeg).",
+        "text_too_large": "De tekst is te lang voor een pushmelding.",
+        "bad_link": "De link moet met https:// beginnen en naar een echte website gaan.",
+        "bad_target": "Kies een doelgroep.",
+        "no_accounts": "Kies minstens één account.",
+        "too_many_accounts": "Kies hoogstens 500 accounts.",
+        "bad_account": "Ongeldig account in de lijst.",
+        "no_platforms": "Kies minstens één platform.",
+        "no_push_platform": "Apple TV, Android TV en Samsung TV hebben geen systeem-push.",
+        "email_required": "Berichten in de apps bestaan niet meer; gebruik een pushmelding (eventueel ook per e-mail).",
     ]
 }
 

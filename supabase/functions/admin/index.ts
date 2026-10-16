@@ -39,10 +39,27 @@
 //                       reason? (intern, alleen in het logboek)} -> {ok, email_sent, tickets_deleted}
 //                       (alle accountgegevens via on delete cascade, profielfoto's, daarna de bevestigingsmail vanaf support@)
 //   send_reset          {token, user_id}  -> {ok}    (standaard reset-mail van Supabase; beheer ziet of zet nooit wachtwoorden)
-//   announce            {token, title_nl, body_nl, title_en?, body_en?, expires_at?, email} -> {ok, id, email_total}
+//   announce            {token, title_nl, body_nl, title_en?, body_en?, email: true} -> {ok, id, email_total}
+//                       (pushmeldingen: alleen nog een e-mail aan alle accounts met berichtenmail aan; de in-app banner is
+//                       vervallen. Het record krijgt expires_at = nu, zodat ook oudere apps (device-auth announcements) het
+//                       niet meer als banner tonen. Zonder email: 400 email_required.)
 //   announce_send       {token, id}       -> {email_total, email_sent, email_failed, done}  (volgende batch; herhalen tot done)
-//   announcements_list  {token}           -> {items:[…]}
+//   announcements_list  {token}           -> {items:[…, mail_only], smtp}  (oude berichten en e-mails, voor de geschiedenis)
 //   announcement_delete {token, id}       -> {ok}
+//   Pushmeldingen (docs/PUSH.md in iptv-ios-appletv): doorgegeven aan de functie `push` met het geheim PUSH_ADMIN_SECRET
+//   (header x-push-secret; zet de Backend-workflow daar klaar), net als support. Zie push.ts / push_test.ts.
+//   push_count          {token, target}   -> {devices, by_platform:{ios,ipados,macos,android,web}, accounts?} | {devices:null}
+//                       (voor de bevestiging vóór versturen: rechtstreeks geteld in push_devices; null = nog niet te tellen)
+//   push_send           {token, title_nl, body_nl, title_en?, body_en?, url? (alleen https), target: {all:true} |
+//                       {accounts:[uuid…]} (max. 500) | {platforms:[ios|ipados|macos|android|web…]}} -> {message_id, devices}
+//                       (push: admin_send; tvos/androidtv/tizen hebben geen systeem-push: 400 no_push_platform. In admin_audit
+//                       alleen soort doelgroep, aantallen en lengtes: nooit tekst, link of ontvangers. Max. 20 per uur per IP.)
+//   push_progress       {token, message_id} -> {message_id, devices, queued, sent, failed, invalid, done, notes}  (push:
+//                       admin_progress; herhalen tot done)
+//   push_history        {token, page?}    -> {items:[{id, kind: release|admin|reminder, created_at, title, body, url, target:
+//                       {type, count?|platforms?}, platform_group, version, build, devices, queued, sent, failed, invalid, done,
+//                       notes}], page, has_more}  (push: admin_history; zonder account-id's)
+//                       Fouten: push_not_configured (geen PUSH_ADMIN_SECRET), push_not_deployed, push_forbidden, push_unreachable.
 //   status              {token, op: overview|checks|monitor_save|monitor_delete|run|notice_save|notice_update|notice_delete|
 //                        subscribers|mail_run, …} -> antwoord van de functie `status` (meldingen: storingen en gepland onderhoud)
 //   support_counts      {token}           -> {new, open, pending, resolved, closed, active, unread, total, last_7d, smtp}
@@ -81,6 +98,7 @@ import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } fro
 import { cleanName } from "./names.ts";
 import { buildUrl, cleanManifest, findBuild, isBuildPlatform, isValidBuildFile, MIN_KEY, signBuildToken } from "./builds.ts";
 import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
+import { auditDetail, cleanPushInput, cleanTarget, historyView, pageInput, progressView, PUSH_PLATFORMS, type PushTarget } from "./push.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -342,6 +360,57 @@ async function unsubscribe(t: unknown): Promise<boolean> {
   // account bestaat niet meer (foreign key): er wordt toch al niets meer gestuurd
   if (error && !/foreign key/i.test(error.message)) throw new Error(error.message);
   return true;
+}
+
+// ---- pushmeldingen: doorgeven aan de functie `push` (iptv-ios-appletv) met PUSH_ADMIN_SECRET, zoals support ----
+// Nooit het geheim, tokens of serverantwoorden met gebruikersgegevens loggen; push.ts haalt account-id's uit de antwoorden.
+const PUSH_MAX = 20, PUSH_WINDOW = 3600;
+const errCode = (v: unknown) => (typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v) ? v : "server_error");
+async function pushCall(action: string, payload: Record<string, unknown>): Promise<{ status: number; out: Record<string, unknown> }> {
+  if (!env("PUSH_ADMIN_SECRET")) return { status: 503, out: { error: "push_not_configured" } };
+  let res: Response;
+  try {
+    res = await fetch(`${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/push`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-push-secret": env("PUSH_ADMIN_SECRET") },
+      body: JSON.stringify({ ...payload, action }),
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch (e) {
+    console.error("admin", "push", action, e instanceof Error ? e.name : "fetch");
+    return { status: 502, out: { error: "push_unreachable" } };
+  }
+  const out = await res.json().catch(() => null) as Record<string, unknown> | null;
+  if (res.status === 401 || res.status === 403) return { status: 502, out: { error: "push_forbidden" } };
+  if (res.status === 404 && !out?.error) return { status: 503, out: { error: "push_not_deployed" } };
+  if (!res.ok || !out || typeof out !== "object") {
+    console.error("admin", "push", action, `HTTP ${res.status}`);
+    return { status: res.ok ? 502 : res.status, out: { error: errCode(out?.error) } };
+  }
+  return { status: 200, out };
+}
+// Aantal apparaten voor de bevestiging (push_count): rechtstreeks in push_devices (schema in iptv-ios-appletv; kolommen
+// user_id en platform uit docs/PUSH.md). Alleen platforms met systeem-push. null = (nog) niet te tellen.
+async function countDevices(target: PushTarget) {
+  const by: Record<string, number> = Object.fromEntries(PUSH_PLATFORMS.map((p) => [p, 0]));
+  const plats = "platforms" in target ? target.platforms : [...PUSH_PLATFORMS];
+  if ("accounts" in target) {
+    // per 100 accounts (korte URL), alleen platform en account: tellen hier
+    const reached = new Set<string>();
+    for (let i = 0; i < target.accounts.length; i += 100) {
+      const { data, error } = await admin.from("push_devices").select("user_id,platform")
+        .in("user_id", target.accounts.slice(i, i + 100)).in("platform", plats).limit(5000);
+      if (error) { console.error("admin", "push_count", error.message); return null; }
+      for (const r of data ?? []) { by[r.platform] = (by[r.platform] ?? 0) + 1; reached.add(r.user_id); }
+    }
+    return { devices: Object.values(by).reduce((a, b) => a + b, 0), by_platform: by, accounts: reached.size };
+  }
+  for (const p of plats) {
+    const { count, error } = await admin.from("push_devices").select("user_id", { count: "exact", head: true }).eq("platform", p);
+    if (error) { console.error("admin", "push_count", error.message); return null; }
+    by[p] = count ?? 0;
+  }
+  return { devices: Object.values(by).reduce((a, b) => a + b, 0), by_platform: by };
 }
 
 Deno.serve(async (req) => {
@@ -712,24 +781,20 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       return json({ ok: true, email_sent: sent.ok, email_error: sent.error, tickets_deleted: ticketsDeleted });
     }
     case "announce": {
+      // pushmeldingen: geen in-app banner meer, alleen nog per e-mail. expires_at = nu: device-auth (announcements) geeft
+      // alleen berichten met expires_at in de toekomst, dus ook oudere apps tonen dit record niet als banner.
       const t = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
       const row = {
         title_nl: t(body.title_nl, 120), body_nl: t(body.body_nl, 4000),
         title_en: t(body.title_en, 120), body_en: t(body.body_en, 4000),
-        expires_at: null as string | null, email: body.email === true, email_total: 0,
+        expires_at: new Date().toISOString(), email: true, email_total: 0,
       };
       if (!row.title_nl || !row.body_nl) return json({ error: "text_missing" }, 400);
-      if (body.expires_at) {
-        const ms = Date.parse(String(body.expires_at));
-        if (!Number.isFinite(ms) || ms < Date.now()) return json({ error: "bad_expires_at" }, 400);
-        row.expires_at = new Date(ms).toISOString();
-      }
-      if (row.email) {
-        if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 400);
-        const { data: n, error } = await admin.rpc("bingr_email_recipients");
-        if (error) throw new Error(error.message);
-        row.email_total = Number(n ?? 0);
-      }
+      if (body.email !== true) return json({ error: "email_required" }, 400);
+      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 400);
+      const { data: n, error: ne } = await admin.rpc("bingr_email_recipients");
+      if (ne) throw new Error(ne.message);
+      row.email_total = Number(n ?? 0);
       const { data, error } = await admin.from("announcements").insert(row).select("id").single();
       if (error) throw new Error(error.message);
       await audit("announce", ip, null, { id: data.id, email: row.email, email_total: row.email_total });
@@ -794,8 +859,10 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         .order("created_at", { ascending: false }).limit(50);
       if (error) throw new Error(error.message);
       const cut = Date.now() - 30 * 864e5;
+      // mail_only: sinds de pushmeldingen (verloopt bij het plaatsen, nooit als banner getoond)
       const items = (data ?? []).map((a) => ({
         ...a, active: Date.parse(a.created_at) > cut && (!a.expires_at || Date.parse(a.expires_at) > Date.now()),
+        mail_only: !!a.expires_at && Date.parse(a.expires_at) <= Date.parse(a.created_at) + 60000,
       }));
       return json({ items, smtp: smtpConfigured() });
     }
@@ -805,6 +872,40 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       await audit("announcement_delete", ip, null, { id: body.id });
       return json({ ok: true });
+    }
+    case "push_count": {
+      const t = cleanTarget(body.target);
+      if (!t.ok) return json({ error: t.error }, 400);
+      return json((await countDevices(t.value)) ?? { devices: null });
+    }
+    case "push_send": {
+      const r = cleanPushInput(body);
+      if (!r.ok) return json({ error: r.error, field: r.field }, 400);
+      if (!(await rateOk(`admin-push:${ip}`, PUSH_MAX, PUSH_WINDOW))) return json({ error: "rate_limited", retry_after: PUSH_WINDOW }, 429);
+      const { title_nl, body_nl, title_en, body_en, url, target } = r.value;
+      const { status, out } = await pushCall("admin_send", {
+        title_nl, body_nl, ...(title_en ? { title_en, body_en } : {}), ...(url ? { url } : {}), target,
+      });
+      if (status !== 200) return json(out, status);
+      // logboek: soort doelgroep, aantallen en lengtes; nooit de tekst, de link of wie de ontvangers zijn
+      await audit("push_send", ip, null, auditDetail(r.value, out));
+      const p = progressView(out);
+      return json({ message_id: p.message_id, devices: p.devices, queued: p.queued, sent: p.sent, failed: p.failed, invalid: p.invalid, done: p.done, notes: p.notes });
+    }
+    case "push_progress": {
+      const id = body.message_id;
+      if (!((typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id)) || (typeof id === "number" && Number.isSafeInteger(id) && id > 0))) {
+        return json({ error: "bad_id" }, 400);
+      }
+      const { status, out } = await pushCall("admin_progress", { message_id: id });
+      if (status !== 200) return json(out, status);
+      return json(progressView({ message_id: id, ...out }));
+    }
+    case "push_history": {
+      const page = pageInput(body.page);
+      const { status, out } = await pushCall("admin_history", { page });
+      if (status !== 200) return json(out, status);
+      return json(historyView(out, page));
     }
     case "status": {
       // tab Status: doorgeven aan de functie `status` met het geheim (staat alleen op de server)

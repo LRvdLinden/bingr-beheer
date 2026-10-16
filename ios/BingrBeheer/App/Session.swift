@@ -15,7 +15,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .overview: return "Overzicht"
         case .users: return "Gebruikers"
         case .support: return "Support"
-        case .messages: return "Berichten"
+        case .messages: return "Pushmeldingen"
         case .status: return "Status"
         case .downloads: return "Downloads"
         case .settings: return "Instellingen"
@@ -27,7 +27,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .overview: return "chart.bar.xaxis"
         case .users: return "person.2"
         case .support: return "lifepreserver"
-        case .messages: return "megaphone"
+        case .messages: return "bell.badge"
         case .status: return "waveform.path.ecg"
         case .downloads: return "arrow.down.circle"
         case .settings: return "gearshape"
@@ -87,9 +87,13 @@ final class Session {
     // support-tellers (badge op de tab, tegel in Overzicht)
     var supportCounts: SupportCounts?
 
-    // berichten
+    // pushmeldingen (tab messages) en berichten per e-mail
     var mailProgress: MailProgress?
     var announcementsVersion = 0
+    /// Voortgang van de laatst verstuurde pushmelding (push_progress tot done).
+    var pushProgress: PushProgress?
+    /// Wordt opgehoogd na versturen: de geschiedenis laadt opnieuw.
+    var pushVersion = 0
 
     var toast: Toast?
 
@@ -163,6 +167,7 @@ final class Session {
         supportCounts = nil
         supportPath = []
         mailProgress = nil
+        pushProgress = nil
         countsTask?.cancel()
         countsTask = nil
     }
