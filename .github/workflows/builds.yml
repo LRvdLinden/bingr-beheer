@@ -1,0 +1,117 @@
+name: Builds
+
+# Zet de buildpakketten van Bingr (APK, Samsung TV .wgt, Xcode-projecten) in de afgesloten map builds/ op de server van
+# beheer.bingr.online. Ze staan nooit onversleuteld op GitHub: de workflows van iptv-ios-appletv, bingr-android en de
+# Beheer-app leveren ze versleuteld aan op de branch inbox-<platform> (tools/seal_build.sh); deze workflow ontsleutelt ze
+# met de privésleutel die alleen op de server staat, zet ze daar neer, werkt builds/manifest.json bij en verwijdert de branch.
+# Downloaden kan alleen via het beheer (functie admin -> kortgeldige link naar dl.php).
+# Sleutels: bij de eerste run (of met "Sleutels opnieuw maken") maakt deze workflow een sleutel voor de downloadlinks
+# (builds/key.php en het function-secret BINGR_BUILDS_KEY) en een RSA-sleutelpaar (privé: builds/private.pem op de
+# server; publiek: builds.pub.pem in deze repo).
+# Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, optioneel FTP_USERNAME_ALT en FTP_DIR (zoals Dashboard),
+# SUPABASE_ACCESS_TOKEN en optioneel SUPABASE_PROJECT_REF (zoals Admin-functie). Het log is openbaar: alleen platform,
+# build en gelukt/mislukt.
+
+on:
+  repository_dispatch:
+    types: [builds]
+  workflow_dispatch:
+    inputs:
+      rotate:
+        description: 'Sleutels opnieuw maken (oude downloadlinks en nog niet verwerkte pakketten vervallen)'
+        type: boolean
+        default: false
+      import_repo:
+        description: 'Pakketten uit versions/ van deze repo overzetten (eenmalig)'
+        type: boolean
+        default: false
+  # vangnet: aangeleverde pakketten oppikken als het starten vanuit een andere repo niet lukte
+  schedule:
+    - cron: '23 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: builds
+  cancel-in-progress: false
+
+jobs:
+  builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_USERNAME_ALT: ${{ secrets.FTP_USERNAME_ALT }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_DIR: ${{ secrets.FTP_DIR }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF_SECRET: ${{ secrets.SUPABASE_PROJECT_REF }}
+      REF_DEFAULT: vjewsncmsxmhmhnoxwqx
+      ROTATE: ${{ inputs.rotate || 'false' }}
+      IMPORT_REPO: ${{ inputs.import_repo || 'false' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Iets te doen?
+        id: todo
+        run: |
+          n=$(git ls-remote origin 'refs/heads/inbox-*' | wc -l)
+          echo "inbox=$n" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = schedule ] && [ "$n" = 0 ]; then echo "skip=1" >> $GITHUB_OUTPUT; echo "Niets aangeleverd."; fi
+
+      - name: lftp installeren
+        if: steps.todo.outputs.skip != '1'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1 (v1.7.3)
+        if: steps.todo.outputs.skip != '1'
+        with:
+          version: 2.121.0
+
+      - name: Pakketten naar de server
+        if: steps.todo.outputs.skip != '1'
+        run: |
+          set -euo pipefail
+          REF="${REF_SECRET:-$REF_DEFAULT}"
+          [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] || { echo "::error::Secret SUPABASE_ACCESS_TOKEN ontbreekt."; exit 1; }
+          source tools/ftps.sh
+          source tools/builds_process.sh
+          ftps_connect
+          builds_init
+          # downloadsleutel als function-secret (elke run, zodat server en functie altijd gelijk zijn)
+          supabase secrets set --project-ref "$REF" "BINGR_BUILDS_KEY=$BUILDS_KEY" >/dev/null 2>&1 \
+            && echo "::notice::Function-secret BINGR_BUILDS_KEY gezet." || { echo "::error::BINGR_BUILDS_KEY niet gezet."; exit 1; }
+          # publieke sleutel in de repo (de workflows die pakketten aanleveren versleutelen daarmee)
+          if ! cmp -s "$BW/pub.pem" builds.pub.pem; then
+            cp "$BW/pub.pem" builds.pub.pem
+            git config user.name github-actions; git config user.email actions@github.com
+            git add builds.pub.pem && git commit -qm "Builds: publieke sleutel voor het aanleveren van pakketten"
+            for i in 1 2 3; do git push -q origin HEAD:main && break; git pull -q --rebase origin main; done
+            echo "::notice::builds.pub.pem bijgewerkt."
+          fi
+          [ "$IMPORT_REPO" = true ] && builds_import_repo
+          builds_inbox
+          builds_finish
+
+      - name: Controleren
+        if: steps.todo.outputs.skip != '1'
+        run: |
+          set -uo pipefail
+          url=https://beheer.bingr.online/
+          ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
+          if echo "$ping" | grep -q '"ready":true'; then echo "::notice::dl.php is klaar voor downloads."
+          else
+            # sommige servers draaien PHP als een andere gebruiker: dan mogen key.php en manifest.json 644 zijn
+            # (de map builds/ blijft via de webserver dicht)
+            source tools/ftps.sh; ftps_connect >/dev/null
+            ftps_try "chmod 644 \"$FTPS_TARGET/builds/key.php\" \"$FTPS_TARGET/builds/manifest.json\"" >/dev/null 2>&1
+            ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
+            echo "$ping" | grep -q '"ready":true' && echo "::notice::dl.php is klaar (rechten 644)." || { echo "::error::dl.php kan de sleutel niet lezen."; exit 1; }
+          fi
+          for f in builds/ builds/manifest.json builds/key.php builds/private.pem builds/android/ builds/apple/; do
+            c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "${url}$f" || true)
+            [ "$c" = 200 ] && { echo "::error::${url}$f is rechtstreeks bereikbaar"; exit 1; }
+          done
+          echo "::notice::Map builds/ is niet rechtstreeks bereikbaar."
