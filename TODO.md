@@ -117,6 +117,8 @@
 - [ ] **LG webOS op website toevoegen**  
   Platform en werkelijke beschikbaarheidsstatus op de site en support verwerken.
 
+- [ ] webOS ook koppelen aan OneSignal voor pushmeldingen
+
 - [ ] **webOS-repository en builds koppelen**  
   `LRvdLinden/bingr-webOS` integreren met beveiligde buildworkflow via `BINGR_BEHEER_TOKEN` (alleen secret).
 
