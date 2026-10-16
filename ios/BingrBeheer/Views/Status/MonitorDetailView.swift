@@ -100,7 +100,7 @@ struct MonitorDetailView: View {
                 }
             }
         }
-        .refreshable {
+        .refreshableCommand {
             await reload()
             await loadChecks()
         }

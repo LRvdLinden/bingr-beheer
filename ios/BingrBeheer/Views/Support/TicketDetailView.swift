@@ -63,7 +63,7 @@ struct TicketDetailView: View {
                 }
             }
         }
-        .refreshable { await load() }
+        .refreshableCommand { await load() }
         .task { if ticket == nil { await load() } }
     }
 

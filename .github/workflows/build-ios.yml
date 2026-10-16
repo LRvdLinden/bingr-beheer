@@ -1,7 +1,7 @@
 name: Beheer-app
 
-# Bouwt de native app BingrBeheer (ios/, iOS/iPadOS 17+, XcodeGen) voor een generiek iOS-apparaat zonder ondertekening.
-# Lukt dat, dan gaat het Xcode-project (ios/ met het gegenereerde .xcodeproj) als Bingr-Beheer-<versie>-build<N>-Xcode.zip
+# Bouwt de native app BingrBeheer (ios/, iOS/iPadOS 17+, XcodeGen) zonder ondertekening voor een generiek iOS-apparaat
+# én voor de Mac (Mac Catalyst, macOS 14+; zelfde target). Beide moeten slagen. Lukt dat, dan gaat het Xcode-project (ios/ met het gegenereerde .xcodeproj) als Bingr-Beheer-<versie>-build<N>-Xcode.zip
 # versleuteld naar de branch inbox-beheer (tools/seal_build.sh); de workflow Builds zet het in de afgesloten map builds/ op
 # de server van beheer.bingr.online. Nooit onversleuteld op GitHub.
 # Build-rapport (fouten + staart van het log) op de branch ci-logs-beheer (latest.txt); fouten ook als annotaties.
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 
@@ -48,17 +48,30 @@ jobs:
             -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/dd" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee "$RUNNER_TEMP/ios.log"
 
+      - name: Build Mac Catalyst (generieke Mac, zonder signing)
+        id: mac
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build -project BingrBeheer.xcodeproj -scheme BingrBeheer \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee "$RUNNER_TEMP/mac.log"
+
       - name: Fouten als annotaties
         if: always()
         run: |
-          LOG="$RUNNER_TEMP/ios.log"
-          [ -f "$LOG" ] || exit 0
-          grep -E "^/.+:[0-9]+:[0-9]+: error: " "$LOG" | sort -u | head -40 | while IFS= read -r l; do
-            f="${l%%:*}"; rest="${l#*:}"; line="${rest%%:*}"; msg="${l#*: error: }"
-            echo "::error file=${f#$GITHUB_WORKSPACE/},line=$line::$msg"
-          done
-          grep -E "error:" "$LOG" | grep -vE "^/.+:[0-9]+:[0-9]+: error: " | sort -u | head -15 | while IFS= read -r l; do
-            echo "::error::$l"
+          for build in ios mac; do
+            LOG="$RUNNER_TEMP/$build.log"
+            [ -f "$LOG" ] || continue
+            if [ "$build" = mac ]; then T="Mac Catalyst"; else T="iOS"; fi
+            grep -E "^/.+:[0-9]+:[0-9]+: error: " "$LOG" | sort -u | head -40 | while IFS= read -r l; do
+              f="${l%%:*}"; rest="${l#*:}"; line="${rest%%:*}"; msg="${l#*: error: }"
+              echo "::error file=${f#$GITHUB_WORKSPACE/},line=$line,title=$T::$msg"
+            done
+            grep -E "error:" "$LOG" | grep -vE "^/.+:[0-9]+:[0-9]+: error: " | sort -u | head -15 | while IFS= read -r l; do
+              echo "::error title=$T::$l"
+            done
           done
 
       - name: Widget-extensie controleren
@@ -71,33 +84,52 @@ jobs:
             echo "::warning::BingrBeheerWidgets.appex niet gevonden in de app (widgets ontbreken)"
           fi
 
+      - name: Widget-extensie controleren (Mac)
+        if: steps.mac.outcome == 'success'
+        run: |
+          # Mac Catalyst: BingrBeheer.app/Contents/PlugIns/BingrBeheerWidgets.appex (map Debug-maccatalyst)
+          if find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 5 -type d -path '*-maccatalyst/BingrBeheer.app/Contents/PlugIns/BingrBeheerWidgets.appex' | grep -q .; then
+            echo "::notice::Widget-extensie ingebed in de Mac-app"
+          else
+            echo "::warning::BingrBeheerWidgets.appex niet gevonden in de Mac-app (widgets ontbreken op de Mac)"
+          fi
+
       - name: Build-rapport publiceren (branch ci-logs-beheer)
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           LOG="$RUNNER_TEMP/ios.log"; touch "$LOG"
+          MLOG="$RUNNER_TEMP/mac.log"; touch "$MLOG"
           R="$RUNNER_TEMP/report"; rm -rf "$R"; mkdir -p "$R"
           {
             echo "commit: $GITHUB_SHA"
             echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "ios: ${{ steps.ios.outcome }}"
+            echo "mac: ${{ steps.mac.outcome }}"
             echo
-            echo "=== errors ==="
+            echo "=== errors (iOS) ==="
             grep -E "error:" "$LOG" | sort -u | head -300 || true
             echo
-            echo "=== warnings (Swift) ==="
+            echo "=== errors (Mac Catalyst) ==="
+            grep -E "error:" "$MLOG" | sort -u | head -300 || true
+            echo
+            echo "=== warnings (Swift, iOS) ==="
             grep -E "^/.+:[0-9]+:[0-9]+: warning: " "$LOG" | sed "s#^$GITHUB_WORKSPACE/##" | sort -u | head -150 || true
+            echo
+            echo "=== warnings (Swift, Mac Catalyst) ==="
+            grep -E "^/.+:[0-9]+:[0-9]+: warning: " "$MLOG" | sed "s#^$GITHUB_WORKSPACE/##" | sort -u | head -150 || true
           } > "$R/latest.txt"
           tail -n 300 "$LOG" > "$R/ios-tail.txt" || true
+          tail -n 300 "$MLOG" > "$R/mac-tail.txt" || true
           cd "$R"
           git init -q -b ci-logs-beheer
-          git add latest.txt ios-tail.txt
-          git -c user.name=github-actions -c user.email=actions@github.com commit -qm "build $GITHUB_SHA ios=${{ steps.ios.outcome }}"
+          git add latest.txt ios-tail.txt mac-tail.txt
+          git -c user.name=github-actions -c user.email=actions@github.com commit -qm "build $GITHUB_SHA ios=${{ steps.ios.outcome }} mac=${{ steps.mac.outcome }}"
           git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ci-logs-beheer
 
       - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
-        if: steps.ios.outcome == 'success'
+        if: steps.ios.outcome == 'success' && steps.mac.outcome == 'success'
         env:
           TOKEN: ${{ github.token }}
           # H3: de Beheer-app levert met het eigen GITHUB_TOKEN aan bij deze repo zelf (alleen inbox-beheer; seal_build.sh
@@ -112,9 +144,10 @@ jobs:
           zip -qr "$Z" ios -x 'ios/build/*' 'ios/DerivedData/*' '*.DS_Store' 'ios/*.xcodeproj/xcuserdata/*' 'ios/*.xcodeproj/project.xcworkspace/xcuserdata/*'
           N="$RUNNER_TEMP/notes.md"
           {
-            echo "BingrBeheer $V (build $B): Xcode-project voor iOS/iPadOS 17+."
+            echo "BingrBeheer $V (build $B): Xcode-project voor iOS/iPadOS 17+ en macOS 14+ (Mac Catalyst)."
             echo
-            echo "Uitpakken, \`ios/BingrBeheer.xcodeproj\` openen, bij Signing & Capabilities je Team kiezen en op je iPhone/iPad draaien."
+            echo "Uitpakken, \`ios/BingrBeheer.xcodeproj\` openen, bij Signing & Capabilities je Team kiezen en op je iPhone/iPad draaien,"
+            echo "of als bestemming *My Mac (Mac Catalyst)* / *Any Mac (Mac Catalyst)* kiezen voor de Mac-app."
             echo
             echo "Commit $(echo $GITHUB_SHA | cut -c1-7)."
           } > "$N"
@@ -124,5 +157,7 @@ jobs:
           rm -f "$Z"
 
       - name: Status
-        if: steps.ios.outcome != 'success'
-        run: exit 1
+        if: steps.ios.outcome != 'success' || steps.mac.outcome != 'success'
+        run: |
+          echo "::error::Build mislukt (iOS: ${{ steps.ios.outcome }}, Mac Catalyst: ${{ steps.mac.outcome }})"
+          exit 1

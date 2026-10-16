@@ -215,3 +215,37 @@ struct NoticeBanner: View {
         .card(padding: 12, highlight: Color.tone(tone))
     }
 }
+
+/// Vernieuwen: trekken (iPhone/iPad), en ⌘R / menu Beheer → Vernieuwen (Mac, `Session.requestRefresh`). Op de Mac ook een
+/// knop in de werkbalk, want trekken om te vernieuwen bestaat daar niet.
+struct RefreshCommandModifier: ViewModifier {
+    let action: @Sendable () async -> Void
+    @Environment(Session.self) private var session
+
+    func body(content: Content) -> some View {
+        content
+            .refreshable(action: action)
+            .onChange(of: session.refreshRequest) { _, _ in
+                Task { await action() }
+            }
+            #if targetEnvironment(macCatalyst)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        session.requestRefresh()
+                    } label: {
+                        Label("Vernieuwen", systemImage: "arrow.clockwise")
+                    }
+                    .help("Vernieuwen (⌘R)")
+                }
+            }
+            #endif
+    }
+}
+
+extension View {
+    /// `.refreshable` plus vernieuwen via ⌘R en de werkbalkknop op de Mac (zie RefreshCommandModifier).
+    func refreshableCommand(_ action: @escaping @Sendable () async -> Void) -> some View {
+        modifier(RefreshCommandModifier(action: action))
+    }
+}

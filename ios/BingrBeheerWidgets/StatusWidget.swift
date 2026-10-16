@@ -9,7 +9,7 @@ struct StatusWidget: Widget {
         }
         .configurationDisplayName("Servicestatus")
         .description("Algemene status van Bingr en de status per onderdeel.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular])
+        .supportedFamilies(WidgetFamilies.smallMediumAccessory)
     }
 }
 
@@ -83,6 +83,7 @@ struct StatusContent: View {
 
     var body: some View {
         switch family {
+        #if !targetEnvironment(macCatalyst)
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
@@ -115,6 +116,7 @@ struct StatusContent: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        #endif
         case .systemSmall:
             VStack(alignment: .leading, spacing: 6) {
                 WidgetHeader(title: "Status", icon: "waveform.path.ecg", date: date, stale: stale)

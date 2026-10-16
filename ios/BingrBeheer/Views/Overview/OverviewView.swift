@@ -47,7 +47,7 @@ struct OverviewView: View {
                 }
             }
         }
-        .refreshable { await load() }
+        .refreshableCommand { await load() }
         .task { if data.stats == nil { await load() } }
         .onChange(of: session.usersRevision) { Task { await load() } }
         .onChange(of: layout) { DashStore.save(layout) }

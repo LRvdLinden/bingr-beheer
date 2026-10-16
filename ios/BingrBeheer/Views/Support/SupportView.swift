@@ -79,7 +79,7 @@ struct SupportView: View {
                     .accessibilityLabel("Supportsite")
             }
         }
-        .refreshable { await reloadAll() }
+        .refreshableCommand { await reloadAll() }
         .task(id: "\(filter)|\(query)") {
             if loaded { try? await Task.sleep(for: .milliseconds(300)) }
             if Task.isCancelled { return }

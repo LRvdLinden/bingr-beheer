@@ -142,7 +142,7 @@ struct UserDetailView: View {
         .screenBackground()
         .navigationTitle(user.map { $0.fullName ?? $0.email } ?? fallbackName ?? fallbackEmail)
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await load() }
+        .refreshableCommand { await load() }
         .task { if user == nil { await load() } }
         .sheet(isPresented: $showName) {
             if let u = user {

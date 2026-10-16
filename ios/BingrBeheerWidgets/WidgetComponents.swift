@@ -3,14 +3,28 @@ import WidgetKit
 
 // Bouwstenen van de widgets in de stijl van de app (kleuren uit Theme.swift).
 
+/// Formaten van de widgets Servicestatus en Supporttickets. De toegangsscherm-formaten (accessory*) bestaan niet op de Mac
+/// (Mac Catalyst): daar alleen klein en middel. Alle `case .accessory…` staan daarom binnen `#if !targetEnvironment(macCatalyst)`.
+enum WidgetFamilies {
+    static var smallMediumAccessory: [WidgetFamily] {
+        #if targetEnvironment(macCatalyst)
+        return [.systemSmall, .systemMedium]
+        #else
+        return [.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular]
+        #endif
+    }
+}
+
 extension View {
     /// Achtergrond van de widget (iOS 17: containerBackground). Op het beginscherm de donkere kaart van de app,
     /// op het toegangsscherm niets (het systeem kleurt de achtergrond zelf).
     @ViewBuilder
     func widgetCard(_ family: WidgetFamily) -> some View {
         switch family {
+        #if !targetEnvironment(macCatalyst)
         case .accessoryCircular, .accessoryRectangular, .accessoryInline:
             containerBackground(for: .widget) { Color.clear }
+        #endif
         default:
             containerBackground(for: .widget) {
                 LinearGradient(colors: [Color(hex: 0x1D1D24), Color(hex: 0x151515), Color(hex: 0x170D0E)],
@@ -107,6 +121,7 @@ struct SignedOutView: View {
 
     var body: some View {
         switch family {
+        #if !targetEnvironment(macCatalyst)
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
@@ -120,6 +135,7 @@ struct SignedOutView: View {
                 Text("Open de app om in te loggen").font(.caption).lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        #endif
         default:
             VStack(alignment: .leading, spacing: 8) {
                 WidgetLogo()
@@ -143,6 +159,7 @@ struct FailedView: View {
 
     var body: some View {
         switch family {
+        #if !targetEnvironment(macCatalyst)
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
@@ -155,6 +172,7 @@ struct FailedView: View {
                 Text("Geen verbinding").font(.caption)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        #endif
         default:
             VStack(alignment: .leading, spacing: 8) {
                 WidgetLogo()

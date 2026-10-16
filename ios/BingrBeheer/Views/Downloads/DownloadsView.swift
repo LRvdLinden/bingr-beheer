@@ -44,7 +44,7 @@ struct DownloadsView: View {
         }
         .screenBackground()
         .navigationTitle("Downloads")
-        .refreshable { await load() }
+        .refreshableCommand { await load() }
         .task { if overview == nil { await load() } }
         .sheet(item: $shareLink) { link in
             BuildLinkSheet(link: link)
@@ -172,7 +172,7 @@ struct DownloadsView: View {
                 shareLink = link
             } else {
                 openURL(link.url)
-                session.show("Download geopend in Safari: \(link.file)")
+                session.show("Download geopend in \(Platform.isMac ? "je browser" : "Safari"): \(link.file)")
             }
         } catch {
             session.report(error)
@@ -196,7 +196,9 @@ struct BuildLinkSheet: View {
                     LabeledContent("Grootte", value: BuildInfo.sizeText(link.size))
                     LabeledContent("Geldig tot", value: Fmt.time(link.expiresAt))
                 } footer: {
-                    Text("Iedereen met deze link kan het bestand ophalen tot hij verloopt. Deel hem alleen met jezelf, bijvoorbeeld via AirDrop naar je Mac.")
+                    Text(Platform.isMac
+                         ? "Iedereen met deze link kan het bestand ophalen tot hij verloopt. Deel hem alleen met jezelf. Openen downloadt het bestand in je standaardbrowser (map Downloads)."
+                         : "Iedereen met deze link kan het bestand ophalen tot hij verloopt. Deel hem alleen met jezelf, bijvoorbeeld via AirDrop naar je Mac.")
                 }
                 Section {
                     ShareLink(item: link.url, subject: Text(verbatim: link.file)) {
@@ -212,7 +214,7 @@ struct BuildLinkSheet: View {
                         openURL(link.url)
                         dismiss()
                     } label: {
-                        Label("Openen in Safari", systemImage: "safari")
+                        Label(Platform.isMac ? "Openen in browser" : "Openen in Safari", systemImage: "safari")
                     }
                 }
             }

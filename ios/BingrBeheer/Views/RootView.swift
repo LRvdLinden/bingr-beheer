@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Inloggen, of het beheer (tabbalk op iPhone, zijbalk op iPad); met vergrendelscherm en meldingen eroverheen.
+/// Inloggen, of het beheer (tabbalk op iPhone, zijbalk op iPad en Mac); met vergrendelscherm en meldingen eroverheen.
 struct RootView: View {
     @Environment(Session.self) private var session
     @Environment(\.scenePhase) private var scenePhase
@@ -18,9 +18,9 @@ struct RootView: View {
             } else {
                 LoginView()
             }
-            // vergrendeld, of afgeschermd in de app-wisselaar
-            if session.isSignedIn && session.lockEnabled && (session.isLocked || scenePhase != .active) {
-                LockView(showButton: session.isLocked && scenePhase == .active)
+            // vergrendeld, of afgeschermd in de app-wisselaar (iOS)
+            if shielded {
+                LockView(showButton: showUnlockButton)
                     .transition(.opacity)
             }
         }
@@ -39,8 +39,31 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.2), value: session.toast)
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { session.didEnterBackground() }
+            #if targetEnvironment(macCatalyst)
+            if phase == .inactive { session.didResignActive() }
+            if phase == .active { session.didBecomeActive() }
+            #endif
             if phase == .active { Task { await session.refreshSupportCounts() } }
         }
+    }
+
+    /// iOS: ook afschermen zolang de app niet actief is (app-wisselaar). Mac: alleen als hij echt vergrendeld is; een
+    /// venster dat niet voorop staat blijft gewoon zichtbaar.
+    private var shielded: Bool {
+        guard session.isSignedIn && session.lockEnabled else { return false }
+        #if targetEnvironment(macCatalyst)
+        return session.isLocked
+        #else
+        return session.isLocked || scenePhase != .active
+        #endif
+    }
+
+    private var showUnlockButton: Bool {
+        #if targetEnvironment(macCatalyst)
+        return session.isLocked
+        #else
+        return session.isLocked && scenePhase == .active
+        #endif
     }
 }
 
@@ -61,7 +84,7 @@ struct TabLayout: View {
     }
 }
 
-/// iPad: zijbalk met de onderdelen, rechts het gekozen onderdeel.
+/// iPad en Mac: zijbalk met de onderdelen, rechts het gekozen onderdeel.
 struct SplitLayout: View {
     @Environment(Session.self) private var session
     @State private var visibility: NavigationSplitViewVisibility = .all

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Instellingen: vergrendelen met Face ID, upgrade-link per platform (app_settings), sessie, uitloggen, Downloads (iPhone) en links.
+/// Instellingen: vergrendelen met Face ID / Touch ID (Mac: ook wachtwoord), upgrade-link per platform (app_settings), sessie, uitloggen, Downloads (iPhone) en links.
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
@@ -35,17 +35,27 @@ struct SettingsView: View {
         return "\(v) (build \(b))"
     }
 
+    /// Uitleg onder Vergrendelen (Mac: Touch ID of het wachtwoord van de gebruiker, zie Session.didBecomeActive).
+    private var lockFooter: String {
+        let name = session.biometryName
+        if Platform.isMac {
+            guard session.canLock else { return "Stel eerst een wachtwoord in voor je gebruikersaccount op deze Mac." }
+            let how = name == "wachtwoord" ? "het wachtwoord van je Mac-account" : name + " of het wachtwoord van je Mac-account"
+            return "Bij het openen van de app, na minimaliseren of verbergen en na 5 minuten in een ander programma vraagt BingrBeheer om " + how + "."
+        }
+        guard session.canLock else { return "Stel eerst een toegangscode in op dit apparaat." }
+        return "Bij het openen van de app (en na de achtergrond) vraagt BingrBeheer om " + name + " of je toegangscode."
+    }
+
     var body: some View {
         Form {
             Section {
                 Toggle(isOn: $lockEnabled) {
-                    Label("Vergrendelen met \(session.biometryName)", systemImage: session.biometryName == "Face ID" ? "faceid" : "lock")
+                    Label("Vergrendelen met \(session.biometryName)", systemImage: session.biometryIcon)
                 }
                 .disabled(!session.canLock && !lockEnabled)
             } footer: {
-                Text(session.canLock
-                     ? "Bij het openen van de app (en na de achtergrond) vraagt BingrBeheer om \(session.biometryName) of je toegangscode."
-                     : "Stel eerst een toegangscode in op dit apparaat.")
+                Text(lockFooter)
             }
 
             Section {
@@ -57,7 +67,7 @@ struct SettingsView: View {
                     Task { await session.setWidgetsEnabled(on) }
                 }
             } footer: {
-                Text("Servicestatus en supporttickets op je beginscherm en toegangsscherm (alleen aantallen en statusnamen). Daarvoor bewaart de app een apart widget-token (30 dagen, alleen voor de widgets) in de Keychain van dit apparaat. Uitloggen of Overal uitloggen trekt het in. Let op: widgets zijn zichtbaar zonder \(session.biometryName).")
+                Text("Servicestatus en supporttickets \(Platform.isMac ? "op je bureaublad en in het berichtencentrum" : "op je beginscherm en toegangsscherm") (alleen aantallen en statusnamen). Daarvoor bewaart de app een apart widget-token (30 dagen, alleen voor de widgets) in de Keychain van dit apparaat. Uitloggen of Overal uitloggen trekt het in. Let op: widgets zijn zichtbaar zonder \(session.biometryName).")
             }
 
             Section {

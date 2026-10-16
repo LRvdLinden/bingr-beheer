@@ -9,7 +9,7 @@ struct SupportWidget: Widget {
         }
         .configurationDisplayName("Supporttickets")
         .description("Nieuwe, openstaande en afgeronde supporttickets.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular])
+        .supportedFamilies(WidgetFamilies.smallMediumAccessory)
     }
 }
 
@@ -79,6 +79,7 @@ struct SupportContent: View {
 
     var body: some View {
         switch family {
+        #if !targetEnvironment(macCatalyst)
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
@@ -115,6 +116,7 @@ struct SupportContent: View {
                     .privacySensitive()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        #endif
         case .systemSmall:
             VStack(alignment: .leading, spacing: 6) {
                 WidgetHeader(title: "Support", icon: "lifepreserver", date: date, stale: stale)

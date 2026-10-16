@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Vergrendelscherm (Face ID / Touch ID / toegangscode). Zonder knop: alleen afschermen in de app-wisselaar.
+/// Vergrendelscherm (Face ID / Touch ID / toegangscode; op de Mac Touch ID of het wachtwoord van de gebruiker). Zonder knop: alleen afschermen in de app-wisselaar.
 struct LockView: View {
     let showButton: Bool
     @Environment(Session.self) private var session
@@ -14,7 +14,7 @@ struct LockView: View {
                     Button {
                         Task { await session.unlock() }
                     } label: {
-                        Label("Ontgrendelen", systemImage: session.biometryName == "Face ID" ? "faceid" : "lock.open")
+                        Label("Ontgrendelen", systemImage: session.biometryIcon == "lock" ? "lock.open" : session.biometryIcon)
                     }
                     .buttonStyle(.bingr)
                 }

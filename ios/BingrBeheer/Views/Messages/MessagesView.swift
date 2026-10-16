@@ -42,7 +42,7 @@ struct MessagesView: View {
         .scrollDismissesKeyboard(.interactively)
         .screenBackground()
         .navigationTitle("Berichten")
-        .refreshable { await load() }
+        .refreshableCommand { await load() }
         .task { if !loaded { await load() } }
         .onChange(of: session.announcementsVersion) { _, _ in Task { await load() } }
         .alert("Bericht plaatsen", isPresented: $confirmPost) {

@@ -89,7 +89,7 @@ struct StatusView: View {
                 }
             }
         }
-        .refreshable { await load() }
+        .refreshableCommand { await load() }
         .task { if data == nil { await load() } }
     }
 

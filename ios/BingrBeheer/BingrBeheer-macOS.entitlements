@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements van BingrBeheer op de Mac (Mac Catalyst; CODE_SIGN_ENTITLEMENTS[sdk=macosx*] in ios/project.yml).
+  iOS gebruikt het door XcodeGen gegenereerde BingrBeheer.entitlements. Houd de Keychain-groepen gelijk aan project.yml:
+  eerst de eigen groep van de app (sessietoken), daarna de gedeelde groep voor het widget-token.
+  Geen bestandstoegang nodig: downloads gaan via de standaardbrowser (dl.php), delen en kopiëren alleen als link.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)nl.lrvdlinden.bingr.beheer</string>
+		<string>$(AppIdentifierPrefix)nl.lrvdlinden.bingr.beheer.shared</string>
+	</array>
+</dict>
+</plist>

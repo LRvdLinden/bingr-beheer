@@ -93,8 +93,14 @@ final class Session {
 
     var toast: Toast?
 
+    /// Vernieuwen via ⌘R, het menu Beheer of de knop in de werkbalk (Mac): elke ophoging laat de zichtbare onderdelen
+    /// opnieuw laden (`refreshableCommand` in Components.swift). Trekken om te vernieuwen bestaat op de Mac niet.
+    var refreshRequest = 0
+
     @ObservationIgnored private let api = AdminAPI()
     @ObservationIgnored private var countsTask: Task<Void, Never>?
+    /// Mac: sinds wanneer de app niet voorop staat (voor vergrendelen na `macInactiveLock`).
+    @ObservationIgnored private var inactiveSince: Date?
     /// Laatste poging om een widget-token op te halen (hoogstens één per uur, behalve na inloggen).
     @ObservationIgnored private var widgetTokenTriedAt: Date?
     private static let keychainAccount = "session"
@@ -195,6 +201,14 @@ final class Session {
         }
     }
 
+    // MARK: vernieuwen (⌘R)
+
+    func requestRefresh() {
+        guard isSignedIn, !isLocked else { return }
+        refreshRequest &+= 1
+        Task { await refreshSupportCounts() }
+    }
+
     // MARK: support-tellers (elke 2 minuten, zoals het web-dashboard)
 
     func refreshSupportCounts() async {
@@ -288,7 +302,17 @@ final class Session {
         case .faceID: return "Face ID"
         case .touchID: return "Touch ID"
         case .opticID: return "Optic ID"
-        default: return "toegangscode"
+        default: return Platform.isMac ? "wachtwoord" : "toegangscode"
+        }
+    }
+
+    /// SF Symbol bij `biometryName` (vergrendelscherm, Instellingen).
+    var biometryIcon: String {
+        switch biometryName {
+        case "Face ID": return "faceid"
+        case "Touch ID": return "touchid"
+        case "Optic ID": return "opticid"
+        default: return "lock"
         }
     }
 
@@ -314,4 +338,24 @@ final class Session {
             autoUnlockTried = false
         }
     }
+
+    /// Mac: het venster staat niet meer voorop (ander programma actief). Geen afscherming zoals in de app-wisselaar van iOS
+    /// (dan zou het venster bij elke klik ernaast leeg worden), wel vergrendelen na een tijd weg (zie `didBecomeActive`).
+    /// Geminimaliseerd of verborgen (⌘H) = achtergrond: dan meteen vergrendelen (`didEnterBackground`).
+    func didResignActive() {
+        if inactiveSince == nil { inactiveSince = Date() }
+    }
+
+    /// Mac: weer voorop; na meer dan `macInactiveLock` weg vergrendelen.
+    func didBecomeActive() {
+        defer { inactiveSince = nil }
+        guard let since = inactiveSince, lockEnabled, isSignedIn, !isLocked else { return }
+        if Date().timeIntervalSince(since) > Self.macInactiveLock {
+            isLocked = true
+            autoUnlockTried = false
+        }
+    }
+
+    /// Mac: vergrendelen na 5 minuten niet voorop.
+    static let macInactiveLock: TimeInterval = 5 * 60
 }

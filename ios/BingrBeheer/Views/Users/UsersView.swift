@@ -57,7 +57,7 @@ struct UsersView: View {
         .navigationDestination(for: UserRow.self) { u in
             UserDetailView(userID: u.id, fallbackEmail: u.email, fallbackName: u.fullName)
         }
-        .refreshable { await reload() }
+        .refreshableCommand { await reload() }
         .task(id: "\(query)|\(session.usersFilter)|\(session.usersRevision)") {
             if loaded { try? await Task.sleep(for: .milliseconds(300)) }
             if Task.isCancelled { return }
