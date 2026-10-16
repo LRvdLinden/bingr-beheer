@@ -30,19 +30,19 @@
 
 ## 🟠 P1 — Statuspagina en buildverhuizing
 
-- [ ] **Volledige statuspagina controleren**  
+- [X] **Volledige statuspagina controleren**  
   Alle platformmonitors nalopen na de verhuizing van GitHub-builds naar beveiligde opslag op beheer.bingr.online.
 
-- [ ] **Android latest.json HTTP 404 oplossen**  
+- [X] **Android latest.json HTTP 404 oplossen**  
   Android-versiecontrole moet weer geldige metadata ophalen in plaats van `versions/latest.json` 404.
 
-- [ ] **Samsung TV latest.json HTTP 404 oplossen**  
+- [X] **Samsung TV latest.json HTTP 404 oplossen**  
   Tizen-versiecontrole moet weer geldige metadata ophalen in plaats van `versions/latest.json` 404.
 
-- [ ] **Versiemetadata scheiden van privé-builds**  
+- [X] **Versiemetadata scheiden van privé-builds**  
   Platform, versie, build en publicatiestatus beschikbaar stellen zonder APK, WGT of Apple-pakketten openbaar aan te bieden.
 
-- [ ] **Statuspagina en beheer synchroniseren**  
+- [X] **Statuspagina en beheer synchroniseren**  
   Versie, build, laatste controle en storingsstatus consistent tonen; oude GitHub-404 is geen bewijs dat app offline is.
 
 ---
@@ -95,7 +95,7 @@
 
 ## 🟠 P1 — Beveiliging en SEO
 
-- [ ] **Volledige securityaudit**  
+- [X] **Volledige securityaudit**  
   bingr.online, support.bingr.online en beheer.bingr.online controleren op secrets, autorisatieproblemen en kwetsbaarheden; Trail of Bits Skills toepassen.
 
 - [ ] **Volledige SEO-audit via DataForSEO**  
