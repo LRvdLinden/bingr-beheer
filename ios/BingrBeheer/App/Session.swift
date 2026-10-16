@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Onderdelen van het beheer (tabs van web/index.html) plus Instellingen.
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, users, support, messages, status, settings
+    case overview, users, support, messages, status, downloads, settings
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .support: return "Support"
         case .messages: return "Berichten"
         case .status: return "Status"
+        case .downloads: return "Downloads"
         case .settings: return "Instellingen"
         }
     }
@@ -27,6 +28,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .support: return "lifepreserver"
         case .messages: return "megaphone"
         case .status: return "waveform.path.ecg"
+        case .downloads: return "arrow.down.circle"
         case .settings: return "gearshape"
         }
     }

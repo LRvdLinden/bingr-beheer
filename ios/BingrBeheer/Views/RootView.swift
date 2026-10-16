@@ -77,6 +77,8 @@ struct SplitLayout: View {
                     }
                 }
                 Section {
+                    // Downloads: op de iPhone via Instellingen (de tabbalk heeft vijf onderdelen)
+                    Label(AppSection.downloads.title, systemImage: AppSection.downloads.icon).tag(AppSection.downloads)
                     Label(AppSection.settings.title, systemImage: AppSection.settings.icon).tag(AppSection.settings)
                 }
             }
@@ -124,6 +126,7 @@ struct SectionScreen: View {
             case .support: SupportView()
             case .messages: MessagesView()
             case .status: StatusView()
+            case .downloads: DownloadsView()
             case .settings: SettingsView()
             }
         }

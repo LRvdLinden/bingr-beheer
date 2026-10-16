@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Instellingen: vergrendelen met Face ID, upgrade-link per platform (app_settings), sessie, uitloggen en links.
+/// Instellingen: vergrendelen met Face ID, upgrade-link per platform (app_settings), sessie, uitloggen, Downloads (iPhone) en links.
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("lockEnabled") private var lockEnabled = false
     @State private var confirmLogout = false
     @State private var confirmLogoutAll = false
@@ -90,6 +91,19 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(loggingOutAll)
+            }
+
+            // op de iPad staat Downloads in de zijbalk; op de iPhone hier (de tabbalk heeft vijf onderdelen)
+            if sizeClass != .regular {
+                Section {
+                    NavigationLink {
+                        DownloadsView()
+                    } label: {
+                        Label(AppSection.downloads.title, systemImage: AppSection.downloads.icon)
+                    }
+                } footer: {
+                    Text("Buildpakketten van Bingr en Bingr Beheer (APK, Samsung TV, Xcode-projecten) van de server van beheer.bingr.online.")
+                }
             }
 
             Section("Links") {

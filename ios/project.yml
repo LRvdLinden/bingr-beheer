@@ -1,6 +1,7 @@
 # Bingr Beheer: native app (iOS/iPadOS 17+) voor het beheer-dashboard (https://beheer.bingr.online).
 # Praat met dezelfde Edge Function `admin` als web/. Privé: nooit in de changelog en geen Bingr-buildnummer.
-# Genereren: `xcodegen generate` in deze map (de workflow Beheer-app doet dat ook en zet het Xcode-project in versions/Beheer/).
+# Genereren: `xcodegen generate` in deze map (de workflow Beheer-app doet dat ook; het Xcode-project gaat versleuteld naar
+# de map builds/ op de server van beheer.bingr.online, workflow Builds, en is op te halen via de tab Downloads).
 name: BingrBeheer
 options:
   bundleIdPrefix: nl.lrvdlinden
@@ -11,7 +12,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "6"
+    CURRENT_PROJECT_VERSION: "7"
     # Team van Léon van der Linden (zelfde als de Bingr-apps); automatisch ondertekenen
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic

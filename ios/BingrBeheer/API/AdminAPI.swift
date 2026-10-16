@@ -75,6 +75,12 @@ struct APIError: Error, LocalizedError {
         "bad_impact": "Ongeldige impact.",
         "bad_time": "Ongeldige begintijd.",
         "too_many_components": "Te veel onderdelen.",
+        // downloads (builds / build_link), zelfde teksten als web/admin.js
+        "bad_platform": "Onbekend platform.",
+        "bad_file": "Ongeldige bestandsnaam.",
+        "build_not_found": "Deze build staat niet (meer) op de server. Vernieuw de lijst.",
+        "builds_not_configured": "Downloads nog niet ingericht: draai de workflow Builds.",
+        "builds_unreachable": "De server met de builds is niet bereikbaar. Probeer het later opnieuw.",
     ]
 }
 

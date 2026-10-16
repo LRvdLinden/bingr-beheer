@@ -1,9 +1,9 @@
 name: Beheer-app
 
 # Bouwt de native app Bingr Beheer (ios/, iOS/iPadOS 17+, XcodeGen) voor een generiek iOS-apparaat zonder ondertekening.
-# Lukt dat, dan komt het Xcode-project (ios/ met het gegenereerde .xcodeproj) als
-# versions/Beheer/v<versie>/Bingr-Beheer-<versie>-build<N>-Xcode.zip in deze repo (alleen de nieuwste build),
-# met versions/latest.json (sleutel "beheer") en versions/README.md bijgewerkt via tools/add_version.py.
+# Lukt dat, dan gaat het Xcode-project (ios/ met het gegenereerde .xcodeproj) als Bingr-Beheer-<versie>-build<N>-Xcode.zip
+# versleuteld naar de branch inbox-beheer (tools/seal_build.sh); de workflow Builds zet het in de afgesloten map builds/ op
+# de server van beheer.bingr.online. Nooit onversleuteld op GitHub.
 # Build-rapport (fouten + staart van het log) op de branch ci-logs-beheer (latest.txt); fouten ook als annotaties.
 # Privé: nooit in de changelog, geen Bingr-buildnummer.
 
@@ -86,9 +86,12 @@ jobs:
           git -c user.name=github-actions -c user.email=actions@github.com commit -qm "build $GITHUB_SHA ios=${{ steps.ios.outcome }}"
           git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ci-logs-beheer
 
-      - name: Xcode-project in versions/Beheer zetten
+      - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
         if: steps.ios.outcome == 'success'
+        env:
+          TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           V=$(grep -m1 'MARKETING_VERSION' ios/project.yml | grep -o '[0-9][0-9.]*' | head -1)
           B=$(grep -m1 'CURRENT_PROJECT_VERSION' ios/project.yml | grep -o '[0-9]\+' | head -1)
           Z="$RUNNER_TEMP/Bingr-Beheer-$V-build$B-Xcode.zip"
@@ -102,22 +105,10 @@ jobs:
             echo
             echo "Commit $(echo $GITHUB_SHA | cut -c1-7)."
           } > "$N"
-          git config user.name github-actions
-          git config user.email actions@github.com
-          for i in 1 2 3; do
-            git fetch -q origin main
-            git reset -q --hard origin/main
-            python3 tools/add_version.py beheer "$B" "$Z" --notes "$N" --version "$V"
-            git add -A versions
-            if git diff --cached --quiet; then echo "::notice::Niets nieuws voor versions/"; exit 0; fi
-            git commit -qm "Versies: Bingr Beheer $V build $B ($(echo $GITHUB_SHA | cut -c1-7)) [skip ci]"
-            if git push -q origin HEAD:main 2>push.err; then
-              echo "::notice::In versions/Beheer/v$V gezet: $(basename "$Z")"; exit 0
-            fi
-            echo "::warning::Push mislukt (poging $i): $(head -c 300 push.err)"
-            sleep 5
-          done
-          echo "::error::Niet in versions/ gezet: push mislukt"; exit 1
+          # builds.pub.pem van de nieuwste main (de workflow Builds kan hem net vernieuwd hebben)
+          git fetch -q origin main && git checkout -q origin/main -- builds.pub.pem 2>/dev/null || true
+          tools/seal_build.sh beheer "$Z" "$V" "$B" "$N"
+          rm -f "$Z"
 
       - name: Status
         if: steps.ios.outcome != 'success'

@@ -167,7 +167,7 @@ struct UserDetailView: View {
             }
             Text(u.plan.isLifetime
                  ? ["Lifetime", u.plan.sourceText, u.plan.updatedAt.map { Fmt.date($0) }].compactMap { $0 }.joined(separator: " · ")
-                 : "Gratis: 2 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's.")
+                 : "Gratis: 1 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's.")
                 .font(.caption).foregroundStyle(Color.textDim)
             Picker("Abonnement", selection: $planChoice) {
                 ForEach(AccountPlan.options, id: \.key) { Text($0.label).tag($0.key) }

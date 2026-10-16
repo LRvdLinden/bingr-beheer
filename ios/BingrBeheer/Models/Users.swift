@@ -121,7 +121,7 @@ struct AccountBlock: Identifiable {
 /// Abonnement van een account (`account_plans`; geen rij = Gratis). Standaardlimieten zoals de server
 /// (supabase/functions/_shared/plans.ts in iptv-ios-appletv); eigen limieten nil = standaard.
 struct AccountPlan: Hashable {
-    static let defaults: [String: (streams: Int, devices: Int)] = ["free": (2, 8), "lifetime": (6, 15)]
+    static let defaults: [String: (streams: Int, devices: Int)] = ["free": (1, 8), "lifetime": (3, 15)]
     static let options: [Option] = [.init("free", "Gratis"), .init("lifetime", "Lifetime (gratis gegeven)")]
 
     let plan: String

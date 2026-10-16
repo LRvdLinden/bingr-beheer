@@ -73,9 +73,14 @@
     // build 97
     invalid_token: "Ongeldige of verlopen link.", unknown_action: "Onbekende actie (vernieuw de pagina; het dashboard is misschien bijgewerkt).",
     bad_priority: "Ongeldige prioriteit.", rate_limited: "Te veel verzoeken achter elkaar. Wacht een minuut en probeer het opnieuw.",
+    // downloads (builds, build_link)
+    bad_platform: "Onbekend platform.", bad_file: "Ongeldige bestandsnaam.",
+    build_not_found: "Deze build staat niet (meer) op de server. Vernieuw de lijst.",
+    builds_not_configured: "Downloads nog niet ingericht: draai de workflow Builds.",
+    builds_unreachable: "De server met de builds is niet bereikbaar. Probeer het later opnieuw.",
   };
   // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
-  const PLAN_DEFAULTS = { free: { streams: 2, devices: 8 }, lifetime: { streams: 6, devices: 15 } };
+  const PLAN_DEFAULTS = { free: { streams: 1, devices: 8 }, lifetime: { streams: 3, devices: 15 } };
   const PLAN_NAME = { free: "Gratis", lifetime: "Lifetime" };
   const PLAN_SOURCE = { legacy: "cadeau bij de invoering (bestaand account)", admin: "via het beheer", purchase: "gekocht" };
   const planObj = (p) => (p && typeof p === "object" ? p : { plan: "free" });
@@ -149,7 +154,7 @@
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -161,7 +166,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "users", "support", "messages", "status", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "users", "support", "messages", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -417,7 +422,7 @@
     const src = p.source ? (PLAN_SOURCE[p.source] || p.source) : "";
     return `<section class="plan-box" aria-labelledby="plTitle">
       <h3 id="plTitle">Abonnement ${planChip(p)}</h3>
-      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 2 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's."}</p>
+      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 1 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's."}</p>
       <form id="planForm" class="plan-form" novalidate>
         <label>Abonnement<select id="plPlan"><option value="free"${life ? "" : " selected"}>Gratis</option><option value="lifetime"${life ? " selected" : ""}>Lifetime (gratis gegeven)</option></select></label>
         <div class="plan-nums">
@@ -559,6 +564,84 @@
     catch (e) { if (e.code !== "auth") toast(errText(e), true); }
     finally { $("logoutAll").disabled = false; }
   };
+
+  // ---- downloads: buildpakketten op de server van beheer.bingr.online (acties builds / build_link) ----
+  // De pakketten staan niet op GitHub; een download loopt via dl.php met een link van 10 minuten uit de functie admin.
+  const DL_PLATFORMS = [
+    ["android", "Android en Android TV", "APK voor telefoons, tablets, Android TV, Google TV en Fire TV"],
+    ["tizen", "Samsung TV", ".wgt voor Tizen"],
+    ["apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS"],
+    ["beheer", "Bingr Beheer", "Xcode-project (zip) van deze beheer-app voor iPhone en iPad"],
+  ];
+  const DL_REASON = {
+    not_configured: "Downloads nog niet ingericht: draai de workflow Builds.",
+    no_builds: "Nog geen builds op de server.",
+    unreachable: "De server met de builds is niet bereikbaar. Probeer het later opnieuw.",
+  };
+  function fmtSize(n) {
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "—";
+    const u = ["B", "kB", "MB", "GB"];
+    let i = 0, v = n;
+    while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+    return `${new Intl.NumberFormat("nl-NL", { maximumFractionDigits: i && v < 100 ? 1 : 0 }).format(v)} ${u[i]}`;
+  }
+  const dlBuild = (b) => (b.build != null && b.build !== "" ? `build ${b.build}` : b.file);
+  const dlDate = (b) => (typeof b.date === "string" && b.date ? fmtDate(/^\d{4}-\d{2}-\d{2}$/.test(b.date) ? `${b.date}T12:00:00` : b.date) : "—");
+  function dlButton(p, b, ghost) {
+    return `<button class="btn small${ghost ? " ghost" : ""}" type="button" data-dl-p="${esc(p)}" data-dl-f="${esc(b.file)}">Downloaden</button>`;
+  }
+  function dlCard([p, title, hint], b) {
+    if (!b) {
+      return `<div class="panel bld-card"><div class="bld-head"><div><h2>${esc(title)}</h2><p class="sub">${esc(hint)}</p></div></div>
+        <p class="empty">Nog geen build op de server.</p></div>`;
+    }
+    const hist = Array.isArray(b.history) ? b.history : [];
+    return `<div class="panel bld-card">
+      <div class="bld-head"><div><h2>${esc(title)}</h2><p class="sub">${esc(hint)}</p></div><span class="chip">${esc(dlBuild(b))}</span></div>
+      <dl class="dl">
+        <dt>Versie</dt><dd>${esc(b.version || "—")}</dd>
+        <dt>Build</dt><dd>${esc(b.build ?? "—")}</dd>
+        <dt>Datum</dt><dd>${esc(dlDate(b))}</dd>
+        <dt>Grootte</dt><dd>${esc(fmtSize(b.size))}</dd>
+        <dt>Bestand</dt><dd class="brk">${esc(b.file)}</dd>
+        ${b.sha256 ? `<dt>SHA-256</dt><dd class="brk bld-hash">${esc(b.sha256)}</dd>` : ""}
+      </dl>
+      ${typeof b.notes === "string" && b.notes.trim() ? `<div class="bld-notes"><div class="sub">Notities</div><div class="bld-notes-body">${esc(b.notes.trim())}</div></div>` : ""}
+      <div class="form-btns">${dlButton(p, b, false)}</div>
+      ${hist.length ? `<div class="bld-hist"><div class="sub">Oudere builds</div><ul>${hist.map((h) => `<li><span><b>${esc(dlBuild(h))}</b>
+        <span class="sub">${esc([h.version, dlDate(h), fmtSize(h.size)].filter((x) => x && x !== "—").join(" · "))}</span></span>${dlButton(p, h, true)}</li>`).join("")}</ul></div>` : ""}
+    </div>`;
+  }
+  $("dlRefresh").onclick = () => loadDownloads();
+  async function loadDownloads() {
+    const el = $("dlList");
+    el.innerHTML = '<p class="sub">Laden…</p>';
+    $("dlUpdated").textContent = "";
+    let r;
+    try { r = await call("builds"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="empty">${esc(errText(e))}</p>`; return; }
+    if (!r.ready || !r.platforms) {
+      el.innerHTML = `<div class="panel"><p class="empty">${esc(DL_REASON[r.reason] || DL_REASON.no_builds)}</p></div>`;
+      return;
+    }
+    if (r.updated) $("dlUpdated").textContent = `Bijgewerkt ${fmtDateTime(r.updated)}`;
+    el.innerHTML = DL_PLATFORMS.map((x) => dlCard(x, r.platforms[x[0]])).join("");
+    el.querySelectorAll("button[data-dl-p]").forEach((b) => (b.onclick = () => download(b)));
+  }
+  async function download(btn) {
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = "Link maken…";
+    try {
+      const r = await call("build_link", { platform: btn.dataset.dlP, file: btn.dataset.dlF });
+      // same-origin (dl.php op beheer.bingr.online) zonder referrer; dl.php stuurt het bestand als bijlage
+      const a = document.createElement("a");
+      a.href = r.url; a.rel = "noreferrer"; a.download = r.file || "";
+      document.body.appendChild(a); a.click(); a.remove();
+      toast(`Download gestart: ${r.file}${r.size ? ` (${fmtSize(r.size)})` : ""}.`);
+    } catch (e) {
+      if (e.code === "build_not_found") loadDownloads();
+      if (e.code !== "auth") toast(errText(e), true);
+    } finally { btn.disabled = false; btn.textContent = old; }
+  }
 
   // ---- support ----
   const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };

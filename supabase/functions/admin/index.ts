@@ -49,12 +49,22 @@
 //   app_settings_get    {token}           -> {upgrade_link:{apple, android, androidtv, tizen, web}}
 //   app_settings_set    {token, upgrade_link:{apple, android, androidtv, tizen, web}} -> {ok, upgrade_link}
 //                       Abonnementen: tabellen account_plans en app_settings (schema in iptv-ios-appletv, docs/ACCOUNT.md).
+//   builds              {token}           -> {ready, platforms: {android|tizen|apple|beheer: {version, build, file, path, size,
+//                       sha256, date, notes, history:[…]}} | null, updated?, reason?: "not_configured"|"no_builds"|"unreachable"}
+//                       (tab Downloads: builds/manifest.json van de server van beheer.bingr.online, opgehaald via dl.php met
+//                       een token van 60 s; de buildpakketten staan niet op GitHub)
+//   build_link          {token, platform: "android"|"tizen"|"apple"|"beheer", file? (standaard de nieuwste; anders alleen
+//                       een bestand uit het manifest)} -> {url, expires_at, file, size}  (https://beheer.bingr.online/dl.php?t=…,
+//                       10 minuten geldig; in admin_audit als build_link met platform en build, nooit de link of het token)
+//                       Tokens: HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY (gezet door de workflow Builds, dezelfde
+//                       sleutel als builds/key.php op de server); zie builds.ts. Zonder sleutel: ready=false / 503 builds_not_configured.
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { announcementMail, blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
+import { buildUrl, cleanManifest, findBuild, isBuildPlatform, isValidBuildFile, MIN_KEY, signBuildToken } from "./builds.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -64,7 +74,7 @@ const admin = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY")
 const TOKEN_TTL_MS = 12 * 3600 * 1000;
 
 // ---- abonnementen (zelfde standaarden als supabase/functions/_shared/plans.ts in iptv-ios-appletv) ----
-const PLAN_DEFAULTS = { free: { streams: 2, devices: 8, servers: 1 }, lifetime: { streams: 6, devices: 15, servers: null } } as const;
+const PLAN_DEFAULTS = { free: { streams: 1, devices: 8, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } } as const;
 const LINK_KEYS = ["apple", "android", "androidtv", "tizen", "web"] as const;
 const DEFAULT_LINK: Record<string, boolean> = { apple: false, android: true, androidtv: true, tizen: true, web: true };
 // eigen limiet: null/leeg = standaard; anders een geheel getal binnen [1, cap]; ongeldig = undefined (fout)
@@ -88,6 +98,47 @@ const linkView = (v: unknown) => {
   return Object.fromEntries(LINK_KEYS.map((k) => [k, typeof o[k] === "boolean" ? o[k] : DEFAULT_LINK[k]]));
 };
 const BATCH = 25;
+
+// ---- downloads (tab Downloads): builds/manifest.json op de server van beheer.bingr.online, alleen via dl.php ----
+// De sleutel (BINGR_BUILDS_KEY) zet de workflow Builds; zonder sleutel is de tab "nog niet ingericht". Nooit de sleutel,
+// een token of een downloadlink loggen (ook niet in een foutmelding van fetch: die bevat de URL).
+const buildsKey = () => env("BINGR_BUILDS_KEY").trim();
+type Manifest = NonNullable<ReturnType<typeof cleanManifest>>;
+type BuildsReason = "not_configured" | "no_builds" | "unreachable";
+async function fetchManifest(): Promise<{ ok: true; manifest: Manifest } | { ok: false; reason: BuildsReason }> {
+  const key = buildsKey();
+  if (key.length < MIN_KEY) return { ok: false, reason: "not_configured" };
+  const { token } = await signBuildToken(key, "manifest.json", 60);
+  const fail = (reason: BuildsReason, why: string) => {
+    console.error("admin", "builds", "manifest", why);
+    return { ok: false as const, reason };
+  };
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(token), { redirect: "error", signal: AbortSignal.timeout(10000), headers: { Accept: "application/json" } });
+  } catch (e) {
+    return fail("unreachable", e instanceof Error ? e.name : "fetch");
+  }
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    // 404: geen manifest (nog geen builds); 503: dl.php zonder builds/key.php; 403: sleutel op de server is anders
+    if (res.status === 404) return fail("no_builds", "HTTP 404");
+    if (res.status === 503 || res.status === 403) return fail("not_configured", `HTTP ${res.status}`);
+    return fail("unreachable", `HTTP ${res.status}`);
+  }
+  let raw: unknown;
+  try {
+    const text = await res.text();
+    if (text.length > 1_000_000) return fail("unreachable", "te groot");
+    raw = JSON.parse(text);
+  } catch (e) {
+    return fail("unreachable", e instanceof Error ? e.name : "json");
+  }
+  const manifest = cleanManifest(raw);
+  if (!manifest) return fail("unreachable", "geen manifest");
+  if (!Object.keys(manifest.platforms).length) return { ok: false, reason: "no_builds" };
+  return { ok: true, manifest };
+}
 
 // Het dashboard staat op https://beheer.bingr.online (http://localhost om te testen). De site bingr.online mag alleen
 // `unsubscribe` aanroepen (afmeldpagina bingr.online/unsubscribe/); al het andere vanaf daar wordt geweigerd.
@@ -711,6 +762,34 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         });
       }
       return json(out, res.status);
+    }
+    case "builds": {
+      // tab Downloads: het manifest (alle velden), nooit de sleutel of een token
+      const r = await fetchManifest();
+      if (!r.ok) return json({ ready: false, platforms: null, reason: r.reason });
+      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated });
+    }
+    case "build_link": {
+      const platform = String(body.platform ?? "");
+      if (!isBuildPlatform(platform)) return json({ error: "bad_platform" }, 400);
+      const file = body.file === undefined || body.file === null || body.file === "" ? undefined : body.file;
+      if (file !== undefined && !isValidBuildFile(file)) return json({ error: "bad_file" }, 400);
+      const r = await fetchManifest();
+      if (!r.ok) {
+        if (r.reason === "unreachable") return json({ error: "builds_unreachable" }, 502);
+        if (r.reason === "no_builds") return json({ error: "build_not_found" }, 404);
+        return json({ error: "builds_not_configured" }, 503);
+      }
+      // alleen een bestand dat in het manifest staat (nieuwste of history van dit platform)
+      const b = findBuild(r.manifest, platform, file);
+      if (!b) return json({ error: "build_not_found" }, 404);
+      const { token, exp } = await signBuildToken(buildsKey(), `${platform}/${b.file}`, 600);
+      // logboek: welk platform en welke build, nooit de link of het token
+      await audit("build_link", ip, null, {
+        platform, build: typeof b.build === "number" ? b.build : (String(b.build ?? "").slice(0, 20) || null),
+        latest: b.file === r.manifest.platforms[platform]?.file,
+      });
+      return json({ url: buildUrl(token), expires_at: new Date(exp * 1000).toISOString(), file: b.file, size: typeof b.size === "number" ? b.size : null });
     }
     default:
       return json({ error: "unknown_action" }, 400);
