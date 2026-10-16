@@ -61,6 +61,16 @@ jobs:
             echo "::error::$l"
           done
 
+      - name: Widget-extensie controleren
+        if: steps.ios.outcome == 'success'
+        run: |
+          # de widgets (target BingrBeheerWidgets) horen als PlugIns/BingrBeheerWidgets.appex in de app te zitten
+          if find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 4 -type d -path '*BingrBeheer.app/PlugIns/BingrBeheerWidgets.appex' | grep -q .; then
+            echo "::notice::Widget-extensie ingebed in de app"
+          else
+            echo "::warning::BingrBeheerWidgets.appex niet gevonden in de app (widgets ontbreken)"
+          fi
+
       - name: Build-rapport publiceren (branch ci-logs-beheer)
         if: always()
         env:

@@ -215,6 +215,8 @@ struct StatusView: View {
         do {
             data = StatusOverview(try await session.call("status", ["op": "overview"]))
             error = nil
+            // widgets met de servicestatus meteen bijwerken
+            session.reloadWidgets(WidgetShared.statusKind)
         } catch {
             if error is CancellationError { return }
             self.error = (error as? APIError)?.errorDescription ?? APIError.text("server_error")

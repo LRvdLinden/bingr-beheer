@@ -33,9 +33,9 @@ jobs:
         with:
           deno-version: v2.x
       # build 97: blokkerend (geen continue-on-error meer): faalt een test, dan wordt de functie niet bijgewerkt
-      - name: Unittests (mails, blokkeren, downloads)
+      - name: Unittests (mails, blokkeren, downloads, widgets)
         run: |
-          deno test supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
+          deno test supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
           grep -E "FAILED|error|=>" admin-test.log | head -30 | while IFS= read -r l; do echo "::error::${l:0:300}"; done
           exit 1
       - name: Controleren
@@ -124,8 +124,11 @@ jobs:
           grep -q not_signed_in /tmp/b.json && echo "::notice::status vraagt om inloggen" || { echo "::error::status zonder inloggen onverwacht"; fail=1; }
           code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"support_list"}')
           [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::support_list vraagt om inloggen" || { echo "::error::support_list zonder inloggen gaf HTTP $code"; fail=1; }
+          # widgets: widget_summary zonder (widget-)token geeft 401 (alleen het HTTP-resultaat in het log, niet het antwoord)
+          code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"widget_summary"}')
+          [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::widget_summary vraagt om een widget-token" || { echo "::error::widget_summary zonder token gaf HTTP $code"; fail=1; }
           # blokkeren, opheffen en verwijderen alleen na inloggen (ook met een vervalst token)
-          for a in user_block user_unblock user_delete plan_get plan_set app_settings_get app_settings_set logout_all builds build_link; do
+          for a in user_block user_unblock user_delete plan_get plan_set app_settings_get app_settings_set logout_all builds build_link widget_token widget_summary; do
             code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://beheer.bingr.online" -H "Content-Type: application/json" \
               -d "{\"action\":\"$a\",\"token\":\"eyJ1IjoieCJ9.vervalst\",\"id\":\"00000000-0000-0000-0000-000000000000\",\"reason\":\"ci\",\"confirm\":\"x\"}")
             [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::$a vraagt om inloggen" || { echo "::error::$a zonder inloggen gaf HTTP $code"; fail=1; }

@@ -7,6 +7,14 @@
 //                       (build 97: het token bevat geen inlognaam meer, wel de tokenversie v uit admin_token_state; elk
 //                       verzoek controleert v. Een ander wachtwoord verhoogt de versie vanzelf.)
 //   logout_all          {token}           -> {ok}    (build 97: overal uitloggen: versie + 1, alle tokens vervallen)
+//   widget_token        {token}           -> {widget_token, expires_at, scope:"widget"}  (alleen met een beheer-token: een apart
+//                       token voor de widgets van de app Bingr Beheer, 30 dagen geldig, met eigen sleutel en scope "widget" en
+//                       dezelfde tokenversie v; overal uitloggen of een ander wachtwoord trekt het in. In admin_audit zonder token.)
+//   widget_summary      {token: widget-token} -> {status: {level, components:[{id, name, group, level}], counts, active_notices,
+//                       open_incidents, checked_at} | null, support: {new, open, pending, resolved, closed, active, unread,
+//                       total, last_7d} | null, generated_at}   (ALLEEN met een widget-token; een widget-token mag niets anders,
+//                       een beheer-token geeft hier 401. Alleen aantallen en statusnamen, geen persoonsgegevens of adressen;
+//                       max. 30 per minuut per IP. Zie widget.ts / widget_test.ts.)
 //   build 97: na inloggen max. 300 verzoeken per minuut per IP (429 {error:"rate_limited", retry_after}); unsubscribe
 //   max. 20 per 10 min per IP (one-click vanaf mailservers: 200 per 10 min). Inzage van persoonsgegevens (user_detail,
 //   users met zoekterm, support_get), geblokkeerde inlogpogingen en mislukte acties (met foutcode) staan in admin_audit.
@@ -65,6 +73,7 @@ import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { announcementMail, blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { buildUrl, cleanManifest, findBuild, isBuildPlatform, isValidBuildFile, MIN_KEY, signBuildToken } from "./builds.ts";
+import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -178,6 +187,9 @@ async function hmac(material: string, data: string) {
 }
 // sleutel voor beheer-tokens: wijzigt het wachtwoord (of build 97: de gebruikersnaam), dan vervallen alle tokens
 const adminMaterial = () => `bingr-admin-v2|${env("BINGR_ADMIN_USER")}|${env("BINGR_ADMIN_PASSWORD")}|${env("SUPABASE_SERVICE_ROLE_KEY")}`;
+// sleutel voor widget-tokens (scope "widget", alleen widget_summary): apart van de beheer-sleutel, zodat het ene token nooit
+// als het andere geldt; vervalt ook bij een ander wachtwoord of andere gebruikersnaam (zie widget.ts)
+const widgetMaterial = () => `bingr-admin-widget-v1|${env("BINGR_ADMIN_USER")}|${env("BINGR_ADMIN_PASSWORD")}|${env("SUPABASE_SERVICE_ROLE_KEY")}`;
 // sleutel voor afmeldlinks: blijft geldig (BINGR_SOURCES_KEY wordt nooit vervangen)
 const unsubMaterial = () => `bingr-unsub-v1|${env("BINGR_SOURCES_KEY") || env("SUPABASE_SERVICE_ROLE_KEY")}`;
 
@@ -193,24 +205,51 @@ async function tokenVersion(): Promise<number> {
   return Number(data);
 }
 // build 97: geen inlognaam meer in het token (het payload-deel is gewoon leesbaar); wel versie v en een willekeurige id
+// (widgets: ondertekenen en controleren via widget.ts, dezelfde vorm als vroeger: {v, exp, j}, zonder scope)
 async function makeToken() {
-  const exp = Date.now() + TOKEN_TTL_MS;
-  const v = await tokenVersion();
-  const payload = b64u(enc.encode(JSON.stringify({ v, exp, j: b64u(crypto.getRandomValues(new Uint8Array(9))) })));
-  return { token: `${payload}.${b64u(await hmac(adminMaterial(), payload))}`, expires_at: new Date(exp).toISOString() };
+  const { token, exp } = await signToken(adminMaterial(), await tokenVersion(), TOKEN_TTL_MS);
+  return { token, expires_at: new Date(exp).toISOString() };
 }
 async function validToken(token: unknown) {
-  if (!env("BINGR_ADMIN_PASSWORD") || typeof token !== "string" || token.length > 500) return false;
-  const [payload, sig] = token.split(".");
-  if (!payload || !sig) return false;
-  let p: { v?: unknown; exp?: unknown };
-  try {
-    if (!sameBytes(unb64u(sig), await hmac(adminMaterial(), payload))) return false;
-    p = JSON.parse(new TextDecoder().decode(unb64u(payload)));
-  } catch { return false; }
-  if (typeof p.exp !== "number" || p.exp <= Date.now() || typeof p.v !== "number") return false;
+  if (!env("BINGR_ADMIN_PASSWORD")) return false;
+  // scope null: een widget-token (andere sleutel, met s) geldt hier nooit
+  const p = await readToken(adminMaterial(), token, null);
   // pas na een geldige handtekening naar de database (een vervalst token kost geen databaseverzoek)
-  return p.v === await tokenVersion();
+  return p !== null && p.v === await tokenVersion();
+}
+// widget-token (scope "widget", 30 dagen): alleen voor widget_summary; gebonden aan dezelfde tokenversie
+async function makeWidgetToken() {
+  const { token, exp } = await signToken(widgetMaterial(), await tokenVersion(), WIDGET_TTL_MS, WIDGET_SCOPE);
+  return { widget_token: token, expires_at: new Date(exp).toISOString(), scope: WIDGET_SCOPE };
+}
+async function validWidgetToken(token: unknown) {
+  if (!env("BINGR_ADMIN_PASSWORD")) return false;
+  const p = await readToken(widgetMaterial(), token, WIDGET_SCOPE);
+  return p !== null && p.v === await tokenVersion();
+}
+// samenvatting voor de widgets: status (functie status, actie admin) en supporttellers (functie support), elk los;
+// mislukt er een, dan is dat deel null. Alleen aantallen en statusnamen (widget.ts), geen persoonsgegevens.
+async function widgetSummary() {
+  const base = env("SUPABASE_URL").replace(/\/+$/, "");
+  const post = async (fn: string, header: string, secret: string, action: string) => {
+    if (!secret) return null;
+    try {
+      const res = await fetch(`${base}/functions/v1/${fn}`, {
+        method: "POST", headers: { "Content-Type": "application/json", [header]: secret },
+        body: JSON.stringify({ action }), signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) { await res.body?.cancel().catch(() => {}); console.error("admin", "widget", fn, `HTTP ${res.status}`); return null; }
+      return await res.json();
+    } catch (e) {
+      console.error("admin", "widget", fn, e instanceof Error ? e.name : "fetch");
+      return null;
+    }
+  };
+  const [st, sp] = await Promise.all([
+    post("status", "x-status-secret", env("STATUS_CRON_SECRET"), "admin"),
+    post("support", "x-support-secret", env("SUPPORT_ADMIN_SECRET"), "admin_counts"),
+  ]);
+  return { status: summarizeStatus(st), support: summarizeSupport(sp), generated_at: new Date().toISOString() };
 }
 async function unsubToken(userId: string) {
   return `${userId}.${b64u((await hmac(unsubMaterial(), `unsub:${userId}`)).subarray(0, 18))}`;
@@ -285,7 +324,7 @@ async function rateOk(key: string, max: number, windowSec: number): Promise<bool
   if (error) { console.error("admin", "rate", key.split(":")[0], error.message); return true; }
   return data !== false;
 }
-const UNSUB_MAX = 20, UNSUB_ONECLICK_MAX = 200, UNSUB_WINDOW = 600, AUTHED_MAX = 300, AUTHED_WINDOW = 60;
+const UNSUB_MAX = 20, UNSUB_ONECLICK_MAX = 200, UNSUB_WINDOW = 600, AUTHED_MAX = 300, AUTHED_WINDOW = 60, WIDGET_MAX = 30;
 // afmelden met één klik (RFC 8058): de mailclient doet POST <functie-URL>?unsubscribe=<token> met List-Unsubscribe=One-Click.
 // Een GET (oudere clients openen de link in de browser) gaat door naar de afmeldpagina op bingr.online; die vraagt eerst.
 const oneClickUrl = (t: string) => `${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/admin?unsubscribe=${encodeURIComponent(t)}`;
@@ -376,6 +415,14 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
     return json({ ok: true });
   }
 
+  if (action === "widget_summary") {
+    // widgets van de app: alleen met een widget-token (een gewoon beheer-token wordt hier geweigerd)
+    if (!(await validWidgetToken(body.token))) return json({ error: "not_signed_in" }, 401);
+    if (!(await rateOk(`admin-widget:${ip}`, WIDGET_MAX, AUTHED_WINDOW))) return json({ error: "rate_limited", retry_after: AUTHED_WINDOW }, 429);
+    return json(await widgetSummary());
+  }
+
+  // een widget-token geldt hier niet (andere sleutel en scope, zie widget.ts)
   if (!(await validToken(body.token))) return json({ error: "not_signed_in" }, 401);
   // build 97: na inloggen max. 300 verzoeken per minuut per IP
   if (!(await rateOk(`admin:${ip}`, AUTHED_MAX, AUTHED_WINDOW))) return json({ error: "rate_limited", retry_after: AUTHED_WINDOW }, 429);
@@ -403,7 +450,15 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
 }
 
 async function authed(action: string, body: Record<string, unknown>, ip: string, json: (b: unknown, s?: number) => Response): Promise<Response> {
+  // beheer-token: alles behalve de widget-acties (die lopen alleen met een widget-token, zie handle)
+  if (!actionAllowed(null, action)) return json({ error: "unknown_action" }, 400);
   switch (action) {
+    case "widget_token": {
+      // widgets van de app: apart token (30 dagen, scope widget) dat alleen widget_summary mag; vervalt bij overal uitloggen
+      const out = await makeWidgetToken();
+      await audit("widget_token", ip, null, { expires_at: out.expires_at });
+      return json(out);
+    }
     case "logout_all": {
       // build 97: overal uitloggen (web en app): tokenversie + 1
       const { data, error } = await admin.rpc("bingr_admin_logout_all");

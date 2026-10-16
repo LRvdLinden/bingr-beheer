@@ -54,6 +54,43 @@ De workflow uploadt naar `FTP_DIR`, of zonder `FTP_DIR` naar de hoofdmap van de 
 
 Function-secrets gelden voor het hele Supabase-project, dus voor alle functies tegelijk. `BINGR_BUILDS_KEY` (tab Downloads) zet de workflow *Builds*; zie *Downloads (buildpakketten)*. De tab **Support** gebruikt het geheim `SUPPORT_ADMIN_SECRET`; dat maakt de workflow *Backend* in iptv-ios-appletv één keer zelf aan (hier niets voor nodig). De afzender van supportmails (`BINGR_SUPPORT_FROM`, standaard `Bingr Support <support@bingr.online>`) en het adres voor meldingen (`BINGR_SUPPORT_EMAIL`, standaard `support@bingr.online`) staan, als je ze wilt aanpassen, als secrets in iptv-ios-appletv. Zolang `BINGR_ADMIN_USER` / `BINGR_ADMIN_PASSWORD` hier nog niet staan, gebruikt de functie de waarden die al op de server staan. De `STATUS_CRON_SECRET` voor de tab Status zet de workflow *Backend* in iptv-ios-appletv; hier hoeft die niet.
 
+## Dashboard (tab Overzicht)
+
+Het overzicht is een instelbaar dashboard met widgets, op het web en in de app (zelfde model). Zonder eigen indeling toont het de standaardindeling (lijkt op het vroegere vaste overzicht): tien kengetallen (gebruikers, nieuw, actief vandaag/30 dagen, apparaten, kijkt nu, open tickets, geblokkeerd, Gratis, Lifetime), servicestatus, nieuwe gebruikers en inlogs per dag, apparaten per platform en app-versies.
+
+- **Wijzig** zet de wijzigmodus aan. Per widget: grootte **S** (1×1), **M** (2×1) of **L** (2×2), verplaatsen (web: slepen met de muis, of de pijlknoppen *naar voren* / *naar achteren* met het toetsenbord; app: lang drukken en slepen, de pijlen, of de grepen in *Widgets*), **instellen** (schuifjes: getoonde gegevens) en **verbergen**. **Widget toevoegen** (web) / **Widgets** (app) toont verborgen widgets (tonen of verwijderen) en de galerij. **Standaard herstellen** zet alles terug; *Standaard voor deze widget* doet dat voor één widget.
+- Raster: web 4 kolommen, 2 onder 1000 px, 1 kolom op telefoonbreedte (≤ 600 px); app 4 kolommen op de iPad (regular), 2 op de iPhone. Widgets vullen de eerste vrije plek (geen gaten; web `grid-auto-flow: row dense`).
+- Gegevens komen uit bestaande acties: `stats` (altijd), `support_counts` (elke 2 minuten, zoals de badge), `status` met `op: overview` (alleen als er een zichtbare widget Servicestatus of *Nu actieve apparaten* is) en `announcements_list` (alleen met een zichtbare widget Laatste berichten). Geen nieuwe serveracties.
+- Opslag per apparaat: web in `localStorage` onder `bingrAdmin.dashboard`, app in `UserDefaults` onder `dashboardLayout` (JSON-tekst). Niet op de server en niet gedeeld tussen apparaten; doordat beide hetzelfde JSON gebruiken, kan synchroniseren later via een serveractie.
+
+### JSON-model (versie 1)
+
+```json
+{
+  "version": 1,
+  "widgets": [
+    { "id": "users", "type": "metric", "size": "s", "hidden": false, "options": { "metric": "users_total" } },
+    { "id": "chart_new", "type": "daily_chart", "size": "l", "hidden": false, "options": { "series": "new_users", "days": 30, "display": "chart" } }
+  ]
+}
+```
+
+- `version`: altijd `1`. Een andere versie, geen geldige JSON of geen enkele geldige widget = standaardindeling.
+- `widgets`: volgorde = plaats op het dashboard; max. 40. `id`: `[A-Za-z0-9_-]{1,40}`, uniek (ongeldig of dubbel = nieuw id `<type>_<n>`). Een widget met onbekend `type` valt weg (de rest blijft). `size`: `s`, `m` of `l`, alleen de maten van het type (anders de standaardmaat). `hidden`: verborgen maar bewaard (standaard `false`). `options`: alleen de sleutels hieronder; een ontbrekende of ongeldige waarde krijgt de standaard (**vet**).
+
+| `type` | maten (standaard) | `options` |
+| --- | --- | --- |
+| `metric` (Kengetal) | s, m (**s**) | `metric`: **`users_total`**, `users_new_7d`, `active_today`, `active_30d`, `devices`, `watching_now`, `blocked`, `plan_free`, `plan_lifetime`, `plan_custom`, `opted_out` |
+| `daily_chart` (Per dag) | s, m, l (**l**) | `series`: **`new_users`**, `signins`, `active_users`; `days`: 7, 14, **30**; `display`: **`chart`**, `number` (S toont altijd het getal) |
+| `platforms` (Apparaten per platform) | m, l (**l**) | `source`: **`30d`** (stats) of `live` (laatste 15 min, uit `status`); `platforms`: lijst platformnamen zoals in de gegevens (**leeg = alle**) |
+| `versions` (App-versies) | m, l (**l**) | `platforms`: als hierboven |
+| `plans` (Abonnementen) | s, m, l (**m**) | `plans`: deelverzameling van **`free`, `lifetime`, `custom`** (niet leeg) |
+| `support` (Supporttickets) | s, m, l (**s**) | `statuses`: deelverzameling van `new`, `open`, `pending`, `resolved`, `closed` (**new, open, pending**; niet leeg); `display`: **`number`**, `list` |
+| `status` (Servicestatus) | s, m, l (**m**) | `show_incidents`: **true**; `show_notices`: **true** |
+| `announcements` (Laatste berichten) | m, l (**l**) | `count`: **3**, 5; `only_active`: **false** |
+
+Code: web in `web/admin.js` (blok *overzicht: instelbaar widget-dashboard*, `normLayout`), app in `ios/BingrBeheer/Models/Dashboard.swift` (`DashLayout.normalized()`) en `ios/BingrBeheer/Views/Overview/`. Houd beide gelijk als je een type of optie toevoegt (en verhoog `version` alleen als oude indelingen niet meer kloppen). Niets hiervan komt in de changelog.
+
 ## Gebruikers: blokkeren en verwijderen
 
 In de lade van een gebruiker (web en app):
@@ -91,12 +128,33 @@ De buildpakketten van Bingr (Android/Android TV-APK, Samsung TV-`.wgt`, Apple Xc
 
 ## iOS-app (Bingr Beheer)
 
-Native SwiftUI-app voor iPhone en iPad (iOS/iPadOS 17+, bundle-id `nl.lrvdlinden.bingr.beheer`) in `ios/`, met een XcodeGen-project (`ios/project.yml`). Ze praat met dezelfde functie `admin` als het web-dashboard (publieke Supabase-URL en publishable key ingebouwd, geen geheimen) en heeft alle tabs: Overzicht (kengetallen en grafieken met Swift Charts), Gebruikers (zoeken, details, apparaten, wachtwoord-reset), Support (filters, zoeken, gesprek met interne notities, antwoorden, status/prioriteit, inbox-import en *Nu ophalen*), Berichten (NL/EN met voorbeeld, e-mailen in batches, verder verzenden, verwijderen) en Status (monitors, storingen, reactietijd, controleren, monitors toevoegen/bewerken), en sinds build 7 Downloads (zie *Downloads (buildpakketten)*; op de iPhone via Instellingen). Tabbalk op de iPhone, zijbalk op de iPad. Het token staat in de Keychain (alleen dit apparaat, geen iCloud); vergrendelen met Face ID / toegangscode staat sinds build 6 standaard aan bij de eerste keer inloggen (uit te zetten in Instellingen). In Instellingen ook **Overal uitloggen**. `bingrbeheer://support/1001` opent een ticket.
+Native SwiftUI-app voor iPhone en iPad (iOS/iPadOS 17+, bundle-id `nl.lrvdlinden.bingr.beheer`) in `ios/`, met een XcodeGen-project (`ios/project.yml`). Ze praat met dezelfde functie `admin` als het web-dashboard (publieke Supabase-URL en publishable key ingebouwd, geen geheimen) en heeft alle tabs: Overzicht (instelbaar dashboard met widgets, grafieken met Swift Charts; zie *Dashboard*), Gebruikers (zoeken, details, apparaten, wachtwoord-reset), Support (filters, zoeken, gesprek met interne notities, antwoorden, status/prioriteit, inbox-import en *Nu ophalen*), Berichten (NL/EN met voorbeeld, e-mailen in batches, verder verzenden, verwijderen) en Status (monitors, storingen, reactietijd, controleren, monitors toevoegen/bewerken), en sinds build 7 Downloads (zie *Downloads (buildpakketten)*; op de iPhone via Instellingen). Tabbalk op de iPhone, zijbalk op de iPad. Het token staat in de Keychain (alleen dit apparaat, geen iCloud); vergrendelen met Face ID / toegangscode staat sinds build 6 standaard aan bij de eerste keer inloggen (uit te zetten in Instellingen). In Instellingen ook **Overal uitloggen**. `bingrbeheer://support/1001` opent een ticket; `bingrbeheer://support`, `bingrbeheer://status` en `bingrbeheer://overview` openen die tab. Met homescherm- en toegangsschermwidgets voor servicestatus en supporttickets; zie *Beheer-app: widgets*.
 
 - **Workflow *Beheer-app*** (`.github/workflows/build-ios.yml`, bij een push naar `main` die `ios/` raakt): `xcodegen generate` en een build voor een generiek iOS-apparaat zonder ondertekening. Lukt dat, dan levert de workflow het Xcode-project (ios/ met het gegenereerde `BingrBeheer.xcodeproj`) als `Bingr-Beheer-<versie>-build<N>-Xcode.zip` versleuteld aan voor de map `builds/beheer/` op de server (workflow *Builds*); ophalen via de tab **Downloads**. Het staat niet meer in deze repo. Fouten staan als annotaties bij de run en in `latest.txt` op de branch `ci-logs-beheer`.
 - **Installeren**: zip ophalen via *Downloads* (web of app), uitpakken, `ios/BingrBeheer.xcodeproj` openen in Xcode 16, bij *Signing & Capabilities* je Team kiezen (staat standaard op het Bingr-team) en op je iPhone/iPad draaien. Zelf genereren kan ook: `brew install xcodegen && cd ios && xcodegen generate`.
 - Versie en build staan in `ios/project.yml` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`): een eigen reeks, los van de Bingr-buildnummers. App-icoon: `python3 ios/tools/make_icon.py`.
 - Nooit in de changelog van Bingr.
+
+### Beheer-app: widgets
+
+WidgetKit-extensie `BingrBeheerWidgets` (bundle-id `nl.lrvdlinden.bingr.beheer.widgets`, iOS/iPadOS 17+, map `ios/BingrBeheerWidgets/`; gedeelde code in `ios/Shared/`), ingebed in de app. Drie widgets (lang indrukken → *Wijzig widget* voor de instellingen):
+
+| Widget | Formaten | Instellingen | Tik opent |
+| --- | --- | --- | --- |
+| **Servicestatus**: algemene status (werkt, onderhoud, verminderd, gedeeltelijke/grote storing) en per onderdeel, problemen eerst | klein, middel, toegangsscherm (rechthoek, rond) | *Alleen problemen tonen* | `bingrbeheer://status` (tab Status) |
+| **Supporttickets**: nieuw, open (in behandeling, desgewenst incl. *wacht op klant*) en afgerond (opgelost + gesloten), plus *wacht op reactie* | klein, middel, toegangsscherm (rechthoek, rond) | welke tellers, *wacht op klant meetellen*, hoofdteller voor rond | `bingrbeheer://support` (tab Support) |
+| **Bingr Beheer**: beide naast/onder elkaar | middel, groot | — | de helft waarop je tikt |
+
+- **Gegevens**: de actie `widget_summary` van de functie `admin` (status via de functie `status` zoals de tab Status, tellers via `support_counts`). Alleen statusnamen en aantallen: geen e-mailadressen, namen, tickets, monitor-adressen of foutmeldingen. Elke ~20 minuten een nieuwe stand (WidgetKit kiest het precieze moment); de app werkt de widgets ook meteen bij na inloggen, uitloggen en het laden van Support of Status. Zonder verbinding toont de widget de laatst bekende stand (met een *geen verbinding*-icoon).
+- **Widget-token** (los van de inlogsessie van 12 uur):
+  - Na het inloggen vraagt de app met de gewone sessie de actie `widget_token` aan. Die geeft een apart token met scope `widget`, 30 dagen geldig, ondertekend met een **eigen sleutel** (afgeleid van dezelfde function-secrets, ander domein) en met de **tokenversie** `v` uit `admin_token_state`.
+  - Een widget-token mag **alleen** `widget_summary`; een gewoon token wordt door `widget_summary` geweigerd (401) en een widget-token door alle andere acties (andere sleutel én scope). Een widget-token kan geen nieuw widget-token aanvragen.
+  - **Overal uitloggen** of een ander `BINGR_ADMIN_PASSWORD` trekt ook alle widget-tokens in. De app vraagt hoogstens eens per dag een nieuw token aan zolang je ingelogd bent; verloopt alleen de sessie van 12 uur, dan blijven de widgets werken tot het widget-token verloopt.
+  - Het aanvragen staat in het logboek (`admin_audit`, actie `widget_token`, zonder token); `widget_summary` niet (wel max. 30 per minuut per IP).
+  - Code en tests: `supabase/functions/admin/widget.ts`, `widget_test.ts` (blokkeren de deploy).
+- **Opslag**: het widget-token staat in de Keychain-toegangsgroep `<Team-ID>.nl.lrvdlinden.bingr.beheer.shared` (keychain-access-groups in de entitlements van app en extensie, `ios/project.yml`), alleen op dit apparaat (niet in iCloud), leesbaar na de eerste ontgrendeling. Het gewone sessietoken blijft in de eigen groep van de app; de widget kan dat niet lezen.
+- **Uitloggen** in de app wist het widget-token; de widgets tonen dan *Open Bingr Beheer om in te loggen* (ook na Overal uitloggen of als het token verlopen is). In **Instellingen → Widgets** kun je ze uitzetten (token weg). Let op: widgets zijn zichtbaar zonder Face ID; de tellers zijn gemarkeerd als privacygevoelig (`privacySensitive`), zodat iOS ze op een vergrendeld toestel kan verbergen.
+- **Installeren**: bij een eigen Team ook voor het target *BingrBeheerWidgets* het Team kiezen (Signing & Capabilities); de Keychain-groep gaat automatisch mee. Widgets en wijzigingen daaraan komen nooit in de changelog.
 
 ## Subdomein beheer.bingr.online instellen (eenmalig, bij de hoster)
 

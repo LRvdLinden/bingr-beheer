@@ -2,6 +2,7 @@ import Foundation
 import LocalAuthentication
 import Observation
 import SwiftUI
+import WidgetKit
 
 /// Onderdelen van het beheer (tabs van web/index.html) plus Instellingen.
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
@@ -94,6 +95,8 @@ final class Session {
 
     @ObservationIgnored private let api = AdminAPI()
     @ObservationIgnored private var countsTask: Task<Void, Never>?
+    /// Laatste poging om een widget-token op te halen (hoogstens één per uur, behalve na inloggen).
+    @ObservationIgnored private var widgetTokenTriedAt: Date?
     private static let keychainAccount = "session"
 
     var isSignedIn: Bool { token != nil }
@@ -129,6 +132,8 @@ final class Session {
             UserDefaults.standard.set(true, forKey: "lockEnabled")
         }
         startCountsPolling()
+        // widgets: meteen een nieuw widget-token (30 dagen), daarna herladen de widgets
+        Task { await refreshWidgetToken(force: true) }
     }
 
     /// build 97: overal uitloggen (actie logout_all): alle beheer-tokens vervallen, ook op het web en andere apparaten.
@@ -137,7 +142,14 @@ final class Session {
         logout("Je bent overal uitgelogd.")
     }
 
-    func logout(_ message: String? = nil) {
+    /// Uitloggen. `clearWidgets` false alleen als de sessie (12 uur) vanzelf verloopt: het widget-token (30 dagen) blijft
+    /// dan werken. Zelf uitloggen of overal uitloggen wist het widget-token (overal uitloggen trekt het op de server ook in).
+    func logout(_ message: String? = nil, clearWidgets: Bool = true) {
+        if clearWidgets {
+            WidgetTokenStore.delete()
+            widgetTokenTriedAt = nil
+        }
+        WidgetCenter.shared.reloadAllTimelines()
         Keychain.delete(Self.keychainAccount)
         token = nil
         expiresAt = nil
@@ -153,13 +165,15 @@ final class Session {
     @discardableResult
     func call(_ action: String, _ params: [String: Any?] = [:]) async throws -> JSON {
         if let exp = expiresAt, exp <= Date() {
-            logout("Je sessie is verlopen. Log opnieuw in.")
+            logout("Je sessie is verlopen. Log opnieuw in.", clearWidgets: false)
             throw APIError(code: "auth", status: 401, body: .null)
         }
         do {
             return try await api.send(action, token: token, params: params)
         } catch let e as APIError where e.status == 401 {
-            logout("Je sessie is verlopen. Log opnieuw in.")
+            // ingetrokken (overal uitloggen elders, ander wachtwoord) of verlopen; is het widget-token ook ingetrokken,
+            // dan meldt de widget zelf "Open Bingr Beheer om in te loggen"
+            logout("Je sessie is verlopen. Log opnieuw in.", clearWidgets: false)
             throw APIError(code: "auth", status: 401, body: e.body)
         }
     }
@@ -185,7 +199,55 @@ final class Session {
 
     func refreshSupportCounts() async {
         guard isSignedIn else { return }
-        if let r = try? await call("support_counts") { supportCounts = SupportCounts(r) }
+        if let r = try? await call("support_counts") {
+            let counts = SupportCounts(r)
+            if counts != supportCounts {
+                supportCounts = counts
+                reloadWidgets(WidgetShared.supportKind)
+            }
+        }
+        await refreshWidgetToken()
+    }
+
+    // MARK: widgets
+
+    /// Widgets aan (standaard) of uit (Instellingen). Uit: geen widget-token op dit apparaat, de widgets vragen om in te loggen.
+    var widgetsEnabled: Bool { UserDefaults.standard.object(forKey: "widgetsEnabled") as? Bool ?? true }
+
+    func setWidgetsEnabled(_ on: Bool) async {
+        UserDefaults.standard.set(on, forKey: "widgetsEnabled")
+        if on {
+            await refreshWidgetToken(force: true)
+        } else {
+            WidgetTokenStore.delete()
+            widgetTokenTriedAt = nil
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    /// Haalt een widget-token op (actie widget_token, alleen met de gewone sessie). Zonder `force` alleen als het bewaarde
+    /// token ouder is dan een dag (of ontbreekt), en hoogstens één poging per uur.
+    func refreshWidgetToken(force: Bool = false) async {
+        guard isSignedIn, widgetsEnabled else { return }
+        if !force {
+            if let c = WidgetTokenStore.read(), c.expiresAt.timeIntervalSinceNow > 29 * 86400 { return }
+            if let t = widgetTokenTriedAt, Date().timeIntervalSince(t) < 3600 { return }
+        }
+        widgetTokenTriedAt = Date()
+        do {
+            let r = try await call("widget_token")
+            guard let t = r["widget_token"].text, let exp = r["expires_at"].date else { return }
+            WidgetTokenStore.write(WidgetCredential(token: t, expiresAt: exp))
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            // geen verbinding of een oudere server: de widgets houden het oude token of vragen om in te loggen
+        }
+    }
+
+    /// Widgets bijwerken na het laden van support of status (alleen die soort en de gecombineerde widget).
+    func reloadWidgets(_ kind: String) {
+        WidgetCenter.shared.reloadTimelines(ofKind: kind)
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetShared.overviewKind)
     }
 
     private func startCountsPolling() {
@@ -200,13 +262,21 @@ final class Session {
 
     // MARK: deep links
 
-    /// bingrbeheer://support/1001 of https://beheer.bingr.online/#support/1001
+    /// bingrbeheer://support/1001 of https://beheer.bingr.online/#support/1001; uit de widgets ook bingrbeheer://support,
+    /// bingrbeheer://status en bingrbeheer://overview (die tab openen).
     func open(_ url: URL) {
+        if url.scheme?.lowercased() == "bingrbeheer" {
+            switch url.host?.lowercased() {
+            case "status": section = .status; return
+            case "overview": section = .overview; return
+            default: break
+            }
+        }
         let text = url.absoluteString
         guard let r = text.range(of: #"support/?(\d+)?$"#, options: .regularExpression) else { return }
         section = .support
         let digits = text[r].filter(\.isNumber)
-        if let n = Int(digits), n > 0 { supportPath = [n] }
+        if let n = Int(digits), n > 0 { supportPath = [n] } else { supportPath = [] }
     }
 
     // MARK: vergrendelen

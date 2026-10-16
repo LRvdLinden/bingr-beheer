@@ -12,7 +12,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "7"
+    CURRENT_PROJECT_VERSION: "8"
     # Team van Léon van der Linden (zelfde als de Bingr-apps); automatisch ondertekenen
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -23,6 +23,18 @@ targets:
     platform: iOS
     sources:
       - path: BingrBeheer
+      # gedeeld met de widgets (widget-token in de gedeelde Keychain-groep, deeplinks, widget-kinds)
+      - path: Shared
+    dependencies:
+      # widget-extensie (wordt in de app ingebed: PlugIns/BingrBeheerWidgets.appex)
+      - target: BingrBeheerWidgets
+    entitlements:
+      path: BingrBeheer/BingrBeheer.entitlements
+      properties:
+        # eerst de eigen groep van de app (daar blijft het sessietoken), daarna de gedeelde groep voor het widget-token
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)nl.lrvdlinden.bingr.beheer
+          - $(AppIdentifierPrefix)nl.lrvdlinden.bingr.beheer.shared
     info:
       path: BingrBeheer/Info.plist
       properties:
@@ -41,7 +53,9 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSFaceIDUsageDescription: Bingr Beheer gebruikt Face ID om de app te ontgrendelen.
-        # bingrbeheer://support/1001 opent ticket #1001
+        # Team-prefix voor de gedeelde Keychain-groep (WidgetTokenStore); leeg bij een build zonder ondertekening
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        # bingrbeheer://support/1001 opent ticket #1001; bingrbeheer://support, ://status en ://overview openen die tab (widgets)
         CFBundleURLTypes:
           - CFBundleURLName: nl.lrvdlinden.bingr.beheer
             CFBundleURLSchemes: [bingrbeheer]
@@ -56,3 +70,41 @@ targets:
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
         ENABLE_PREVIEWS: YES
     scheme: {}
+
+  # Widgets (WidgetKit, iOS/iPadOS 17+): servicestatus, supporttickets en gecombineerd; zie README.md, "Beheer-app: widgets".
+  # Gebruikt dezelfde publieke Config (AdminAPI.swift), JSON, Format en Theme als de app; geen geheimen.
+  BingrBeheerWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BingrBeheerWidgets
+      - path: Shared
+      - path: BingrBeheer/API/AdminAPI.swift
+      - path: BingrBeheer/Core/JSON.swift
+      - path: BingrBeheer/Core/Format.swift
+      - path: BingrBeheer/Core/Theme.swift
+    entitlements:
+      path: BingrBeheerWidgets/BingrBeheerWidgets.entitlements
+      properties:
+        # alleen de gedeelde groep: de widget ziet het widget-token, niet het sessietoken van de app
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)nl.lrvdlinden.bingr.beheer.shared
+    info:
+      path: BingrBeheerWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Bingr Beheer
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: nl
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr.beheer.widgets
+        PRODUCT_NAME: BingrBeheerWidgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+        SUPPORTS_MACCATALYST: NO
+        ENABLE_PREVIEWS: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"

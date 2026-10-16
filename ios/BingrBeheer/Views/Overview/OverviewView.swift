@@ -1,140 +1,272 @@
 import SwiftUI
 
-/// Tab Overzicht: kengetallen, nieuwe gebruikers en inlogs per dag, apparaten per platform en app-versies.
+/// Tab Overzicht: instelbaar dashboard met widgets (kengetallen, grafieken per dag, platforms, versies, abonnementen,
+/// support, servicestatus, berichten). Grootte, volgorde, zichtbaarheid en getoonde gegevens zijn in te stellen;
+/// de indeling staat als JSON in UserDefaults (zelfde model als het web-dashboard, zie Models/Dashboard.swift).
 struct OverviewView: View {
     @Environment(Session.self) private var session
-    @State private var stats: Stats?
-    @State private var error: String?
-
-    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var layout = DashStore.load()
+    @State private var data = DashData()
+    @State private var editing = false
+    @State private var settingsFor: DashWidget?
+    @State private var showManage = false
+    @State private var confirmReset = false
+    @State private var loading = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let error, stats == nil {
+                if let error = data.statsError, data.stats == nil {
                     NoticeBanner(text: error)
                 }
-                LazyVGrid(columns: columns, spacing: 12) {
-                    KPITile(label: "Gebruikers", value: value(stats?.totalUsers), hint: "\(Fmt.num(stats?.confirmedUsers)) bevestigd")
-                    KPITile(label: "Nieuw (7 dagen)", value: value(stats?.newUsers7d))
-                    KPITile(label: "Actief vandaag", value: value(stats?.activeToday), hint: "accounts")
-                    KPITile(label: "Actief (30 dagen)", value: value(stats?.active30d), hint: "accounts")
-                    KPITile(label: "Apparaten", value: value(stats?.devicesTotal), hint: "gekoppeld")
-                    KPITile(label: "Kijkt nu", value: value(stats?.watchingNow), hint: "streams",
-                            valueColor: .ok, highlight: (stats?.watchingNow ?? 0) > 0 ? .ok : nil)
-                    Button {
-                        session.section = .support
-                    } label: {
-                        let c = session.supportCounts
-                        KPITile(label: "Open tickets", value: c.map { Fmt.num($0.active) } ?? "—", hint: c?.hint ?? "support",
-                                hintColor: (c?.unread ?? 0) > 0 ? Color(hex: 0xFF8A8F) : .textDim,
-                                highlight: (c?.unread ?? 0) > 0 ? .bingrRed : nil)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Naar Support")
-                    if let blocked = stats?.blockedUsers {
-                        Button {
-                            session.usersFilter = "blocked"
-                            session.section = .users
-                        } label: {
-                            KPITile(label: "Geblokkeerd", value: Fmt.num(blocked), hint: "accounts",
-                                    valueColor: blocked > 0 ? Color(hex: 0xFF8A8F) : .white, highlight: blocked > 0 ? .bad : nil)
+                if editing { editPanel }
+                let visible = layout.visible
+                if visible.isEmpty {
+                    emptyPanel
+                } else {
+                    DashGridLayout(columns: sizeClass == .regular ? 4 : 2) {
+                        ForEach(Array(visible.enumerated()), id: \.element.id) { index, w in
+                            widgetView(w, index: index, count: visible.count)
+                                .layoutValue(key: DashSpanKey.self, value: w.size)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Geblokkeerde accounts bekijken")
                     }
-                    if let free = stats?.planFree, let life = stats?.planLifetime {
-                        Button {
-                            session.usersFilter = "free"
-                            session.section = .users
-                        } label: {
-                            KPITile(label: "Gratis", value: Fmt.num(free), hint: "accounts")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Gratis accounts bekijken")
-                        Button {
-                            session.usersFilter = "lifetime"
-                            session.section = .users
-                        } label: {
-                            KPITile(label: "Lifetime", value: Fmt.num(life),
-                                    hint: (stats?.planCustom ?? 0) > 0 ? "\(Fmt.num(stats?.planCustom)) met eigen limieten" : "accounts",
-                                    valueColor: Color(hex: 0xFFD54A))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Lifetime-accounts bekijken")
-                    }
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) { chartCards }
-                        .frame(minWidth: 720)
-                    VStack(spacing: 12) { chartCards }
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) { barCards }
-                        .frame(minWidth: 720)
-                    VStack(spacing: 12) { barCards }
                 }
             }
             .padding(16)
         }
         .screenBackground()
         .navigationTitle("Overzicht")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if editing {
+                    Button("Klaar") { withAnimation { editing = false } }.bold()
+                } else {
+                    Button("Wijzig") { withAnimation { editing = true } }
+                        .accessibilityHint("Widgets verplaatsen, vergroten, instellen of verbergen")
+                }
+            }
+        }
         .refreshable { await load() }
-        .task { if stats == nil { await load() } }
+        .task { if data.stats == nil { await load() } }
         .onChange(of: session.usersRevision) { Task { await load() } }
+        .onChange(of: layout) { DashStore.save(layout) }
+        .sheet(item: $settingsFor) { w in
+            DashWidgetSettingsView(widget: w, title: title(w), knownPlatforms: data.knownPlatforms) { updated in
+                if let i = layout.widgets.firstIndex(where: { $0.id == updated.id }) { layout.widgets[i] = updated }
+                ensureData()
+            }
+        }
+        .sheet(isPresented: $showManage) {
+            DashManageView(layout: $layout, titleFor: title) { ensureData() }
+        }
+        .confirmationDialog("Standaardindeling herstellen?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Standaard herstellen", role: .destructive) {
+                withAnimation { layout = .standard }
+                ensureData()
+                session.show("Standaardindeling hersteld.")
+            }
+        } message: {
+            Text("Je eigen indeling en de instellingen van de widgets gaan verloren.")
+        }
     }
 
-    private func value(_ n: Int?) -> String {
-        n.map { Fmt.num($0) } ?? "—"
+    private func title(_ w: DashWidget) -> String { DashText.title(w, stats: data.stats) }
+
+    // MARK: widgets
+
+    @ViewBuilder private func widgetView(_ w: DashWidget, index: Int, count: Int) -> some View {
+        let card = DashWidgetCard(widget: w, data: data, support: session.supportCounts, editing: editing, open: open)
+        if editing {
+            card
+                .opacity(0.85)
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+                .overlay(alignment: .top) {
+                    DashEditBar(widget: w, title: title(w), isFirst: index == 0, isLast: index == count - 1,
+                                setSize: { z in update(w.id) { $0.size = z } },
+                                move: { move(w.id, by: $0) },
+                                settings: { settingsFor = w },
+                                hide: {
+                                    update(w.id) { $0.hidden = true }
+                                    session.show("\(title(w)) verborgen. Terugzetten kan via Widgets.")
+                                })
+                    .padding(6)
+                }
+                // slepen: lang drukken en op een andere widget loslaten
+                .draggable(w.id) {
+                    Text(title(w)).font(.headline).padding(12)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.surface3))
+                }
+                .dropDestination(for: String.self) { ids, _ in
+                    guard let id = ids.first else { return false }
+                    return place(id, onto: w.id)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityActions {
+                    if index > 0 { Button("Naar voren") { move(w.id, by: -1) } }
+                    if index < count - 1 { Button("Naar achteren") { move(w.id, by: 1) } }
+                    Button("Instellen") { settingsFor = w }
+                    Button("Verbergen") { update(w.id) { $0.hidden = true } }
+                }
+        } else {
+            card
+        }
     }
 
-    @ViewBuilder private var chartCards: some View {
-        let days = stats?.days ?? []
-        let audit = stats?.signinsFromAudit ?? true
+    private var editPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CardHeader(title: "Nieuwe gebruikers per dag", subtitle: "Laatste 30 dagen")
-            DailyBarChart(points: days.map { .init(day: $0.day, value: $0.newUsers) }, unit: "nieuwe gebruikers")
+            Text("Houd een widget vast en sleep hem naar een andere plek, of gebruik de pijlen. Kies S, M of L voor de grootte en de schuifjes voor de getoonde gegevens.")
+                .font(.subheadline)
+                .foregroundStyle(Color.textSecondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { editButtons }
+                VStack(alignment: .leading, spacing: 8) { editButtons }
+            }
         }
-        .card()
+        .card(padding: 14, highlight: .bingrRed)
+    }
+
+    @ViewBuilder private var editButtons: some View {
+        Button { showManage = true } label: { Label("Widgets", systemImage: "square.grid.2x2") }
+            .buttonStyle(.bingr)
+        Button { confirmReset = true } label: { Label("Standaard herstellen", systemImage: "arrow.counterclockwise") }
+            .buttonStyle(.bingrGhost)
+        Button { withAnimation { editing = false } } label: { Text("Klaar") }
+            .buttonStyle(.bingrGhost)
+    }
+
+    private var emptyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CardHeader(title: audit ? "Inloggen per dag" : "Actieve accounts per dag",
-                       subtitle: audit ? "Laatste 30 dagen, uit het inloglogboek"
-                                       : "Laatste 30 dagen, accounts met app-activiteit (inloglogboek leeg)")
-            DailyBarChart(points: days.map { .init(day: $0.day, value: $0.signins) }, unit: audit ? "inlogs" : "actieve accounts")
+            CardHeader(title: "Geen widgets op het overzicht", subtitle: "Voeg widgets toe uit de galerij of herstel de standaardindeling.")
+            HStack(spacing: 8) {
+                Button("Widgets") { showManage = true }.buttonStyle(.bingr)
+                Button("Standaard herstellen") { confirmReset = true }.buttonStyle(.bingrGhost)
+            }
         }
         .card()
     }
 
-    @ViewBuilder private var barCards: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            CardHeader(title: "Actieve apparaten per platform", subtitle: "Gezien in de laatste 30 dagen")
-            HBarList(rows: (stats?.platforms ?? []).map {
-                .init(label: Labels.platform($0.platform), icon: Labels.platformIcon($0.platform), value: $0.devices)
-            })
+    // MARK: indeling wijzigen
+
+    private func update(_ id: String, _ change: (inout DashWidget) -> Void) {
+        guard let i = layout.widgets.firstIndex(where: { $0.id == id }) else { return }
+        withAnimation(.snappy) { change(&layout.widgets[i]) }
+    }
+
+    /// Eén plek naar voren (-1) of naar achteren (+1) tussen de zichtbare widgets.
+    private func move(_ id: String, by delta: Int) {
+        let visible = layout.visible
+        guard let i = visible.firstIndex(where: { $0.id == id }), visible.indices.contains(i + delta),
+              let from = layout.widgets.firstIndex(where: { $0.id == id }),
+              let to = layout.widgets.firstIndex(where: { $0.id == visible[i + delta].id }) else { return }
+        withAnimation(.snappy) {
+            let w = layout.widgets.remove(at: from)
+            layout.widgets.insert(w, at: to)
         }
-        .card()
-        VStack(alignment: .leading, spacing: 12) {
-            CardHeader(title: "App-versies in gebruik", subtitle: "Per platform, laatste 30 dagen")
-            HBarList(rows: (stats?.versions ?? []).map {
-                .init(label: $0.version == "?" ? "onbekend" : ($0.version ?? "onbekend"), detail: Labels.platform($0.platform),
-                      value: $0.devices)
-            })
+    }
+
+    /// Slepen en loslaten: de gesleepte widget komt op de plek van het doel.
+    private func place(_ id: String, onto target: String) -> Bool {
+        guard id != target, let from = layout.widgets.firstIndex(where: { $0.id == id }),
+              let to = layout.widgets.firstIndex(where: { $0.id == target }) else { return false }
+        withAnimation(.snappy) {
+            let w = layout.widgets.remove(at: from)
+            layout.widgets.insert(w, at: to)
         }
-        .card()
+        return true
+    }
+
+    private func open(_ target: DashTarget) {
+        switch target {
+        case .users(let filter):
+            session.usersFilter = filter
+            session.section = .users
+        case .support(let filter):
+            UserDefaults.standard.set(filter, forKey: "supportFilter")
+            session.section = .support
+        case .status:
+            session.section = .status
+        case .messages:
+            session.section = .messages
+        }
+    }
+
+    // MARK: laden
+
+    private var needsStatus: Bool {
+        layout.visible.contains { $0.type == .status || ($0.type == .platforms && $0.options.source == "live") }
+    }
+
+    private var needsAnnouncements: Bool { layout.visible.contains { $0.type == .announcements } }
+
+    /// Na toevoegen of instellen: ontbrekende gegevens (status, berichten) alsnog ophalen.
+    private func ensureData() {
+        let missing = (needsStatus && data.status == nil && data.statusError == nil)
+            || (needsAnnouncements && data.announcements == nil && data.announcementsError == nil)
+        if missing { Task { await load() } }
+    }
+
+    private func fetch(_ action: String, _ params: [String: Any?] = [:], when needed: Bool = true) async -> Result<JSON, Error>? {
+        guard needed else { return nil }
+        do { return .success(try await session.call(action, params)) } catch { return .failure(error) }
+    }
+
+    private static func message(_ error: Error) -> String {
+        (error as? APIError)?.errorDescription ?? APIError.text("server_error")
+    }
+
+    private static func isAuth(_ r: Result<JSON, Error>?) -> Bool {
+        if case .failure(let e) = r { return (e as? APIError)?.code == "auth" || e is CancellationError }
+        return false
     }
 
     private func load() async {
-        do {
-            let r = try await session.call("stats")
-            stats = Stats(r)
-            error = nil
-        } catch {
-            if error is CancellationError { return }
-            self.error = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
-            session.report(error)
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
+        async let statsResult = fetch("stats")
+        async let statusResult = fetch("status", ["op": "overview"], when: needsStatus)
+        async let annResult = fetch("announcements_list", when: needsAnnouncements)
+        let (rs, rst, ra) = await (statsResult, statusResult, annResult)
+        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(ra) { return }
+
+        var d = data
+        switch rs {
+        case .success(let j)?:
+            d.stats = Stats(j)
+            d.statsError = nil
+        case .failure(let e)?:
+            d.statsError = Self.message(e)
+            session.report(e)
+        case nil:
+            break
         }
+        switch rst {
+        case .success(let j)?:
+            let ov = StatusOverview(j)
+            let state = j["overall"]["state"].text ?? "up"
+            let level = j["overall"]["level"].text ?? (["down": "major", "degraded": "degraded"][state] ?? "operational")
+            let ids = j["overall"][level].strings.isEmpty ? j["overall"][state].strings : j["overall"][level].strings
+            d.status = ov
+            d.statusLevel = level
+            d.statusAffected = ids.map { ov.monitorName($0) }
+            d.statusError = nil
+        case .failure(let e)?:
+            d.statusError = Self.message(e)
+        case nil:
+            break
+        }
+        switch ra {
+        case .success(let j)?:
+            d.announcements = j["items"].array.map(Announcement.init)
+            d.announcementsError = nil
+        case .failure(let e)?:
+            d.announcementsError = Self.message(e)
+        case nil:
+            break
+        }
+        data = d
         await session.refreshSupportCounts()
     }
 }

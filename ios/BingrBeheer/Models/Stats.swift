@@ -7,6 +7,8 @@ struct Stats {
         let day: Date
         let newUsers: Int
         let signins: Int
+        /// accounts met app-activiteit op die dag (dashboard-widget "Per dag")
+        var activeUsers: Int = 0
     }
 
     struct PlatformCount: Identifiable {
@@ -23,6 +25,8 @@ struct Stats {
     let active30d: Int
     let devicesTotal: Int
     let watchingNow: Int
+    /// Accounts die zich hebben afgemeld voor berichten per e-mail.
+    let optedOut: Int?
     /// Accounts met een actieve blokkade (nil bij een ouder schema).
     let blockedUsers: Int?
     /// Abonnementen (nil bij een ouder schema): Gratis, Lifetime en accounts met eigen limieten.
@@ -44,6 +48,7 @@ struct Stats {
         active30d = j["active_30d"].int ?? 0
         devicesTotal = j["devices_total"].int ?? 0
         watchingNow = j["watching_now"].int ?? 0
+        optedOut = j["opted_out"].int
         blockedUsers = j["blocked_users"].int
         planFree = j["plan_free"].int
         planLifetime = j["plan_lifetime"].int
@@ -51,7 +56,8 @@ struct Stats {
         signinsFromAudit = j["signins_source"].text == "audit"
         days = j["days"].array.compactMap { d in
             guard let day = d["day"].date else { return nil }
-            return Day(day: day, newUsers: d["new_users"].int ?? 0, signins: d["signins"].int ?? 0)
+            return Day(day: day, newUsers: d["new_users"].int ?? 0, signins: d["signins"].int ?? 0,
+                       activeUsers: d["active_users"].int ?? 0)
         }
         platforms = j["platforms"].array.map {
             PlatformCount(platform: $0["platform"].text ?? "?", version: nil, devices: $0["devices"].int ?? 0)

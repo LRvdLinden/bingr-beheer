@@ -12,6 +12,8 @@ struct DailyBarChart: View {
     let points: [Point]
     /// eenheid in de tooltip, bv. "nieuwe gebruikers"
     let unit: String
+    /// hoogte van de grafiek (kleiner in een middelgrote dashboard-widget)
+    var height: CGFloat = 190
 
     @State private var selected: Date?
 
@@ -47,7 +49,7 @@ struct DailyBarChart: View {
             }
             .chartXSelection(value: $selected)
             .chartXAxis {
-                AxisMarks(values: .stride(by: .day, count: 7)) { value in
+                AxisMarks(values: .stride(by: .day, count: points.count <= 7 ? 1 : points.count <= 14 ? 2 : 7)) { value in
                     AxisGridLine().foregroundStyle(Color.clear)
                     AxisValueLabel {
                         if let d = value.as(Date.self) { Text(Fmt.shortDay(d)) }
@@ -60,7 +62,7 @@ struct DailyBarChart: View {
                     AxisValueLabel()
                 }
             }
-            .frame(height: 190)
+            .frame(height: height)
         }
     }
 }

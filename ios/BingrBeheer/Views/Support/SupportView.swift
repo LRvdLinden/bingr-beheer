@@ -142,7 +142,14 @@ struct SupportView: View {
             total = r["total"].int ?? 0
             page = p
             if replace { items = rows } else { items += rows.filter { n in !items.contains { $0.number == n.number } } }
-            if r["counts"].object != nil { session.supportCounts = SupportCounts(r["counts"]) }
+            if r["counts"].object != nil {
+                let counts = SupportCounts(r["counts"])
+                if counts != session.supportCounts {
+                    session.supportCounts = counts
+                    // widgets met de supporttellers meteen bijwerken
+                    session.reloadWidgets(WidgetShared.supportKind)
+                }
+            }
             smtpMissing = r["smtp"].bool == false
             error = nil
             loaded = true

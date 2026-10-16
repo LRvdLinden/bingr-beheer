@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("lockEnabled") private var lockEnabled = false
+    @AppStorage("widgetsEnabled") private var widgetsEnabled = true
     @State private var confirmLogout = false
     @State private var confirmLogoutAll = false
     @State private var loggingOutAll = false
@@ -45,6 +46,18 @@ struct SettingsView: View {
                 Text(session.canLock
                      ? "Bij het openen van de app (en na de achtergrond) vraagt Bingr Beheer om \(session.biometryName) of je toegangscode."
                      : "Stel eerst een toegangscode in op dit apparaat.")
+            }
+
+            Section {
+                Toggle(isOn: $widgetsEnabled) {
+                    Label("Widgets", systemImage: "square.grid.2x2")
+                }
+                .tint(.bingrRed)
+                .onChange(of: widgetsEnabled) { _, on in
+                    Task { await session.setWidgetsEnabled(on) }
+                }
+            } footer: {
+                Text("Servicestatus en supporttickets op je beginscherm en toegangsscherm (alleen aantallen en statusnamen). Daarvoor bewaart de app een apart widget-token (30 dagen, alleen voor de widgets) in de Keychain van dit apparaat. Uitloggen of Overal uitloggen trekt het in. Let op: widgets zijn zichtbaar zonder \(session.biometryName).")
             }
 
             Section {

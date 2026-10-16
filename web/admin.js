@@ -174,52 +174,487 @@
   let supTimer;
   window.addEventListener("hashchange", () => { const m = /^#support\/(\d+)$/.exec(location.hash); if (m && token()) { showTab("support"); openTicket(Number(m[1])); } });
 
-  // ---- overzicht ----
-  $("refresh").onclick = () => loadStats();
+  // ---- overzicht: instelbaar widget-dashboard ----
+  // Zelfde JSON-model als de app Bingr Beheer (README.md, "Dashboard"): {version: 1, widgets: [{id, type, size, hidden, options}]}.
+  // Volgorde = volgorde in de lijst. Opslag per browser in localStorage; onbekend of kapot = standaardindeling.
+  const DASH_KEY = KEY + ".dashboard", DASH_VERSION = 1, DASH_MAX = 40;
+  const SIZE_NAME = { s: "Klein", m: "Middel", l: "Groot" }, SIZE_DIM = { s: "1×1", m: "2×1", l: "2×2" };
+  const METRICS = {
+    users_total: { label: "Gebruikers", v: (s) => s.total_users, h: (s) => `${nf.format(s.confirmed_users ?? 0)} bevestigd` },
+    users_new_7d: { label: "Nieuw (7 dagen)", v: (s) => s.new_users_7d, h: () => "accounts" },
+    active_today: { label: "Actief vandaag", v: (s) => s.active_today, h: () => "accounts" },
+    active_30d: { label: "Actief (30 dagen)", v: (s) => s.active_30d, h: () => "accounts" },
+    devices: { label: "Apparaten", v: (s) => s.devices_total, h: () => "gekoppeld" },
+    watching_now: { label: "Kijkt nu", v: (s) => s.watching_now, h: () => "streams", cls: () => "live" },
+    blocked: { label: "Geblokkeerd", v: (s) => s.blocked_users, h: () => "accounts", cls: (s) => (s.blocked_users ? "blocked" : ""), filter: "blocked" },
+    plan_free: { label: "Gratis", v: (s) => s.plan_free, h: () => "accounts", filter: "free" },
+    plan_lifetime: { label: "Lifetime", v: (s) => s.plan_lifetime, h: (s) => (s.plan_custom ? `${nf.format(s.plan_custom)} met eigen limieten` : "accounts"), cls: () => "life", filter: "lifetime" },
+    plan_custom: { label: "Eigen limieten", v: (s) => s.plan_custom, h: () => "accounts", filter: "custom" },
+    opted_out: { label: "Geen berichtenmail", v: (s) => s.opted_out, h: () => "afgemeld" },
+  };
+  const SUP_KEYS = ["new", "open", "pending", "resolved", "closed"];
+  // opties per type: [soort, toegestane waarden, standaard]; soort enum | bool | set (deelverzameling, niet leeg) | list (vrije tekst, leeg = alles)
+  const WTYPES = {
+    metric: { name: "Kengetal", desc: "Eén getal: gebruikers, actief, apparaten, kijkers, abonnementen, geblokkeerd…", sizes: ["s", "m"], size: "s",
+      opts: { metric: ["enum", Object.keys(METRICS), "users_total"] } },
+    daily_chart: { name: "Per dag", desc: "Nieuwe gebruikers, inlogs of actieve accounts per dag, als grafiek of als getal", sizes: ["s", "m", "l"], size: "l",
+      opts: { series: ["enum", ["new_users", "signins", "active_users"], "new_users"], days: ["enum", [7, 14, 30], 30], display: ["enum", ["chart", "number"], "chart"] } },
+    platforms: { name: "Apparaten per platform", desc: "Actieve apparaten per platform (30 dagen of nu)", sizes: ["m", "l"], size: "l",
+      opts: { source: ["enum", ["30d", "live"], "30d"], platforms: ["list", null, []] } },
+    versions: { name: "App-versies", desc: "App-versies in gebruik per platform", sizes: ["m", "l"], size: "l",
+      opts: { platforms: ["list", null, []] } },
+    plans: { name: "Abonnementen", desc: "Gratis, Lifetime en accounts met eigen limieten", sizes: ["s", "m", "l"], size: "m",
+      opts: { plans: ["set", ["free", "lifetime", "custom"], ["free", "lifetime", "custom"]] } },
+    support: { name: "Supporttickets", desc: "Tickets per status en wat op een reactie wacht", sizes: ["s", "m", "l"], size: "s",
+      opts: { statuses: ["set", SUP_KEYS, ["new", "open", "pending"]], display: ["enum", ["number", "list"], "number"] } },
+    status: { name: "Servicestatus", desc: "Totaalstatus, storingen en meldingen van de statusmonitor", sizes: ["s", "m", "l"], size: "m",
+      opts: { show_incidents: ["bool", null, true], show_notices: ["bool", null, true] } },
+    announcements: { name: "Laatste berichten", desc: "De nieuwste berichten aan de apps", sizes: ["m", "l"], size: "l",
+      opts: { count: ["enum", [3, 5], 3], only_active: ["bool", null, false] } },
+  };
+  const OPT_LABEL = {
+    metric: ["Getal", Object.fromEntries(Object.entries(METRICS).map(([k, m]) => [k, m.label]))],
+    series: ["Gegevens", { new_users: "Nieuwe gebruikers", signins: "Inlogs (of actieve accounts als het inloglogboek leeg is)", active_users: "Accounts met app-activiteit" }],
+    days: ["Periode", { 7: "Laatste 7 dagen", 14: "Laatste 14 dagen", 30: "Laatste 30 dagen" }],
+    display: ["Weergave", { chart: "Grafiek", number: "Getal", list: "Lijst per status" }],
+    source: ["Periode", { "30d": "Gezien in de laatste 30 dagen", live: "Nu actief (laatste 15 minuten)" }],
+    platforms: ["Platforms", null],
+    plans: ["Abonnementen", { free: "Gratis", lifetime: "Lifetime", custom: "Eigen limieten" }],
+    statuses: ["Statussen", { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" }],
+    count: ["Aantal", { 3: "3 berichten", 5: "5 berichten" }],
+    only_active: ["Alleen actieve berichten"],
+    show_incidents: ["Storingen tonen"],
+    show_notices: ["Meldingen tonen (lopend en gepland)"],
+  };
+  // standaardindeling: lijkt op het vroegere vaste overzicht
+  const DASH_DEFAULT = [
+    ["users", "metric", "s", { metric: "users_total" }], ["new_7d", "metric", "s", { metric: "users_new_7d" }],
+    ["active_today", "metric", "s", { metric: "active_today" }], ["active_30d", "metric", "s", { metric: "active_30d" }],
+    ["devices", "metric", "s", { metric: "devices" }], ["watching", "metric", "s", { metric: "watching_now" }],
+    ["support", "support", "s", {}], ["blocked", "metric", "s", { metric: "blocked" }],
+    ["plan_free", "metric", "s", { metric: "plan_free" }], ["plan_lifetime", "metric", "s", { metric: "plan_lifetime" }],
+    ["status", "status", "m", {}],
+    ["chart_new", "daily_chart", "l", { series: "new_users" }], ["chart_signins", "daily_chart", "l", { series: "signins" }],
+    ["platforms", "platforms", "l", {}], ["versions", "versions", "l", {}],
+  ];
+  const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  function normOptions(type, raw) {
+    const src = isObj(raw) ? raw : {}, o = {};
+    for (const [k, [kind, vals, def]] of Object.entries(WTYPES[type].opts)) {
+      const v = src[k];
+      if (kind === "enum") o[k] = vals.includes(v) ? v : def;
+      else if (kind === "bool") o[k] = typeof v === "boolean" ? v : def;
+      else if (kind === "set") { const f = Array.isArray(v) ? vals.filter((x) => v.includes(x)) : []; o[k] = f.length ? f : def.slice(); }
+      else o[k] = Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string" && x && x.length <= 40))].slice(0, 30) : def.slice();
+    }
+    return o;
+  }
+  function newId(type, seen) { let i = 1; while (seen.has(`${type}_${i}`)) i++; return `${type}_${i}`; }
+  function normWidget(w, seen) {
+    if (!isObj(w) || !Object.prototype.hasOwnProperty.call(WTYPES, w.type)) return null;
+    const t = WTYPES[w.type];
+    const id = typeof w.id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(w.id) && !seen.has(w.id) ? w.id : newId(w.type, seen);
+    return { id, type: w.type, size: t.sizes.includes(w.size) ? w.size : t.size, hidden: w.hidden === true, options: normOptions(w.type, w.options) };
+  }
+  function normLayout(raw) {
+    if (!isObj(raw) || raw.version !== DASH_VERSION || !Array.isArray(raw.widgets)) return null;
+    const seen = new Set(), widgets = [];
+    for (const w of raw.widgets) {
+      if (widgets.length >= DASH_MAX) break;
+      const n = normWidget(w, seen);
+      if (n) { seen.add(n.id); widgets.push(n); }
+    }
+    return widgets.length ? { version: DASH_VERSION, widgets } : null;
+  }
+  const defaultLayout = () => normLayout({ version: DASH_VERSION, widgets: DASH_DEFAULT.map(([id, type, size, options]) => ({ id, type, size, options })) });
+  function loadLayout() {
+    try { const l = normLayout(JSON.parse(localStorage.getItem(DASH_KEY) || "null")); if (l) return l; } catch { /* kapot of geen opslag */ }
+    return defaultLayout();
+  }
+  function saveLayout() { try { localStorage.setItem(DASH_KEY, JSON.stringify(dash)); } catch { /* privé-venster: alleen deze sessie */ } }
+
+  let dash = loadLayout(), dashEdit = false, dashLoading = false, dashCharts = [], dragId = null;
+  const dd = { stats: null, statsErr: null, status: null, statusErr: null, ann: null, annErr: null };
+  const visible = () => dash.widgets.filter((w) => !w.hidden);
+  const needs = () => {
+    const v = visible();
+    return { status: v.some((w) => w.type === "status" || (w.type === "platforms" && w.options.source === "live")), ann: v.some((w) => w.type === "announcements") };
+  };
+
+  $("refresh").onclick = () => { loadStats(); loadSupportCounts(); };
+  $("dashEdit").onclick = () => setDashEdit(!dashEdit);
+  $("dashDone").onclick = () => setDashEdit(false);
+  $("dashAdd").onclick = () => openGallery();
+  $("dashReset").onclick = () => {
+    if (!confirm("De standaardindeling van het overzicht herstellen? Je eigen indeling en instellingen van de widgets gaan verloren.")) return;
+    dash = defaultLayout(); saveLayout(); renderDash(); ensureDashData();
+    toast("Standaardindeling hersteld."); announce("Standaardindeling hersteld.");
+  };
+  function setDashEdit(on) {
+    dashEdit = on; renderDash();
+    (on ? $("dashAdd") : $("dashEdit")).focus();
+    announce(on ? "Wijzigmodus aan: verplaats, vergroot, stel in of verberg widgets." : "Wijzigmodus uit.");
+  }
+  const announce = (t) => { $("dashLive").textContent = ""; setTimeout(() => { $("dashLive").textContent = t; }, 30); };
+
   async function loadStats() {
-    let s;
-    try { s = await call("stats"); } catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
-    smtpOk = !!s.smtp; applySmtp();
-    const k = [
-      ["Gebruikers", s.total_users, `${nf.format(s.confirmed_users ?? 0)} bevestigd`],
-      ["Nieuw (7 dagen)", s.new_users_7d, ""],
-      ["Actief vandaag", s.active_today, "accounts"],
-      ["Actief (30 dagen)", s.active_30d, "accounts"],
-      ["Apparaten", s.devices_total, "gekoppeld"],
-      ["Kijkt nu", s.watching_now, "streams", "live"],
-    ];
-    const planKpis = s.plan_lifetime != null
-      ? `<button type="button" class="kpi plan" data-plan="free" title="Gratis accounts bekijken"><div class="l">Gratis</div><div class="v">${nf.format(s.plan_free ?? 0)}</div><div class="h">accounts</div></button>` +
-        `<button type="button" class="kpi plan life" data-plan="lifetime" title="Lifetime-accounts bekijken"><div class="l">Lifetime</div><div class="v">${nf.format(s.plan_lifetime ?? 0)}</div><div class="h">${s.plan_custom ? `${nf.format(s.plan_custom)} met eigen limieten` : "accounts"}</div></button>`
-      : "";
-    const blockedKpi = s.blocked_users != null
-      ? `<button type="button" id="kpiBlocked" class="kpi ${s.blocked_users ? "blocked" : ""}" title="Geblokkeerde accounts bekijken"><div class="l">Geblokkeerd</div><div class="v">${nf.format(s.blocked_users)}</div><div class="h">accounts</div></button>`
-      : "";
-    $("kpis").innerHTML = k.map(([l, v, h, cls]) =>
-      `<div class="kpi ${cls || ""}"><div class="l">${esc(l)}</div><div class="v">${nf.format(v ?? 0)}</div><div class="h">${esc(h)}</div></div>`).join("") +
-      `<button type="button" id="kpiSup" class="kpi sup" title="Naar de tab Support"><div class="l">Open tickets</div><div class="v">${supCounts ? nf.format(supCounts.active ?? 0) : "—"}</div><div class="h">${supCountsText()}</div></button>` + blockedKpi + planKpis;
-    $("kpis").querySelectorAll("button[data-plan]").forEach((b) => (b.onclick = () => { userFilter = b.dataset.plan; page = 0; const was = loaded.users; showTab("users"); if (was) loadUsers(); }));
-    $("kpiSup").onclick = () => showTab("support");
-    if ($("kpiBlocked")) $("kpiBlocked").onclick = () => { userFilter = "blocked"; page = 0; const was = loaded.users; showTab("users"); if (was) loadUsers(); };
-    const days = s.days || [];
-    const audit = s.signins_source === "audit";
-    lastCharts = () => {
-      barChart($("chartNew"), days.map((d) => ({ x: d.day, y: d.new_users })), "nieuwe gebruikers");
-      barChart($("chartSign"), days.map((d) => ({ x: d.day, y: d.signins })), audit ? "inlogs" : "actieve accounts");
-    };
-    $("signinTitle").textContent = audit ? "Inloggen per dag" : "Actieve accounts per dag";
-    $("signinSub").textContent = audit ? "Laatste 30 dagen, uit het inloglogboek" : "Laatste 30 dagen, accounts met app-activiteit (inloglogboek leeg)";
-    lastCharts();
-    hbars($("platforms"), (s.platforms || []).map((p) => ({ label: esc(pname(p.platform)), n: p.devices })));
-    hbars($("versions"), (s.versions || []).map((v) => ({ label: `${esc(v.app_version === "?" ? "onbekend" : v.app_version)} <small>${esc(pname(v.platform))}</small>`, n: v.devices })));
+    if (dashLoading) return;
+    dashLoading = true; $("refresh").disabled = true;
+    const n = needs();
+    const [s, st, an] = await Promise.allSettled([
+      call("stats"), n.status ? call("status", { op: "overview" }) : Promise.resolve(null), n.ann ? call("announcements_list") : Promise.resolve(null),
+    ]);
+    dashLoading = false; $("refresh").disabled = false;
+    if ([s, st, an].some((r) => r.status === "rejected" && r.reason?.code === "auth")) return;
+    if (s.status === "fulfilled") { dd.stats = s.value; dd.statsErr = null; smtpOk = !!s.value.smtp; applySmtp(); }
+    else { dd.statsErr = errText(s.reason); toast(dd.statsErr, true); }
+    if (n.status) { if (st.status === "fulfilled") { dd.status = st.value; dd.statusErr = null; } else dd.statusErr = errText(st.reason); }
+    if (n.ann) { if (an.status === "fulfilled") { dd.ann = an.value; dd.annErr = null; } else dd.annErr = errText(an.reason); }
+    renderDash();
+  }
+  // na toevoegen of instellen: ontbrekende gegevens (status, berichten) alsnog ophalen
+  function ensureDashData() {
+    const n = needs();
+    if ((n.status && !dd.status && !dd.statusErr) || (n.ann && !dd.ann && !dd.annErr) || (!dd.stats && !dd.statsErr)) loadStats();
+  }
+  function dashSupportChanged() {
+    if (!$("tab-overview").classList.contains("hidden") && dash.widgets.some((w) => w.type === "support" && !w.hidden)) {
+      dash.widgets.filter((w) => w.type === "support" && !w.hidden).forEach((w) => { const el = document.querySelector(`#dash .w[data-id="${w.id}"]`); if (el) fillWidget(w, el); });
+    }
   }
 
-  let lastCharts = null, resizeTimer;
-  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => lastCharts && !$("tab-overview").classList.contains("hidden") && lastCharts(), 150); });
+  function wTitle(w) {
+    const o = w.options, s = dd.stats || {};
+    switch (w.type) {
+      case "metric": return METRICS[o.metric].label;
+      case "daily_chart": return o.series === "new_users" ? "Nieuwe gebruikers per dag" : o.series === "active_users" || s.signins_source === "activity" ? "Actieve accounts per dag" : "Inloggen per dag";
+      case "platforms": return o.source === "live" ? "Nu actieve apparaten" : "Actieve apparaten per platform";
+      case "versions": return "App-versies in gebruik";
+      case "plans": return "Abonnementen";
+      case "support": return o.statuses.join() === "new,open,pending" ? "Open tickets" : "Supporttickets";
+      case "status": return "Servicestatus";
+      case "announcements": return "Laatste berichten";
+    }
+    return WTYPES[w.type].name;
+  }
+  const ICO = {
+    grip: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+    up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
+    down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+    hide: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  };
+  function renderDash() {
+    const root = $("dash"), vis = visible();
+    dashCharts = [];
+    root.classList.toggle("editing", dashEdit);
+    $("dashBar").classList.toggle("hidden", !dashEdit);
+    $("dashEdit").classList.toggle("hidden", dashEdit);
+    $("dashEdit").setAttribute("aria-pressed", String(dashEdit));
+    if (!vis.length) {
+      root.innerHTML = `<div class="panel dash-empty"><h2>Geen widgets op het overzicht</h2><p class="sub">Voeg widgets toe uit de galerij of herstel de standaardindeling.</p>
+        <div class="form-btns"><button type="button" class="btn small" data-empty="add">Widget toevoegen</button><button type="button" class="btn ghost small" data-empty="reset">Standaard herstellen</button></div></div>`;
+      root.querySelector('[data-empty="add"]').onclick = () => openGallery();
+      root.querySelector('[data-empty="reset"]').onclick = () => $("dashReset").click();
+      return;
+    }
+    root.innerHTML = vis.map((w, i) => {
+      const t = WTYPES[w.type], title = esc(wTitle(w));
+      const tools = dashEdit ? `<div class="w-edit" role="toolbar" aria-label="${title} aanpassen">
+          <span class="w-grip" title="Slepen om te verplaatsen" aria-hidden="true">${ICO.grip}</span>
+          <div class="w-sizes" role="group" aria-label="Grootte van ${title}">${t.sizes.map((z) =>
+            `<button type="button" data-a="size" data-size="${z}" class="${z === w.size ? "on" : ""}" aria-pressed="${z === w.size}" aria-label="${SIZE_NAME[z]} (${SIZE_DIM[z]})" title="${SIZE_NAME[z]} (${SIZE_DIM[z]})">${z.toUpperCase()}</button>`).join("")}</div>
+          <span class="w-sp"></span>
+          <button type="button" class="w-ic" data-a="up" aria-label="${title} naar voren" title="Naar voren" ${i === 0 ? "disabled" : ""}>${ICO.up}</button>
+          <button type="button" class="w-ic" data-a="down" aria-label="${title} naar achteren" title="Naar achteren" ${i === vis.length - 1 ? "disabled" : ""}>${ICO.down}</button>
+          <button type="button" class="w-ic" data-a="opts" aria-label="Gegevens van ${title} instellen" title="Instellen">${ICO.gear}</button>
+          <button type="button" class="w-ic" data-a="hide" aria-label="${title} verbergen" title="Verbergen">${ICO.hide}</button>
+        </div>` : "";
+      return `<article class="w w-${w.size} wt-${w.type}" data-id="${esc(w.id)}" aria-label="${title}"${dashEdit ? ' draggable="true"' : ""}>${tools}<div class="w-body"></div></article>`;
+    }).join("");
+    root.querySelectorAll(".w").forEach((el) => {
+      const w = dash.widgets.find((x) => x.id === el.dataset.id);
+      fillWidget(w, el);
+      if (dashEdit) wireEdit(w, el);
+    });
+  }
+
+  // inhoud van één widget
+  function fillWidget(w, el) {
+    const body = el.querySelector(".w-body"), o = w.options, s = dd.stats, title = esc(wTitle(w));
+    el.classList.remove("tile", "alert", "live", "blocked", "life", "clickable");
+    const go = (fn) => { if (dashEdit) return; el.classList.add("clickable"); return fn; };
+    const head = (sub, more, right = "") => `<div class="w-head"><div class="w-ht"><h2>${title}</h2>${sub && w.size !== "m" ? `<p class="sub">${esc(sub)}</p>` : ""}</div>${right}${more && !dashEdit
+      ? `<button type="button" class="w-more" data-go>${esc(more)}</button>` : ""}</div>`;
+    const tile = (label, v, h, cls = "") => { el.classList.add("tile", ...cls.split(" ").filter(Boolean)); return `<div class="kpi-in"><div class="l">${label}</div><div class="v">${v}</div><div class="h">${h}</div></div>`; };
+    const fail = (msg) => `${head()}<p class="empty">${esc(msg)}</p>`;
+    const wait = () => `${head()}<p class="empty">Laden…</p>`;
+    let onGo = null;
+    const needStats = !["support", "status", "announcements"].includes(w.type) && !(w.type === "platforms" && o.source === "live");
+    if (needStats && !s) { body.innerHTML = dd.statsErr ? fail(dd.statsErr) : wait(); return; }
+    switch (w.type) {
+      case "metric": {
+        const m = METRICS[o.metric], v = m.v(s);
+        body.innerHTML = v == null ? tile(title, "—", "niet beschikbaar") : tile(title, nf.format(v), esc(m.h(s)), m.cls ? m.cls(s) : "");
+        if (m.filter && v != null) onGo = go(() => goUsers(m.filter));
+        break;
+      }
+      case "daily_chart": {
+        const days = (s.days || []).slice(-o.days), key = o.series === "active_users" ? "active_users" : o.series;
+        const unit = o.series === "new_users" ? "nieuwe gebruikers" : o.series === "signins" && s.signins_source === "audit" ? "inlogs" : "actieve accounts";
+        const tot = days.reduce((a, d) => a + (Number(d[key]) || 0), 0), today = days.length ? Number(days[days.length - 1][key]) || 0 : 0;
+        const sub = `Laatste ${o.days} dagen${o.series === "signins" ? (s.signins_source === "audit" ? ", uit het inloglogboek" : ", accounts met app-activiteit (inloglogboek leeg)") : ""}`;
+        if (o.display === "number" || w.size === "s") {
+          const avg = days.length ? tot / days.length : 0;
+          body.innerHTML = tile(title, nf.format(tot), `${o.days} dagen · gem. ${avg.toLocaleString("nl-NL", { maximumFractionDigits: 1 })} per dag · vandaag ${nf.format(today)}`);
+        } else {
+          body.innerHTML = w.size === "l"
+            ? `${head(sub)}<div class="w-sum"><b>${nf.format(tot)}</b> <span class="sub">in ${o.days} dagen · vandaag ${nf.format(today)}</span></div><div class="chart"></div>`
+            : `${head(null, null, `<div class="w-sum w-sum-r"><b>${nf.format(tot)}</b> <span class="sub">in ${o.days} d</span></div>`)}<div class="chart"></div>`;
+          const c = body.querySelector(".chart"), data = days.map((d) => ({ x: d.day, y: Number(d[key]) || 0 })), H = w.size === "l" ? 190 : 84;
+          const draw = () => barChart(c, data, unit, H);
+          dashCharts.push(draw); draw();
+        }
+        break;
+      }
+      case "platforms": case "versions": {
+        const live = w.type === "platforms" && o.source === "live";
+        if (live && !dd.status) { body.innerHTML = dd.statusErr ? fail(dd.statusErr) : wait(); return; }
+        const src = w.type === "versions" ? s.versions || [] : live ? dd.status.devices || [] : s.platforms || [];
+        const rows = src.filter((p) => !o.platforms.length || o.platforms.includes(p.platform));
+        const sub = (live ? "Gezien in de laatste 15 minuten" : w.type === "versions" ? "Per platform, laatste 30 dagen" : "Gezien in de laatste 30 dagen") + (o.platforms.length ? ` · ${o.platforms.map(pname).join(", ")}` : "");
+        body.innerHTML = `${head(sub)}<div class="hbars"></div>`;
+        hbars(body.querySelector(".hbars"), rows.map((p) => ({ n: p.devices,
+          label: w.type === "versions" ? `${esc(p.app_version === "?" ? "onbekend" : p.app_version)} <small>${esc(pname(p.platform))}</small>` : esc(pname(p.platform)) })), w.size === "l" ? 7 : 3);
+        break;
+      }
+      case "plans": {
+        if (s.plan_lifetime == null) { body.innerHTML = fail("Niet beschikbaar (ouder databaseschema)."); break; }
+        const P = { free: ["Gratis", s.plan_free], lifetime: ["Lifetime", s.plan_lifetime], custom: ["Eigen limieten", s.plan_custom] };
+        if (w.size === "s") {
+          const [first, ...rest] = o.plans;
+          body.innerHTML = tile(`${title} · ${P[first][0]}`, nf.format(P[first][1] ?? 0), esc(rest.map((k) => `${nf.format(P[k][1] ?? 0)} ${P[k][0]}`).join(" · ") || "accounts"), first === "lifetime" ? "life" : "");
+          onGo = go(() => goUsers(first));
+        } else {
+          body.innerHTML = `${head("Accounts per abonnement", "Gebruikers")}<div class="w-rows${w.size === "m" ? " w-cols" : ""}">${o.plans.map((k) =>
+            `<button type="button" class="w-row" data-plan="${k}"><span>${esc(P[k][0])}</span><b class="${k === "lifetime" ? "gold" : ""}">${nf.format(P[k][1] ?? 0)}</b></button>`).join("")}</div>`;
+          body.querySelectorAll("[data-plan]").forEach((b) => { b.disabled = dashEdit; b.onclick = () => goUsers(b.dataset.plan); });
+          const more = body.querySelector("[data-go]"); if (more) more.onclick = () => goUsers("");
+        }
+        break;
+      }
+      case "support": {
+        const c = supCounts, u = c?.unread || 0;
+        const sum = c ? o.statuses.reduce((a, k) => a + (c[k] || 0), 0) : null;
+        if (o.display === "number" || w.size === "s") {
+          body.innerHTML = tile(title, sum == null ? "—" : nf.format(sum), esc(supCountsText()), `sup${u ? " alert" : ""}`);
+        } else {
+          const max = Math.max(1, ...o.statuses.map((k) => c?.[k] || 0));
+          body.innerHTML = `${head(u ? `${nf.format(u)} wacht${u === 1 ? "" : "en"} op reactie` : c ? `${nf.format(c.last_7d || 0)} nieuw in 7 dagen` : "", "Support")}
+            ${c ? `<div class="w-rows">${o.statuses.slice(0, w.size === "m" ? 3 : 5).map((k) => `<button type="button" class="w-row" data-st="${k}"><span>${supBadge(k)}</span><span class="w-bar"><i data-w="${((c[k] || 0) / max * 100).toFixed(1)}"></i></span><b>${nf.format(c[k] || 0)}</b></button>`).join("")}</div>`
+              : '<p class="empty">Laden…</p>'}`;
+          body.querySelectorAll("i[data-w]").forEach((b) => { b.style.width = `${Math.max(2, Number(b.dataset.w))}%`; });
+          body.querySelectorAll("[data-st]").forEach((b) => { b.disabled = dashEdit; b.onclick = () => goSupport(b.dataset.st); });
+          const more = body.querySelector("[data-go]"); if (more) more.onclick = () => goSupport(null, o.statuses);
+          if (u) el.classList.add("alert");
+        }
+        if (o.display === "number" || w.size === "s") onGo = go(() => goSupport(null, o.statuses));
+        break;
+      }
+      case "status": {
+        if (!dd.status) { body.innerHTML = dd.statusErr ? fail(dd.statusErr) : wait(); return; }
+        const d = dd.status, ov = d.overall || { state: "up" };
+        const lvl = ov.level || ({ down: "major", degraded: "degraded" })[ov.state] || "operational", cls = LVL_CLASS[lvl] || "up";
+        const txt = { major: "Grote storing", partial: "Gedeeltelijke storing", degraded: "Verminderd", maintenance: "Onderhoud", operational: "Alle systemen werken" }[lvl];
+        const all = (d.groups || []).flatMap((g) => g.monitors || []), nm = (id) => all.find((m) => m.id === id)?.name?.nl || id;
+        const affected = (ov[lvl] || ov[ov.state] || []).map(nm).join(", ");
+        const openInc = (d.incidents || []).filter((i) => !i.ended_at);
+        const notices = (d.all_notices || []).filter((n) => (n.kind === "incident" && n.status !== "resolved") || ["in_progress", "scheduled"].includes(n.status));
+        const last = d.scheduler?.last_run_at;
+        let html = `${head(null, w.size === "s" ? null : "Status")}<div class="w-st ${cls}"><span class="st-dot ${cls}"></span><div><b>${esc(txt)}</b>${affected && lvl !== "operational" ? `<div class="sub">${esc(affected)}</div>` : ""}
+          <div class="sub">Laatste controle ${esc(last ? ago(last) : "nooit")}</div></div></div>`;
+        if (w.size !== "s") {
+          const facts = [];
+          if (o.show_incidents) facts.push(`${nf.format(openInc.length)} open ${openInc.length === 1 ? "storing" : "storingen"}`);
+          if (o.show_notices) facts.push(`${nf.format(notices.length)} ${notices.length === 1 ? "melding" : "meldingen"}`);
+          if (facts.length) html += `<p class="sub w-facts">${esc(facts.join(" · "))}</p>`;
+        }
+        if (w.size === "l") {
+          const items = [
+            ...(o.show_notices ? notices.slice(0, 4).map((n) => `<li><span class="nt-bar ${ntTone(n)}"></span><span class="w-li"><b>${esc(n.title?.nl || "")}</b><span class="sub">${esc(NST[n.status] || n.status)}</span></span></li>`) : []),
+            ...(o.show_incidents ? openInc.slice(0, 4).map((i) => `<li><span class="st-dot down"></span><span class="w-li"><b>${esc(i.name?.nl || i.monitor_id)}</b><span class="sub">${esc(i.cause || "onbekende oorzaak")} · sinds ${esc(ago(i.started_at))}</span></span></li>`) : []),
+          ];
+          html += items.length ? `<ul class="w-list">${items.join("")}</ul>` : (o.show_incidents || o.show_notices ? '<p class="empty">Geen storingen of meldingen.</p>' : "");
+        }
+        body.innerHTML = html;
+        const more = body.querySelector("[data-go]"); if (more) more.onclick = () => showTab("status");
+        if (w.size === "s") onGo = go(() => showTab("status"));
+        break;
+      }
+      case "announcements": {
+        if (!dd.ann) { body.innerHTML = dd.annErr ? fail(dd.annErr) : wait(); return; }
+        const items = (dd.ann.items || []).filter((a) => !o.only_active || a.active).slice(0, w.size === "m" ? 2 : o.count);
+        body.innerHTML = `${head(o.only_active ? "Actieve berichten" : "Nieuwste eerst", "Berichten")}${items.length ? `<ul class="w-list">${items.map((a) =>
+          `<li><span class="w-li"><b>${esc(a.title_nl)}</b><span class="sub"><span class="badge ${a.active ? "on" : "off"}">${a.active ? "Actief" : "Verlopen"}</span> ${esc(fmtDate(a.created_at))}</span></span></li>`).join("")}</ul>`
+          : `<p class="empty">${o.only_active ? "Geen actieve berichten." : "Nog geen berichten."}</p>`}`;
+        const more = body.querySelector("[data-go]"); if (more) more.onclick = () => showTab("messages");
+        break;
+      }
+    }
+    // hele kaart klikbaar (alleen buiten de wijzigmodus): via een knop over de kaart, zodat het ook met het toetsenbord werkt
+    if (onGo) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "w-hit"; b.setAttribute("aria-label", `${wTitle(w)}: bekijken`);
+      b.onclick = onGo; body.appendChild(b);
+    }
+  }
+  function goUsers(f) { userFilter = f; page = 0; const was = loaded.users; showTab("users"); if (was) loadUsers(); }
+  function goSupport(st, statuses) {
+    const f = st || (statuses && statuses.join() === "new,open,pending" ? "active" : statuses && statuses.length === 1 ? statuses[0] : "all");
+    supFilter = f; supPageNo = 0;
+    try { sessionStorage.setItem(KEY + ".supFilter", supFilter); } catch { /* */ }
+    const was = loaded.support; showTab("support"); if (was) loadTickets(); else renderSupFilters();
+  }
+
+  // ---- wijzigmodus: grootte, volgorde (slepen of knoppen), instellen, verbergen ----
+  function moveWidget(id, delta) {
+    const vis = visible(), i = vis.findIndex((w) => w.id === id), j = i + delta;
+    if (i < 0 || j < 0 || j >= vis.length) return false;
+    const from = dash.widgets.indexOf(vis[i]), to = dash.widgets.indexOf(vis[j]);
+    const [w] = dash.widgets.splice(from, 1);
+    dash.widgets.splice(to, 0, w);
+    return true;
+  }
+  function placeWidget(id, targetId, after) {
+    if (id === targetId) return false;
+    const from = dash.widgets.findIndex((w) => w.id === id);
+    if (from < 0) return false;
+    const [w] = dash.widgets.splice(from, 1);
+    let to = dash.widgets.findIndex((x) => x.id === targetId);
+    if (to < 0) { dash.widgets.splice(from, 0, w); return false; }
+    dash.widgets.splice(after ? to + 1 : to, 0, w);
+    return true;
+  }
+  const posText = (id) => { const vis = visible(); return `positie ${vis.findIndex((w) => w.id === id) + 1} van ${vis.length}`; };
+  function focusIn(id, sel) { const el = document.querySelector(`#dash .w[data-id="${id}"] ${sel}`); if (el && !el.disabled) el.focus(); else document.querySelector(`#dash .w[data-id="${id}"] .w-edit button:not(:disabled)`)?.focus(); }
+  function wireEdit(w, el) {
+    el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
+      const a = b.dataset.a, title = wTitle(w);
+      if (a === "size") { w.size = b.dataset.size; saveLayout(); renderDash(); focusIn(w.id, `[data-size="${w.size}"]`); announce(`${title}: ${SIZE_NAME[w.size].toLowerCase()}`); }
+      else if (a === "up" || a === "down") {
+        if (moveWidget(w.id, a === "up" ? -1 : 1)) { saveLayout(); renderDash(); focusIn(w.id, `[data-a="${a}"]`); announce(`${title} staat nu op ${posText(w.id)}`); }
+      } else if (a === "opts") openWidgetSettings(w);
+      else if (a === "hide") {
+        const vis = visible(), i = vis.indexOf(w), next = vis[i + 1] || vis[i - 1];
+        w.hidden = true; saveLayout(); renderDash();
+        if (next) focusIn(next.id, '[data-a="hide"]'); else $("dashAdd").focus();
+        toast(`${title} verborgen. Terugzetten kan via Widget toevoegen.`); announce(`${title} verborgen`);
+      }
+    }));
+    // slepen met de muis (HTML5 drag and drop); toetsenbord: de knoppen naar voren / naar achteren
+    el.addEventListener("dragstart", (e) => { dragId = w.id; el.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", w.id); } catch { /* */ } });
+    el.addEventListener("dragend", () => { dragId = null; document.querySelectorAll("#dash .w").forEach((x) => x.classList.remove("dragging", "drop-before", "drop-after")); });
+    el.addEventListener("dragover", (e) => {
+      if (!dragId || dragId === w.id) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = "move";
+      const r = el.getBoundingClientRect(), after = e.clientX > r.left + r.width / 2;
+      el.classList.toggle("drop-after", after); el.classList.toggle("drop-before", !after);
+    });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-before", "drop-after"));
+    el.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const id = dragId, after = el.classList.contains("drop-after");
+      if (id && placeWidget(id, w.id, after)) { saveLayout(); renderDash(); announce(`${wTitle(dash.widgets.find((x) => x.id === id))} staat nu op ${posText(id)}`); }
+    });
+  }
+
+  // galerij: verborgen widgets terugzetten of nieuwe toevoegen
+  function openGallery() {
+    const hidden = dash.widgets.filter((w) => w.hidden), full = dash.widgets.length >= DASH_MAX;
+    $("drawerBody").innerHTML = `<h2 id="dTitle">Widget toevoegen</h2>
+      <p class="sub">Kies een widget voor het overzicht. Daarna kun je grootte, plaats en getoonde gegevens instellen.</p>
+      ${hidden.length ? `<h3>Verborgen</h3><div class="wg-list">${hidden.map((w) => `<div class="wg"><div><b>${esc(wTitle(w))}</b><div class="sub">${esc(WTYPES[w.type].name)} · ${SIZE_NAME[w.size].toLowerCase()}</div></div>
+        <div class="wg-btns"><button type="button" class="btn small" data-show="${esc(w.id)}" aria-label="${esc(wTitle(w))} tonen">Tonen</button><button type="button" class="btn danger small" data-del="${esc(w.id)}" aria-label="${esc(wTitle(w))} verwijderen">Verwijderen</button></div></div>`).join("")}</div>` : ""}
+      <h3>Galerij</h3>${full ? `<p class="sub">Maximaal ${DASH_MAX} widgets; verwijder eerst een verborgen widget.</p>` : ""}
+      <div class="wg-list">${Object.entries(WTYPES).map(([k, t]) => `<div class="wg"><div><b>${esc(t.name)}</b><div class="sub">${esc(t.desc)}</div></div>
+        <div class="wg-btns"><button type="button" class="btn ghost small" data-add="${k}" aria-label="${esc(t.name)} toevoegen" ${full ? "disabled" : ""}>Toevoegen</button></div></div>`).join("")}</div>`;
+    openDrawer();
+    $("drawerBody").querySelectorAll("[data-show]").forEach((b) => (b.onclick = () => {
+      const w = dash.widgets.find((x) => x.id === b.dataset.show); if (!w) return;
+      w.hidden = false; saveLayout(); closeDrawer(); renderDash(); ensureDashData(); focusIn(w.id, '[data-a="opts"]'); toast(`${wTitle(w)} staat weer op het overzicht.`);
+    }));
+    $("drawerBody").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => {
+      dash.widgets = dash.widgets.filter((x) => x.id !== b.dataset.del);
+      if (!dash.widgets.length) dash = defaultLayout();
+      saveLayout(); openGallery();
+    }));
+    $("drawerBody").querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
+      const seen = new Set(dash.widgets.map((w) => w.id));
+      const w = normWidget({ id: newId(b.dataset.add, seen), type: b.dataset.add }, seen);
+      dash.widgets.push(w); saveLayout(); closeDrawer();
+      if (!dashEdit) dashEdit = true;
+      renderDash(); ensureDashData();
+      document.querySelector(`#dash .w[data-id="${w.id}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      focusIn(w.id, '[data-a="opts"]'); toast(`${wTitle(w)} toegevoegd.`);
+    }));
+    $("drawerBody").querySelector("button")?.focus();
+  }
+
+  // instellingen van één widget (lade): grootte en de opties van het type
+  function openWidgetSettings(w) {
+    const t = WTYPES[w.type];
+    const known = [...new Set([...(dd.stats?.platforms || []), ...(dd.stats?.versions || []), ...(dd.status?.devices || [])].map((p) => p.platform).filter(Boolean).concat(w.options.platforms || []))];
+    const field = (k, [kind, vals, def]) => {
+      const [label, names] = OPT_LABEL[k], cur = w.options[k];
+      if (kind === "bool") return `<label class="switch"><input type="checkbox" data-o="${k}" ${cur ? "checked" : ""}><span class="track"></span><span>${esc(label)}</span></label>`;
+      if (kind === "enum") {
+        return `<label>${esc(label)}<select data-o="${k}">${vals.map((v) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(names[v] ?? v)}</option>`).join("")}</select></label>`;
+      }
+      const list = kind === "set" ? vals : known, labelOf = (v) => (kind === "set" ? names[v] : pname(v));
+      return `<fieldset class="wo-set" data-o="${k}" data-kind="${kind}"><legend>${esc(label)}${kind === "list" ? ' <span class="sub">niets aangevinkt = alle platforms</span>' : ' <span class="sub">minstens één</span>'}</legend>
+        ${list.length ? list.map((v) => `<label class="wo-chk"><input type="checkbox" value="${esc(v)}" ${cur.includes(v) ? "checked" : ""}><span>${esc(labelOf(v))}</span></label>`).join("") : '<p class="sub">Nog geen platforms bekend.</p>'}</fieldset>`;
+    };
+    $("drawerBody").innerHTML = `<h2 id="dTitle">${esc(wTitle(w))}</h2><p class="sub">${esc(t.name)}: ${esc(t.desc)}</p>
+      <form id="woForm" class="wo-form" novalidate>
+        <fieldset class="wo-size"><legend>Grootte</legend><div class="seg" role="radiogroup" aria-label="Grootte">${t.sizes.map((z) =>
+          `<button type="button" role="radio" data-size="${z}" class="${z === w.size ? "on" : ""}" aria-checked="${z === w.size}">${SIZE_NAME[z]} <span class="sub">${SIZE_DIM[z]}</span></button>`).join("")}</div></fieldset>
+        ${Object.entries(t.opts).map(([k, spec]) => field(k, spec)).join("")}
+        <div id="woErr" class="err" role="alert"></div>
+        <div class="form-btns"><button class="btn" type="submit">Opslaan</button><button id="woDefault" class="btn ghost" type="button">Standaard voor deze widget</button></div>
+      </form>`;
+    openDrawer();
+    let size = w.size;
+    const segBtns = [...$("drawerBody").querySelectorAll(".wo-size [data-size]")];
+    segBtns.forEach((b) => (b.onclick = () => { size = b.dataset.size; segBtns.forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", String(x === b)); }); }));
+    $("woDefault").onclick = () => {
+      Object.assign(w, { size: t.size, options: normOptions(w.type, {}) });
+      saveLayout(); closeDrawer(); renderDash(); ensureDashData(); toast("Standaardinstellingen van de widget hersteld.");
+    };
+    $("woForm").onsubmit = (e) => {
+      e.preventDefault();
+      const raw = {};
+      $("woForm").querySelectorAll("select[data-o]").forEach((s) => { const spec = t.opts[s.dataset.o]; raw[s.dataset.o] = spec[1].find((v) => String(v) === s.value); });
+      $("woForm").querySelectorAll("input[type=checkbox][data-o]").forEach((c) => { raw[c.dataset.o] = c.checked; });
+      for (const fs of $("woForm").querySelectorAll("fieldset[data-o]")) {
+        const vals = [...fs.querySelectorAll("input:checked")].map((c) => c.value);
+        if (fs.dataset.kind === "set" && !vals.length) { $("woErr").textContent = `Kies minstens één bij ${OPT_LABEL[fs.dataset.o][0].toLowerCase()}.`; return; }
+        raw[fs.dataset.o] = vals;
+      }
+      w.size = t.sizes.includes(size) ? size : t.size;
+      w.options = normOptions(w.type, raw);
+      saveLayout(); closeDrawer(); renderDash(); ensureDashData();
+      focusIn(w.id, '[data-a="opts"]'); toast("Widget opgeslagen.");
+    };
+    segBtns.find((b) => b.classList.contains("on"))?.focus();
+  }
+
+  let resizeTimer;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (!$("tab-overview").classList.contains("hidden")) dashCharts.forEach((f) => f()); }, 150); });
   // Staafdiagram (één reeks) met hover-tooltip; inline SVG.
-  function barChart(el, data, unit) {
+  function barChart(el, data, unit, H = 190) {
     if (!data.length) { el.innerHTML = '<p class="empty">Nog geen gegevens.</p>'; return; }
-    const W = Math.max(280, Math.round(el.clientWidth || 560)), H = 190, L = 28, R = 4, T = 8, B = 22;
+    const W = Math.max(240, Math.round(el.clientWidth || 560)), L = 28, R = 4, T = 8, B = 22;
+    const every = data.length <= 7 ? 1 : data.length <= 14 ? 2 : 7;
     const max = Math.max(1, ...data.map((d) => d.y));
     const step = niceStep(max);
     const top = Math.ceil(max / step) * step;
@@ -235,7 +670,7 @@
       // afgeronde bovenkant, platte voet op de basislijn
       const path = `M${x},${T + ih} V${T + ih - h + r} Q${x},${T + ih - h} ${x + r},${T + ih - h} H${x + w - r} Q${x + w},${T + ih - h} ${x + w},${T + ih - h + r} V${T + ih} Z`;
       bars += `<g data-i="${i}"><path class="bar ${d.y ? "" : "zero"}" d="${path}" fill="${d.y ? "var(--red)" : "#ffffff1f"}"/><rect class="hit" x="${L + i * bw}" y="${T}" width="${bw}" height="${ih}"/></g>`;
-      if ((data.length - 1 - i) % 7 === 0) ticks += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle">${shortDay(d.x)}</text>`;
+      if ((data.length - 1 - i) % every === 0) ticks += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle">${shortDay(d.x)}</text>`;
     });
     ticks += "</g>";
     el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(unit)} per dag">${g}${bars}${ticks}</svg><div class="tip hidden"></div>`;
@@ -261,12 +696,12 @@
   }
   const shortDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
   const longDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
-  function hbars(el, rows) {
+  function hbars(el, rows, limit = 14) {
     if (!rows.length) { el.innerHTML = '<p class="empty">Nog geen gegevens.</p>'; return; }
     const max = Math.max(...rows.map((r) => r.n), 1);
-    el.innerHTML = rows.slice(0, 14).map((r) =>
+    el.innerHTML = rows.slice(0, limit).map((r) =>
       `<div class="hbar"><span class="n">${r.label}</span><span class="t"><span data-w="${Math.max(2, (r.n / max) * 100).toFixed(1)}"></span></span><span class="c">${nf.format(r.n)}</span></div>`).join("") +
-      (rows.length > 14 ? `<p class="sub">+ ${rows.length - 14} meer</p>` : "");
+      (rows.length > limit ? `<p class="sub hbar-more">+ ${rows.length - limit} meer</p>` : "");
     // build 97: breedte via de CSSOM in plaats van een style-attribuut (Content-Security-Policy: style-src 'self')
     el.querySelectorAll("span[data-w]").forEach((b) => { b.style.width = `${b.dataset.w}%`; });
   }
@@ -663,7 +1098,7 @@
     supCounts = c;
     const b = $("supBadge"), u = c.unread || 0;
     b.textContent = u > 99 ? "99+" : String(u); b.classList.toggle("hidden", !u);
-    if ($("kpiSup")) { $("kpiSup").querySelector(".v").textContent = nf.format(c.active ?? 0); $("kpiSup").querySelector(".h").textContent = supCountsText(); $("kpiSup").classList.toggle("alert", !!u); }
+    dashSupportChanged();
     renderSupFilters();
   }
   async function loadSupportCounts() {

@@ -41,16 +41,17 @@
 
   <main>
     <section id="tab-overview" class="tab">
-      <div class="row-head"><h1>Overzicht</h1><button id="refresh" class="btn ghost small">Vernieuwen</button></div>
-      <div id="kpis" class="kpis"></div>
-      <div class="grid2">
-        <div class="panel"><h2>Nieuwe gebruikers per dag</h2><p class="sub">Laatste 30 dagen</p><div id="chartNew" class="chart"></div></div>
-        <div class="panel"><h2 id="signinTitle">Inloggen per dag</h2><p id="signinSub" class="sub">Laatste 30 dagen</p><div id="chartSign" class="chart"></div></div>
+      <div class="row-head"><h1>Overzicht</h1>
+        <div class="head-btns"><button id="dashEdit" class="btn ghost small" type="button" aria-pressed="false">Wijzig</button>
+          <button id="refresh" class="btn ghost small" type="button">Vernieuwen</button></div></div>
+      <div id="dashBar" class="dash-bar hidden" role="region" aria-label="Overzicht wijzigen">
+        <p class="sub">Sleep widgets of gebruik de pijlen om ze te verplaatsen. Kies S, M of L voor de grootte en de schuifjes voor de getoonde gegevens.</p>
+        <div class="head-btns"><button id="dashAdd" class="btn small" type="button">Widget toevoegen</button>
+          <button id="dashReset" class="btn ghost small" type="button">Standaard herstellen</button>
+          <button id="dashDone" class="btn ghost small" type="button">Klaar</button></div>
       </div>
-      <div class="grid2">
-        <div class="panel"><h2>Actieve apparaten per platform</h2><p class="sub">Gezien in de laatste 30 dagen</p><div id="platforms" class="hbars"></div></div>
-        <div class="panel"><h2>App-versies in gebruik</h2><p class="sub">Per platform, laatste 30 dagen</p><div id="versions" class="hbars"></div></div>
-      </div>
+      <div id="dash" class="dash"></div>
+      <p id="dashLive" class="sr" aria-live="polite"></p>
     </section>
 
     <section id="tab-users" class="tab hidden">
