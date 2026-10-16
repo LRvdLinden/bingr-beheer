@@ -21,7 +21,7 @@
 ## 🔴 P0 — IPTV en streams
 
 - [ ] **IPTV-verbindingslimiet onderzoeken**  
-  Provider meldt maximaal één verbinding; onderzoek relatie tot Bingr Gratis/Lifetime en toegestane oplossingen. Bingr kan providerlimieten niet zelfstandig opheffen.
+  Provider meldt maximaal één verbinding; onderzoek relatie tot Bingr Gratis/Lifetime en toegestane oplossingen. Bingr moet providerlimieten zelfstandig opheffen of omzeilen.
 
 - [ ] **Streams en sessies optimaliseren**  
   Bij zappen, stoppen, spelerwissel en afsluiten verbindingen correct vrijgeven; spooksessies voorkomen.
