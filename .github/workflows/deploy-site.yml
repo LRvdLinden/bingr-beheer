@@ -193,7 +193,7 @@ jobs:
           # rechten: map 755 en bestanden 644, anders geeft de webserver 403
           # (los van elkaar: de hoofdmap van een FTP-login mag vaak niet ge-chmod worden)
           [ "$TARGET" != "." ] && { run "chmod 755 \"$TARGET\"" >/dev/null 2>&1 || echo "::warning::chmod van de doelmap niet gelukt"; }
-          lftp -e "set cmd:fail-exit false; $base; set cmd:fail-exit false; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cd \"$TARGET\"; chmod 644 index.html admin.css admin.js config.js favicon.png apple-touch-icon.png robots.txt .htaccess; bye" >/dev/null 2>&1 \
+          lftp -e "set cmd:fail-exit false; $base; set cmd:fail-exit false; open --env-password -u \"$USER_OK\" \"$SERVER_OK\"; cd \"$TARGET\"; chmod 644 index.html admin.css admin.js config.js favicon.png apple-touch-icon.png robots.txt .htaccess dl.php; chmod 755 builds; chmod 644 builds/.htaccess; bye" >/dev/null 2>&1 \
             && echo "::notice::Rechten van de bestanden gezet." || echo "::warning::Rechten van de bestanden niet (allemaal) gezet."
 
       - name: Controleren of beheer.bingr.online het dashboard toont
@@ -204,6 +204,15 @@ jobs:
           code=$(curl -sL --max-time 20 -o /tmp/site.html -w '%{http_code}' "$url" || true)
           if grep -q 'name="bingr-app" content="beheer"' /tmp/site.html 2>/dev/null; then
             echo "::notice::$url toont het dashboard (HTTP $code)"
+            # downloads: dl.php moet draaien (PHP) en de map builds/ mag nooit rechtstreeks bereikbaar zijn
+            ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
+            echo "$ping" | grep -q '"ok":true' && echo "::notice::dl.php werkt ($(echo "$ping" | grep -o '"ready":[a-z]*'))" \
+              || echo "::warning::dl.php geeft geen goed antwoord: draait PHP op beheer.bingr.online?"
+            for f in builds/ builds/.htaccess builds/manifest.json builds/key.php; do
+              c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "${url}$f" || true)
+              case "$c" in 200) echo "::error::${url}$f is rechtstreeks bereikbaar (HTTP 200)"; exit 1 ;; esac
+            done
+            echo "::notice::Map builds/ is afgesloten"
             robots=$(curl -sL --max-time 20 "${url}robots.txt" || true)
             echo "$robots" | grep -q 'Disallow: /$' && echo "::notice::robots.txt blokkeert alles" || echo "::warning::robots.txt op $url blokkeert niet alles"
           else

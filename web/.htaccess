@@ -18,3 +18,9 @@
   RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
   RewriteRule ^ https://beheer.bingr.online/ [R=302,L]
 </IfModule>
+
+# Builds (map builds/) nooit rechtstreeks: alleen via dl.php met een kortgeldige link uit het beheer
+Options -Indexes
+<IfModule mod_alias.c>
+  RedirectMatch 404 ^/builds(/|$)
+</IfModule>
