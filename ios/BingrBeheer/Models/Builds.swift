@@ -52,7 +52,7 @@ struct BuildPlatform: Identifiable {
         ("android", "Android en Android TV", "APK voor telefoons, tablets, Android TV, Google TV en Fire TV", "apps.iphone"),
         ("tizen", "Samsung TV", ".wgt voor Tizen", "tv"),
         ("apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS", "apple.logo"),
-        ("beheer", "Bingr Beheer", "Xcode-project (zip) van deze app voor iPhone en iPad", "wrench.and.screwdriver"),
+        ("beheer", "BingrBeheer", "Xcode-project (zip) van deze app voor iPhone en iPad", "wrench.and.screwdriver"),
     ]
 
     var title: String { Self.all.first { $0.key == key }?.title ?? key }

@@ -325,7 +325,8 @@ legend .sub{font-weight:400}
   .tabs::-webkit-scrollbar{display:none}
   .tabs button{flex:none}
   .tabs button[aria-selected=true]::after{bottom:8px}
-  .top .link{margin-left:auto}
+  .umenu{margin-left:auto}
+  .menu{width:min(280px,calc(100vw - 2 * var(--g)))}
   main{padding:24px var(--g) 48px}
   .panel{padding:18px}
   .grid2{grid-template-columns:1fr}
@@ -589,3 +590,43 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
   .wg{flex-direction:column;align-items:stretch}
 }
 @media (prefers-reduced-motion:reduce){.w{transition:none}}
+
+/* menu rechtsboven (zoals het profielmenu van de webspeler: .prof-btn, .menu, .menu-it, .menu-sep in bingr-website/web/css/web.css) */
+.umenu{position:relative;display:flex;align-items:center}
+.menu-btn{display:flex;align-items:center;gap:6px;background:none;border:0;cursor:pointer;padding:4px;border-radius:8px;color:#fff}
+.menu-av{position:relative;display:block;width:32px;height:32px}
+.menu-av img,.menu-head img{display:block;width:100%;height:100%;border-radius:7px;box-shadow:0 0 0 1px #ffffff40}
+.menu-dot{position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #000}
+.menu-btn .caret{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+.menu-btn:hover .caret,.menu-btn[aria-expanded=true] .caret{transform:rotate(180deg)}
+.menu{position:absolute;top:calc(100% + 10px);right:0;z-index:30;min-width:250px;background:#141414f7;border:1px solid #ffffff26;border-radius:8px;padding:8px 0;box-shadow:0 20px 50px #000c;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.menu-head{display:flex;align-items:center;gap:12px;padding:6px 16px 8px}
+.menu-head img{width:40px;height:40px;border-radius:9px;flex:none}
+.menu-head b{display:block;font-size:15px;line-height:1.2}
+.menu-head .sub{display:block;margin-top:2px}
+.menu-it{display:flex;align-items:center;gap:12px;width:100%;padding:10px 16px;border:0;background:none;cursor:pointer;font-size:14.5px;text-align:left;color:#ddd;text-decoration:none}
+.menu-it:hover,.menu-it:focus-visible{background:#ffffff14;color:#fff;outline:none;text-decoration:underline}
+.menu-it .ic{width:20px;height:20px;flex:none;fill:none;stroke:var(--sec);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.menu-it[aria-current=page]{color:#fff;font-weight:700}
+.menu-it[aria-current=page] .ic{stroke:var(--red)}
+.menu-it .tab-badge{margin-left:auto}
+.menu-it.danger,.menu-it.danger .ic{color:#ff8080;stroke:#ff8080}
+.menu-sep{height:1px;background:var(--line);margin:6px 0}
+
+/* gebruikers: naam boven het gemaskeerde e-mailadres; oog om het volledige adres te tonen */
+.users .u-name{display:block;font-weight:700;color:#fff}
+.users .u-name+.u-mail{display:block;font-weight:400;color:var(--sec);font-size:13px}
+.u-sub{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:-4px 0 4px;color:var(--sec);font-size:14px}
+.u-sub .u-mail{word-break:break-all}
+.eye{display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:6px;background:none;color:var(--sec);cursor:pointer}
+.eye:hover{background:#ffffff14;color:#fff}
+.eye svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.eye[aria-pressed=true]{color:#fff}
+.name-edit{background:none;border:0;color:var(--sec);cursor:pointer;font-size:13px;text-decoration:underline;margin-left:8px;padding:0}
+.name-edit:hover{color:#fff}
+.name-form{margin:0 0 20px;background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:16px 18px}
+.name-form h3{margin:0 0 12px}
+.name-form label{display:block}
+.name-form input{margin-top:6px}
+.name-form .sub{margin-top:8px}
+.name-form .form-btns{margin-top:14px}

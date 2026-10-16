@@ -8,7 +8,7 @@
 //                       verzoek controleert v. Een ander wachtwoord verhoogt de versie vanzelf.)
 //   logout_all          {token}           -> {ok}    (build 97: overal uitloggen: versie + 1, alle tokens vervallen)
 //   widget_token        {token}           -> {widget_token, expires_at, scope:"widget"}  (alleen met een beheer-token: een apart
-//                       token voor de widgets van de app Bingr Beheer, 30 dagen geldig, met eigen sleutel en scope "widget" en
+//                       token voor de widgets van de app BingrBeheer, 30 dagen geldig, met eigen sleutel en scope "widget" en
 //                       dezelfde tokenversie v; overal uitloggen of een ander wachtwoord trekt het in. In admin_audit zonder token.)
 //   widget_summary      {token: widget-token} -> {status: {level, components:[{id, name, group, level}], counts, active_notices,
 //                       open_incidents, checked_at} | null, support: {new, open, pending, resolved, closed, active, unread,
@@ -22,8 +22,14 @@
 //   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
 //                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade;
-//                       items[].plan = {plan, max_streams?, max_devices?, source?})
-//   user_detail         {token, id}       -> {…, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
+//                       items[].plan = {plan, max_streams?, max_devices?, source?}; items[].first_name / last_name uit
+//                       user_metadata, of null. q zoekt op het begin van e-mailadres, voornaam, achternaam of "voornaam achternaam")
+//   user_detail         {token, id}       -> {…, first_name, last_name, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
+//   user_set_name       {token, id, first_name, last_name} -> {ok, first_name, last_name}  (opgeschoond, max. 50 tekens elk;
+//                       leeg = weg; via auth.admin.updateUserById user_metadata, de rest van de metadata blijft. In admin_audit
+//                       alleen of de namen gezet zijn, nooit de naam zelf; zie names.ts)
+//   user_email          {token, id}       -> {email}  (het volledige e-mailadres na een klik op het oog; in admin_audit als
+//                       user_email_view met alleen het account-id, nooit het adres)
 //   user_block          {token, id, reason, until? (ISO; leeg/"onbepaald" = onbepaalde tijd), notify? (standaard true)}
 //                       -> {ok, until, streams_stopped, email_sent, email_error?}  (ban op het auth-account, record in
 //                       account_blocks, lopende streams gestopt, mail vanaf support@ met reden en einddatum). Sessies blijven
@@ -72,6 +78,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { announcementMail, blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
+import { cleanName } from "./names.ts";
 import { buildUrl, cleanManifest, findBuild, isBuildPlatform, isValidBuildFile, MIN_KEY, signBuildToken } from "./builds.ts";
 import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
 
@@ -474,14 +481,15 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
     case "users": {
       const size = Math.min(Math.max(Number(body.page_size ?? 25) || 25, 1), 50);
       const page = Math.max(Math.floor(Number(body.page ?? 0) || 0), 0);
-      const q = String(body.q ?? "").trim().toLowerCase().slice(0, 100);
+      // zoekterm: begin van e-mailadres, voornaam, achternaam of "voornaam achternaam" (bingr_admin_users); spaties samengevoegd
+      const q = String(body.q ?? "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 100);
       // filter alleen meesturen als hij gekozen is (zo werkt de lijst ook met een ouder schema)
       const { data, error } = await admin.rpc("bingr_admin_users", {
         p_search: q, p_limit: size, p_offset: page * size,
         ...(["blocked", "free", "lifetime", "custom"].includes(String(body.filter)) ? { p_filter: String(body.filter) } : {}),
       });
       if (error) throw new Error(error.message);
-      // build 97: zoeken in accounts (op e-mailadres) in het logboek; alleen lengte van de zoekterm, niet de term zelf
+      // build 97: zoeken in accounts (op e-mailadres of naam) in het logboek; alleen lengte van de zoekterm, niet de term zelf
       if (q) await audit("users_search", ip, null, { q_length: q.length, filter: body.filter || undefined, page, results: data?.total ?? 0 });
       const items = (data?.items ?? []).map((u: Record<string, unknown>) => ({ ...u, email: maskEmail(u.email) }));
       return json({
@@ -497,6 +505,37 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // build 97: inzage van een account in het logboek (wie, geen inhoud)
       await audit("user_view", ip, String(body.id).toLowerCase());
       return json({ ...data, email: maskEmail(data.email) });
+    }
+    case "user_email": {
+      // het volledige e-mailadres (oog naast het gemaskeerde adres); in het logboek alleen dat het bekeken is
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const user = await authUser(id);
+      if (!user) return json({ error: "not_found" }, 404);
+      await audit("user_email_view", ip, id);
+      return json({ email: user.email ?? "" });
+    }
+    case "user_set_name": {
+      // voor- en achternaam (user_metadata first_name / last_name); leeg = weg. De rest van de metadata (taal e.d.) blijft:
+      // de huidige metadata gaat mee, alleen deze twee sleutels veranderen (null = verwijderen).
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const fn = cleanName(body.first_name), ln = cleanName(body.last_name);
+      if (!fn.ok) return json({ error: fn.error, field: "first_name" }, 400);
+      if (!ln.ok) return json({ error: ln.error, field: "last_name" }, 400);
+      const user = await authUser(id);
+      if (!user) return json({ error: "not_found" }, 404);
+      const before = user.user_metadata ?? {};
+      const { error } = await admin.auth.admin.updateUserById(id, {
+        user_metadata: { ...before, first_name: fn.value, last_name: ln.value },
+      });
+      if (error) { console.error("user_set_name", error.message); return json({ error: "name_failed" }, 502); }
+      // logboek: alleen of er een naam staat en of hij veranderde, nooit de naam zelf
+      await audit("user_set_name", ip, id, {
+        first_name: fn.value !== null, last_name: ln.value !== null,
+        changed: (before.first_name ?? null) !== fn.value || (before.last_name ?? null) !== ln.value,
+      });
+      return json({ ok: true, first_name: fn.value, last_name: ln.value });
     }
     case "plan_get": {
       if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
@@ -602,7 +641,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (se) console.error("user_block streams", se.message);
       let mail: { ok: boolean; error?: string } = { ok: false };
       if (body.notify !== false && user.email) {
-        mail = await sendAccountMail(user.email, blockMail(accountLang(user.user_metadata?.lang), { email: user.email, reason, until: u.until }));
+        mail = await sendAccountMail(user.email, blockMail(accountLang(user.user_metadata?.lang), { email: user.email, reason, until: u.until, firstName: user.user_metadata?.first_name }));
         if (mail.ok) await admin.from("account_blocks").update({ notified: true }).eq("id", row.id);
       }
       await audit("user_block", ip, id, { until, notify: body.notify !== false, email_sent: mail.ok, streams: stopped?.length ?? null, length: reason.length });
@@ -621,7 +660,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (le) console.error("user_unblock record", le.message);
       let mail: { ok: boolean; error?: string } = { ok: false };
       if (body.notify !== false && user.email) {
-        mail = await sendAccountMail(user.email, unblockMail(accountLang(user.user_metadata?.lang), { email: user.email }));
+        mail = await sendAccountMail(user.email, unblockMail(accountLang(user.user_metadata?.lang), { email: user.email, firstName: user.user_metadata?.first_name }));
       }
       await audit("user_unblock", ip, id, { notify: body.notify !== false, email_sent: mail.ok, lifted: lifted?.length ?? 0, record_error: le ? true : undefined });
       return json({ ok: true, email_sent: mail.ok, email_error: mail.error });
@@ -636,7 +675,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const notify = body.notify !== false && !!email;
       const delTickets = body.delete_tickets === true;
       // e-mailadres en taal vastleggen vóór het verwijderen; de mail gaat pas als het verwijderen gelukt is
-      const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets }) : null;
+      const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets, firstName: user.user_metadata?.first_name }) : null;
       // build 95: eerst de gebruiker zelf; alle tabellen (profielen, servers, instellingen, apparaten, sessies, streams,
       // kijkgeschiedenis, statistieken, blokkades, e-mailvoorkeuren, tv-codes) gaan mee via on delete cascade. Mislukt dit,
       // dan wordt er niets anders verwijderd (geen foto's, geen tickets) en komt de mislukking in het logboek.
@@ -713,7 +752,8 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         const { error: me } = await admin.rpc("bingr_announce_mark", { p_id: body.id, p_sent: ok ? [id] : [], p_failed: ok ? [] : [id] });
         if (me) { console.error("announce_send mark", me.message); (ok ? unsent : unfailed).push(id); }
       };
-      const items: { id: string; email: string; lang: string | null }[] = claim?.items ?? [];
+      // first_name: voornaam voor de aanhef "Hoi <voornaam>," (bingr_announce_take; ontbreekt bij een ouder schema = geen aanhef)
+      const items: { id: string; email: string; lang: string | null; first_name?: string | null }[] = claim?.items ?? [];
       if (items.length) {
         const tx = transport();
         try {
@@ -721,7 +761,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
             const en = r.lang !== "nl" && !!a.title_en && !!a.body_en;
             const tok = await unsubToken(r.id);
             const url = `${SITE}/unsubscribe/?t=${encodeURIComponent(tok)}`;
-            const m = announcementMail(en ? "en" : "nl", en ? a.title_en : a.title_nl, en ? a.body_en : a.body_nl, url);
+            const m = announcementMail(en ? "en" : "nl", en ? a.title_en : a.title_nl, en ? a.body_en : a.body_nl, url, undefined, r.first_name);
             let ok = false;
             try {
               await tx.sendMail({

@@ -28,7 +28,7 @@ struct BingrLogo: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Bingr Beheer")
+        .accessibilityLabel("BingrBeheer")
     }
 }
 

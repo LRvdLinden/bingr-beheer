@@ -215,6 +215,15 @@ jobs:
             echo "::notice::Map builds/ is afgesloten"
             robots=$(curl -sL --max-time 20 "${url}robots.txt" || true)
             echo "$robots" | grep -q 'Disallow: /$' && echo "::notice::robots.txt blokkeert alles" || echo "::warning::robots.txt op $url blokkeert niet alles"
+            # HSTS, geen frame, en http -> https naar hetzelfde pad (web/.htaccess)
+            curl -s -o /dev/null -D /tmp/h.txt --max-time 20 "$url" || true
+            for h in 'strict-transport-security: max-age=31536000' 'x-frame-options: deny' "frame-ancestors 'none'"; do
+              tr -d '\r' < /tmp/h.txt | grep -qiF "$h" || { echo "::error::Header ontbreekt op $url: $h"; exit 1; }
+            done
+            echo "::notice::HSTS en frame-beperking staan live"
+            r=$(curl -s -o /dev/null --max-time 20 -w '%{http_code} %{redirect_url}' "http://beheer.bingr.online/robots.txt?x=1" || true)
+            [ "$r" = "301 https://beheer.bingr.online/robots.txt?x=1" ] && echo "::notice::http stuurt door naar https (zelfde pad)" \
+              || { echo "::error::http://beheer.bingr.online/robots.txt?x=1 gaf '$r', verwacht een 301 naar https met hetzelfde pad"; exit 1; }
           else
             # build 95: geen IP-adressen, serverkoppen of certificaatgegevens in het (openbare) log
             if ! getent hosts beheer.bingr.online >/dev/null; then

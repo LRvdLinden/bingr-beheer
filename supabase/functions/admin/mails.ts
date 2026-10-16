@@ -8,6 +8,17 @@ import {
   SITE, SUPPORT_SITE, title,
 } from "../_shared/layout.ts";
 import { formatUntil } from "./blocks.ts";
+import { greetingName } from "./names.ts";
+
+/** Aanhef met de voornaam ("Hoi Jan," / "Hi Jan,"), of null zonder (bruikbare) voornaam. */
+export function greeting(lang: Lang, firstName?: unknown): string | null {
+  const n = greetingName(firstName);
+  return n ? `${lang === "en" ? "Hi" : "Hoi"} ${n},` : null;
+}
+/** Aanhef als alinea boven de tekst (HTML, ge-escaped) of leeg. */
+const greetHtml = (g: string | null) => (g ? `<p style="margin:0 0 14px;font-size:16px;line-height:24px;color:#ffffff">${esc(g)}</p>\n` : "");
+/** Aanhef als regels boven de platte tekst. */
+const greetText = (g: string | null) => (g ? [g, ""] : []);
 
 const TXT: Record<Lang, { label: string; eyebrow: string; reason: string; open: string }> = {
   nl: {
@@ -22,21 +33,22 @@ const TXT: Record<Lang, { label: string; eyebrow: string; reason: string; open: 
   },
 };
 
-/** E-mail voor een bericht uit het beheer: {subject, html, text}. */
-export function announcementMail(lang: Lang, subject: string, body: string, unsubscribeUrl: string, year?: number) {
+/** E-mail voor een bericht uit het beheer: {subject, html, text}. Met voornaam begint de tekst met "Hoi <voornaam>,". */
+export function announcementMail(lang: Lang, subject: string, body: string, unsubscribeUrl: string, year?: number, firstName?: unknown) {
   const t = TXT[lang];
+  const g = greeting(lang, firstName);
   const s = String(subject ?? "").replace(/[\r\n]+/g, " ").trim();
   const content = `
 ${eyebrow(t.eyebrow)}
 ${redBar("12px 0 20px")}
 ${title(s, "0 0 16px")}
-${bodyHtml(body, "#d6d6d6", 16)}
+${greetHtml(g)}${bodyHtml(body, "#d6d6d6", 16)}
 <p style="margin:8px 0 0;padding-top:16px;border-top:1px solid #2a2a2a;font-size:13px;line-height:19px;color:#8c8c8c">${esc(t.open)}</p>`;
   const html = layout({
     lang, docTitle: s, preheader: firstLine(body), label: t.label, contentHtml: content,
     footerHtml: footerHtml({ lang, reasonHtml: esc(t.reason), unsubscribeUrl, year }),
   });
-  const text = [`BINGR · ${t.label}`, "", s, "", String(body ?? ""), "", t.open, "", footerText({ lang, reason: t.reason, unsubscribeUrl, year })]
+  const text = [`BINGR · ${t.label}`, "", s, "", ...greetText(g), String(body ?? ""), "", t.open, "", footerText({ lang, reason: t.reason, unsubscribeUrl, year })]
     .join("\n");
   return { subject: s, html, text };
 }
@@ -109,19 +121,21 @@ function bullets(lines: string[]) {
   return `<ul style="margin:12px 0 0;padding:0 0 0 20px;color:#d6d6d6;font-size:15px;line-height:23px">${
     lines.map((l) => `<li style="margin:0 0 4px">${esc(l)}</li>`).join("")}</ul>`;
 }
-function accountMail(lang: Lang, subject: string, heading: string, contentHtml: string, textLines: string[], footer: string): Mail {
+// firstName: voornaam uit user_metadata (first_name); bekend = de tekst begint met "Hoi <voornaam>," / "Hi <first name>,"
+function accountMail(lang: Lang, subject: string, heading: string, contentHtml: string, textLines: string[], footer: string, firstName?: unknown): Mail {
   const t = ACC[lang];
+  const g = greeting(lang, firstName);
   const html = layout({
-    lang, docTitle: subject, preheader: heading, label: t.label,
-    contentHtml: `\n${eyebrow(t.eyebrow)}\n${redBar("12px 0 20px")}\n${title(heading, "0 0 12px")}\n${contentHtml}`,
+    lang, docTitle: subject, preheader: g ? `${g} ${heading}` : heading, label: t.label,
+    contentHtml: `\n${eyebrow(t.eyebrow)}\n${redBar("12px 0 20px")}\n${title(heading, "0 0 12px")}\n${greetHtml(g)}${contentHtml}`,
     footerHtml: footerHtml({ lang, reasonHtml: esc(footer) }),
   });
-  const text = [`BINGR · ${t.label}`, "", heading, "", ...textLines, "", footerText({ lang, reason: footer })].join("\n");
+  const text = [`BINGR · ${t.label}`, "", heading, "", ...greetText(g), ...textLines, "", footerText({ lang, reason: footer })].join("\n");
   return { subject, html, text };
 }
 
 /** Blokkade: reden, einddatum (Nederlandse tijd, of onbepaald) en contact via een nieuw ticket. */
-export function blockMail(lang: Lang, o: { email: string; reason: string; until: Date | string | null }): Mail {
+export function blockMail(lang: Lang, o: { email: string; reason: string; until: Date | string | null; firstName?: unknown }): Mail {
   const t = ACC[lang];
   const until = o.until ? `${formatUntil(o.until, lang)} (${t.tz})` : t.b_forever;
   const after = o.until ? t.b_after : t.b_afterForever;
@@ -135,22 +149,22 @@ ${copyLink(lang, NEW_TICKET_URL)}`;
   return accountMail(lang, t.b_subject, t.b_title, content, [
     t.b_intro, "", `${t.b_reason}:`, o.reason, "", `${t.b_until}: ${until}`, `${t.account}: ${o.email}`, "",
     `${after} ${t.b_help}`, `${t.contact}: ${NEW_TICKET_URL}`, t.noLogin,
-  ], t.foot);
+  ], t.foot, o.firstName);
 }
 
 /** Blokkade opgeheven. */
-export function unblockMail(lang: Lang, o: { email: string }): Mail {
+export function unblockMail(lang: Lang, o: { email: string; firstName?: unknown }): Mail {
   const t = ACC[lang];
   const url = `${SITE}/account/`;
   const content = `${para(t.u_intro)}
 ${detailRows([[t.account, mailto(o.email)]])}
 ${button(url, t.u_button)}
 ${note(t.u_help)}`;
-  return accountMail(lang, t.u_subject, t.u_title, content, [t.u_intro, "", `${t.account}: ${o.email}`, "", `${t.u_button}: ${url}`, t.u_help], t.foot);
+  return accountMail(lang, t.u_subject, t.u_title, content, [t.u_intro, "", `${t.account}: ${o.email}`, "", `${t.u_button}: ${url}`, t.u_help], t.foot, o.firstName);
 }
 
 /** Account verwijderd: wat er weg is, wat er met supporttickets gebeurt, en dat een nieuw account altijd kan. */
-export function deletedMail(lang: Lang, o: { email: string; ticketsDeleted: boolean }): Mail {
+export function deletedMail(lang: Lang, o: { email: string; ticketsDeleted: boolean; firstName?: unknown }): Mail {
   const t = ACC[lang];
   const items = t.d_items.split("\n");
   const tickets = o.ticketsDeleted ? t.d_ticketsDeleted : t.d_ticketsKept;
@@ -165,5 +179,5 @@ ${note(t.d_help)}`;
   return accountMail(lang, t.d_subject, t.d_title, content, [
     t.d_intro, "", `${t.account}: ${o.email}`, "", `${t.d_what}:`, ...items.map((i) => `- ${i}`), "", tickets, "", t.d_again,
     `${t.d_button}: ${SITE}`, t.d_help,
-  ], t.footDel);
+  ], t.footDel, o.firstName);
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Downloads: buildpakketten van Bingr en Bingr Beheer (acties `builds` / `build_link`, zoals de tab Downloads op het web).
+/// Downloads: buildpakketten van Bingr en BingrBeheer (acties `builds` / `build_link`, zoals de tab Downloads op het web).
 /// De pakketten staan alleen op de server van beheer.bingr.online (niet op GitHub). Downloaden = een link van 10 minuten
 /// openen in Safari (dl.php levert het bestand als bijlage) of de link delen (bv. via AirDrop naar de Mac).
 struct DownloadsView: View {
@@ -17,7 +17,7 @@ struct DownloadsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Buildpakketten van Bingr en Bingr Beheer. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.")
+                Text("Buildpakketten van Bingr en BingrBeheer. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.")
                     .font(.subheadline)
                     .foregroundStyle(Color.textDim)
                 if let error, overview == nil {

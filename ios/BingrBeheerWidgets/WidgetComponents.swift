@@ -113,10 +113,10 @@ struct SignedOutView: View {
                 Image(systemName: "person.crop.circle.badge.exclamationmark")
                     .font(.title3)
             }
-            .accessibilityLabel("Open Bingr Beheer om in te loggen")
+            .accessibilityLabel("Open BingrBeheer om in te loggen")
         case .accessoryRectangular, .accessoryInline:
             VStack(alignment: .leading, spacing: 1) {
-                Text("Bingr Beheer").font(.headline).widgetAccentable()
+                Text("BingrBeheer").font(.headline).widgetAccentable()
                 Text("Open de app om in te loggen").font(.caption).lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,7 +127,7 @@ struct SignedOutView: View {
                 Image(systemName: "lock.fill")
                     .font(.title3)
                     .foregroundStyle(Color.bingrRed)
-                Text("Open Bingr Beheer om in te loggen")
+                Text("Open BingrBeheer om in te loggen")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -151,7 +151,7 @@ struct FailedView: View {
             .accessibilityLabel("Geen verbinding")
         case .accessoryRectangular, .accessoryInline:
             VStack(alignment: .leading, spacing: 1) {
-                Text("Bingr Beheer").font(.headline).widgetAccentable()
+                Text("BingrBeheer").font(.headline).widgetAccentable()
                 Text("Geen verbinding").font(.caption)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,7 +181,7 @@ struct WidgetLogo: View {
             .overlay(alignment: .bottom) {
                 Capsule().fill(Color.bingrRed).frame(height: 2).padding(.horizontal, 1.5)
             }
-            .accessibilityLabel("Bingr Beheer")
+            .accessibilityLabel("BingrBeheer")
     }
 }
 

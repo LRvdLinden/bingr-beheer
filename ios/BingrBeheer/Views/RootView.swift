@@ -44,7 +44,7 @@ struct RootView: View {
     }
 }
 
-/// iPhone: tabbalk met de vijf onderdelen; Instellingen via het tandwiel.
+/// iPhone: tabbalk met de vijf onderdelen; Downloads en Instellingen via het menu rechtsboven.
 struct TabLayout: View {
     @Environment(Session.self) private var session
 
@@ -88,19 +88,24 @@ struct SplitLayout: View {
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
-            SectionScreen(section: session.section, showsSettingsButton: false)
+            SectionScreen(section: session.section, compact: false)
                 .id(session.section)
         }
         .navigationSplitViewStyle(.balanced)
     }
 }
 
-/// Eén onderdeel met een eigen navigatiestapel.
+/// Eén onderdeel met een eigen navigatiestapel, met rechtsboven het menu (app-icoon met pijltje, zoals het profielmenu van
+/// de webspeler en het menu van het web-dashboard).
 struct SectionScreen: View {
     let section: AppSection
-    var showsSettingsButton = true
+    /// iPhone (tabbalk): Downloads en Instellingen openen als blad; iPad (zijbalk): als onderdeel
+    var compact = true
     @Environment(Session.self) private var session
     @State private var showSettings = false
+    @State private var showDownloads = false
+    @State private var confirmLogout = false
+    @State private var confirmLogoutAll = false
 
     var body: some View {
         @Bindable var session = session
@@ -115,6 +120,26 @@ struct SectionScreen: View {
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }
+        }
+        .sheet(isPresented: $showDownloads) {
+            NavigationStack {
+                DownloadsView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Klaar") { showDownloads = false } }
+                    }
+            }
+        }
+        .confirmationDialog("Uitloggen?", isPresented: $confirmLogout, titleVisibility: .visible) {
+            Button("Uitloggen", role: .destructive) { session.logout() }
+        }
+        .confirmationDialog("Overal uitloggen?", isPresented: $confirmLogoutAll, titleVisibility: .visible) {
+            Button("Overal uitloggen", role: .destructive) {
+                Task {
+                    do { try await session.logoutAll() } catch { session.report(error) }
+                }
+            }
+        } message: {
+            Text("Alle sessies van het beheer (deze app, andere apparaten en het web-dashboard) vervallen meteen.")
         }
     }
 
@@ -131,13 +156,85 @@ struct SectionScreen: View {
             }
         }
         .toolbar {
-            if showsSettingsButton && section != .settings {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Instellingen")
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                AppMenuButton(
+                    compact: compact,
+                    select: { s in
+                        if compact && s == .settings { showSettings = true }
+                        else if compact && s == .downloads { showDownloads = true }
+                        else { session.section = s }
+                    },
+                    logout: { confirmLogout = true },
+                    logoutAll: { confirmLogoutAll = true }
+                )
             }
         }
         .toolbarBackground(Color.black, for: .navigationBar)
+    }
+}
+
+/// Menu rechtsboven: het app-icoon van BingrBeheer met een pijltje; items: de onderdelen, Overal uitloggen en Uitloggen
+/// (zoals het menu van het web-dashboard). Een rode stip op het icoon bij ongelezen supporttickets.
+struct AppMenuButton: View {
+    var compact: Bool
+    var select: (AppSection) -> Void
+    var logout: () -> Void
+    var logoutAll: () -> Void
+    @Environment(Session.self) private var session
+
+    private var unread: Int { session.supportCounts?.unread ?? 0 }
+
+    private func title(_ s: AppSection) -> String {
+        s == .support && unread > 0 ? "\(s.title) (\(unread))" : s.title
+    }
+
+    var body: some View {
+        Menu {
+            Section {
+                ForEach([AppSection.overview, .users, .support, .messages, .status]) { s in
+                    Button { select(s) } label: {
+                        Label(title(s), systemImage: !compact && s == session.section ? "checkmark" : s.icon)
+                    }
+                }
+            }
+            Section {
+                ForEach([AppSection.downloads, .settings]) { s in
+                    Button { select(s) } label: {
+                        Label(s.title, systemImage: !compact && s == session.section ? "checkmark" : s.icon)
+                    }
+                }
+            }
+            Section {
+                Button(role: .destructive, action: logoutAll) {
+                    Label("Overal uitloggen", systemImage: "rectangle.portrait.and.arrow.right.fill")
+                }
+                Button(action: logout) {
+                    Label("Uitloggen", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image("MenuIcon")
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 30, height: 30)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
+                    .overlay(alignment: .topTrailing) {
+                        if unread > 0 {
+                            Circle().fill(Color.bingrRed)
+                                .frame(width: 10, height: 10)
+                                .overlay(Circle().stroke(Color.black, lineWidth: 2))
+                                .offset(x: 3, y: -3)
+                        }
+                    }
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(unread > 0 ? "Menu, \(unread) ongelezen in Support" : "Menu")
     }
 }

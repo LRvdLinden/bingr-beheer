@@ -1,4 +1,4 @@
-// Widgets van de app Bingr Beheer (functie admin): tokens met een scope en de samenvatting voor de widget.
+// Widgets van de app BingrBeheer (functie admin): tokens met een scope en de samenvatting voor de widget.
 // Pure hulpjes zonder netwerk of database, getest in widget_test.ts.
 //
 // Tokens = "<payload>.<sig>": payload = base64url (zonder =) van JSON, sig = base64url(HMAC-SHA256(sha256(materiaal), payload)).

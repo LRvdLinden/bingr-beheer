@@ -78,6 +78,9 @@
     build_not_found: "Deze build staat niet (meer) op de server. Vernieuw de lijst.",
     builds_not_configured: "Downloads nog niet ingericht: draai de workflow Builds.",
     builds_unreachable: "De server met de builds is niet bereikbaar. Probeer het later opnieuw.",
+    // naam van een account (user_set_name)
+    bad_name: "Ongeldige naam: gebruik geen regeleinden of tekens als < en >.", name_too_long: "Een naam mag hoogstens 50 tekens zijn.",
+    name_failed: "De naam kon niet worden opgeslagen. Probeer het opnieuw.",
   };
   // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
   const PLAN_DEFAULTS = { free: { streams: 1, devices: 8 }, lifetime: { streams: 3, devices: 15 } };
@@ -128,8 +131,47 @@
     $("loginErr").textContent = msg || "";
     $("lu").focus();
   }
-  function logout(msg) { setSession(null); mem = null; closeDrawer(); showLogin(msg); }
-  $("logout").onclick = () => logout();
+  function logout(msg) { setSession(null); mem = null; closeMenu(false); closeDrawer(); showLogin(msg); }
+
+  // ---- menu rechtsboven (zoals het profielmenu van de webspeler): app-icoon met pijltje, paneel met de onderdelen,
+  // Overal uitloggen en Uitloggen. Toetsenbord: Enter/Spatie/pijl omlaag opent, pijlen/Home/End lopen, Escape en Tab sluiten.
+  const menuBtn = $("menuBtn"), appMenu = $("appMenu");
+  const menuItems = () => [...appMenu.querySelectorAll(".menu-it")];
+  const menuOpen = () => !appMenu.classList.contains("hidden");
+  function openMenu(focusLast = false) {
+    const s = session() || mem;
+    $("menuSession").textContent = s?.expires_at ? `Ingelogd tot ${fmtDateTime(s.expires_at)}` : "Beheer van Bingr";
+    appMenu.classList.remove("hidden");
+    menuBtn.setAttribute("aria-expanded", "true");
+    const items = menuItems();
+    (focusLast ? items[items.length - 1] : items[0])?.focus();
+  }
+  function closeMenu(refocus = true) {
+    if (!menuOpen()) return;
+    appMenu.classList.add("hidden");
+    menuBtn.setAttribute("aria-expanded", "false");
+    if (refocus) menuBtn.focus();
+  }
+  menuBtn.onclick = () => (menuOpen() ? closeMenu() : openMenu());
+  menuBtn.onkeydown = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); openMenu(e.key === "ArrowUp"); }
+    else if (e.key === "Escape" && menuOpen()) { e.stopPropagation(); closeMenu(); }
+  };
+  appMenu.onkeydown = (e) => {
+    const items = menuItems(), i = items.indexOf(document.activeElement);
+    const go = (n) => { e.preventDefault(); items[(n + items.length) % items.length]?.focus(); };
+    if (e.key === "ArrowDown") go(i + 1);
+    else if (e.key === "ArrowUp") go(i < 0 ? -1 : i - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(-1);
+    // Escape sluit alleen het menu (niet ook de lade)
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMenu(); }
+    else if (e.key === "Tab") { e.preventDefault(); closeMenu(); }
+  };
+  document.addEventListener("click", (e) => { if (menuOpen() && !appMenu.contains(e.target) && !menuBtn.contains(e.target)) closeMenu(false); });
+  appMenu.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { closeMenu(); showTab(b.dataset.go); }));
+  $("mLogout").onclick = () => { closeMenu(false); logout(); };
+  $("mLogoutAll").onclick = () => { closeMenu(); logoutAll(); };
   $("loginForm").onsubmit = async (e) => {
     e.preventDefault();
     const user = $("lu").value.trim(), password = $("lp").value;
@@ -152,6 +194,7 @@
   const loaded = {};
   function showTab(name) {
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    appMenu.querySelectorAll("[data-go]").forEach((b) => (b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
     if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadAnnouncements, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
@@ -175,7 +218,7 @@
   window.addEventListener("hashchange", () => { const m = /^#support\/(\d+)$/.exec(location.hash); if (m && token()) { showTab("support"); openTicket(Number(m[1])); } });
 
   // ---- overzicht: instelbaar widget-dashboard ----
-  // Zelfde JSON-model als de app Bingr Beheer (README.md, "Dashboard"): {version: 1, widgets: [{id, type, size, hidden, options}]}.
+  // Zelfde JSON-model als de app BingrBeheer (README.md, "Dashboard"): {version: 1, widgets: [{id, type, size, hidden, options}]}.
   // Volgorde = volgorde in de lijst. Opslag per browser in localStorage; onbekend of kapot = standaardindeling.
   const DASH_KEY = KEY + ".dashboard", DASH_VERSION = 1, DASH_MAX = 40;
   const SIZE_NAME = { s: "Klein", m: "Middel", l: "Groot" }, SIZE_DIM = { s: "1×1", m: "2×1", l: "2×2" };
@@ -722,7 +765,7 @@
     renderUserFilters();
     $("userCount").textContent = `${nf.format(total)} ${total === 1 ? "account" : "accounts"}`;
     $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0"${u.blocked ? ' class="is-blocked"' : ""}>
-      <td class="em">${esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.blocked
+      <td class="em">${fullName(u) ? `<span class="u-name">${esc(fullName(u))}</span><span class="u-mail">${esc(u.email)}</span>` : esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.blocked
         ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""} ${planChip(u.plan)}</td>
       <td data-l="Aangemaakt">${esc(fmtDate(u.created_at))}</td>
       <td data-l="Laatst ingelogd">${esc(ago(u.last_sign_in_at))}</td>
@@ -763,6 +806,11 @@
   const LIFTED = { beheer: "opgeheven", verlopen: "verlopen", vervangen: "vervangen door een nieuwe blokkade" };
   const PRESETS = [["1", "1 dag"], ["7", "7 dagen"], ["30", "30 dagen"], ["0", "Onbepaald"], ["custom", "Eigen datum"]];
 
+  // naam van een account (user_metadata first_name / last_name), of "" als die niet bekend is
+  const fullName = (u) => [u?.first_name, u?.last_name].map((x) => String(x ?? "").trim()).filter(Boolean).join(" ");
+  const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
   async function openUser(id) {
     $("drawerBody").innerHTML = '<p class="sub">Laden…</p>';
     openDrawer();
@@ -771,7 +819,9 @@
     const b = u.block, hist = (u.blocks || []).filter((x) => !b || x.id !== b.id);
     const mailHint = smtpOk ? "" : '<p class="sub">E-mail is niet ingesteld op de server; er gaat geen mail uit.</p>';
     $("drawerBody").innerHTML = `
-      <h2 id="dTitle">${esc(u.email)}${b ? ' <span class="chip bad">Geblokkeerd</span>' : ""}</h2>
+      <h2 id="dTitle">${esc(fullName(u) || u.email)}${b ? ' <span class="chip bad">Geblokkeerd</span>' : ""}</h2>
+      <p class="u-sub"><span id="uMail" class="u-mail">${esc(u.email)}</span>
+        <button id="uEye" class="eye" type="button" aria-pressed="false" aria-label="Volledig e-mailadres tonen" title="Volledig e-mailadres tonen">${EYE}</button></p>
       ${b ? `<div class="block-banner" role="status">
         <div class="bb-h"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
           <b>Geblokkeerd ${esc(untilText(b.until))}</b></div>
@@ -782,6 +832,7 @@
         <div id="ubErr" class="err" role="alert"></div>
       </div>` : ""}
       <dl class="dl">
+        <dt>Naam</dt><dd><span id="uName">${esc(fullName(u) || "—")}</span><button id="nameOpen" class="name-edit" type="button" aria-expanded="false" aria-controls="nameForm">Wijzig</button></dd>
         <dt>Aangemaakt</dt><dd>${esc(fmtDateTime(u.created_at))}</dd>
         <dt>Laatst ingelogd</dt><dd>${esc(u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : "nooit")}</dd>
         <dt>Bevestigd</dt><dd>${u.confirmed ? "Ja" : "Nee"}</dd>
@@ -791,6 +842,16 @@
         <dt>Kijkt nu</dt><dd>${nf.format(u.watching_now || 0)}</dd>
         <dt>Berichten per e-mail</dt><dd>${u.email_opt_out ? "Afgemeld" : "Aan"}</dd>
       </dl>
+      <form id="nameForm" class="name-form hidden" novalidate>
+        <h3>Naam wijzigen</h3>
+        <div class="plan-nums">
+          <label>Voornaam<input id="nFirst" maxlength="50" autocomplete="off" value="${esc(u.first_name || "")}"></label>
+          <label>Achternaam<input id="nLast" maxlength="50" autocomplete="off" value="${esc(u.last_name || "")}"></label>
+        </div>
+        <p class="sub">Leeg = geen naam. De voornaam staat in de aanhef van de mails ("Hoi …,").</p>
+        <div id="nErr" class="err" role="alert"></div>
+        <div class="form-btns"><button id="nSave" class="btn" type="submit">Naam opslaan</button><button id="nCancel" class="btn ghost" type="button">Annuleren</button></div>
+      </form>
       ${planSection(u)}
       <h3>Apparaten (${(u.devices || []).length})</h3>
       ${(u.devices || []).map((d) => `<div class="dev"><div class="ic">${icon(d.platform)}</div><div>
@@ -831,6 +892,8 @@
         <div id="dErr" class="err" role="alert"></div>
         <div class="form-btns"><button id="dBtn" class="btn danger-solid" disabled>Account definitief verwijderen</button></div>
       </section>`;
+    wireEmailEye(u);
+    wireName(u);
     $("resetBtn").onclick = async () => {
       if (!confirm(`Een wachtwoord-reset-mail sturen naar ${u.email}?`)) return;
       $("resetBtn").disabled = true;
@@ -850,6 +913,51 @@
     } else wireBlockForm(u);
     wirePlan(u);
     wireDelete(u);
+  }
+  // oog naast het gemaskeerde adres: na een klik het volledige adres (actie user_email, in het logboek), opnieuw = verbergen.
+  // Het adres blijft alleen in deze lade (niet opgeslagen); bij een andere gebruiker of opnieuw openen is het weer gemaskeerd.
+  function wireEmailEye(u) {
+    let full = null;
+    const btn = $("uEye");
+    const show = (on) => {
+      $("uMail").textContent = on ? full : u.email;
+      btn.setAttribute("aria-pressed", String(on));
+      const l = on ? "E-mailadres verbergen" : "Volledig e-mailadres tonen";
+      btn.setAttribute("aria-label", l); btn.title = l;
+      btn.innerHTML = on ? EYE_OFF : EYE;
+    };
+    btn.onclick = async () => {
+      if (btn.getAttribute("aria-pressed") === "true") { show(false); return; }
+      if (full === null) {
+        btn.disabled = true;
+        try { full = (await call("user_email", { id: u.id })).email || ""; }
+        catch (e) { if (e.code !== "auth") toast(errText(e), true); return; }
+        finally { btn.disabled = false; }
+      }
+      show(true);
+    };
+  }
+  // naam wijzigen (actie user_set_name): voor- en achternaam, leeg = geen naam
+  function wireName(u) {
+    const form = $("nameForm"), open = $("nameOpen");
+    const toggle = (on) => {
+      form.classList.toggle("hidden", !on); open.setAttribute("aria-expanded", String(on));
+      if (on) { $("nFirst").focus(); form.scrollIntoView({ block: "nearest", behavior: "smooth" }); } else open.focus();
+    };
+    open.onclick = () => toggle(form.classList.contains("hidden"));
+    $("nCancel").onclick = () => { $("nFirst").value = u.first_name || ""; $("nLast").value = u.last_name || ""; $("nErr").textContent = ""; toggle(false); };
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const first_name = $("nFirst").value.replace(/\s+/g, " ").trim(), last_name = $("nLast").value.replace(/\s+/g, " ").trim();
+      if ([...first_name].length > 50 || [...last_name].length > 50) { $("nErr").textContent = ERR.name_too_long; return; }
+      if (/[<>]/.test(first_name + last_name)) { $("nErr").textContent = ERR.bad_name; return; }
+      $("nSave").disabled = true; $("nErr").textContent = "";
+      try {
+        await call("user_set_name", { id: u.id, first_name, last_name });
+        toast(first_name || last_name ? "Naam opgeslagen." : "Naam verwijderd.");
+        refreshUserViews(u.id);
+      } catch (err) { if (err.code !== "auth") $("nErr").textContent = errText(err); $("nSave").disabled = false; }
+    };
   }
   // ---- abonnement in de lade: Gratis/Lifetime, eigen limieten (leeg = standaard) en een interne notitie
   function planSection(u) {
@@ -992,13 +1100,15 @@
     };
   }
   // build 97: overal uitloggen (alle browsers en de app): de functie verhoogt de tokenversie, alle tokens vervallen
-  $("logoutAll").onclick = async () => {
+  // (ook vanuit het menu rechtsboven)
+  async function logoutAll() {
     if (!confirm("Overal uitloggen? Alle sessies van het beheer (ook in de app en in andere browsers) vervallen meteen.")) return;
     $("logoutAll").disabled = true;
     try { await call("logout_all"); logout("Je bent overal uitgelogd."); }
     catch (e) { if (e.code !== "auth") toast(errText(e), true); }
     finally { $("logoutAll").disabled = false; }
-  };
+  }
+  $("logoutAll").onclick = logoutAll;
 
   // ---- downloads: buildpakketten op de server van beheer.bingr.online (acties builds / build_link) ----
   // De pakketten staan niet op GitHub; een download loopt via dl.php met een link van 10 minuten uit de functie admin.
@@ -1006,7 +1116,7 @@
     ["android", "Android en Android TV", "APK voor telefoons, tablets, Android TV, Google TV en Fire TV"],
     ["tizen", "Samsung TV", ".wgt voor Tizen"],
     ["apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS"],
-    ["beheer", "Bingr Beheer", "Xcode-project (zip) van deze beheer-app voor iPhone en iPad"],
+    ["beheer", "BingrBeheer", "Xcode-project (zip) van deze beheer-app voor iPhone en iPad"],
   ];
   const DL_REASON = {
     not_configured: "Downloads nog niet ingericht: draai de workflow Builds.",
@@ -1098,6 +1208,12 @@
     supCounts = c;
     const b = $("supBadge"), u = c.unread || 0;
     b.textContent = u > 99 ? "99+" : String(u); b.classList.toggle("hidden", !u);
+    // zelfde teller in het menu, en een stip op het app-icoon
+    const mb = $("menuSupBadge");
+    mb.textContent = b.textContent; mb.classList.toggle("hidden", !u);
+    mb.setAttribute("aria-label", `${u} ongelezen`);
+    $("menuDot").classList.toggle("hidden", !u);
+    menuBtn.setAttribute("aria-label", u ? `Menu, ${u} ongelezen in Support` : "Menu");
     dashSupportChanged();
     renderSupFilters();
   }

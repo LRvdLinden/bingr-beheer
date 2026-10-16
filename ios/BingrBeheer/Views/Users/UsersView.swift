@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Tab Gebruikers: filter (alle / geblokkeerd), zoeken op begin van het e-mailadres, lijst (nieuwste eerst) en details per account.
+/// Tab Gebruikers: filter (alle / geblokkeerd), zoeken op naam of begin van het e-mailadres, lijst (nieuwste eerst) en details per account.
 struct UsersView: View {
     @Environment(Session.self) private var session
     @State private var query = ""
@@ -51,11 +51,11 @@ struct UsersView: View {
                 Text(Fmt.plural(total, "account", "accounts")).font(.caption).foregroundStyle(Color.textDim)
             }
         }
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Zoek op begin van e-mailadres")
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Zoek op naam of begin van e-mailadres")
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .navigationDestination(for: UserRow.self) { u in
-            UserDetailView(userID: u.id, fallbackEmail: u.email)
+            UserDetailView(userID: u.id, fallbackEmail: u.email, fallbackName: u.fullName)
         }
         .refreshable { await reload() }
         .task(id: "\(query)|\(session.usersFilter)|\(session.usersRevision)") {
@@ -155,8 +155,17 @@ struct UserRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // met naam: naam vet, het gemaskeerde e-mailadres eronder; zonder naam alleen het adres (zoals op het web)
+            if let name = user.fullName {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(name).font(.body.weight(.semibold)).lineLimit(1)
+                    Text(user.email).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(1)
+                }
+            }
             HStack(spacing: 6) {
-                Text(user.email).font(.body.weight(.semibold)).lineLimit(1)
+                if user.fullName == nil {
+                    Text(user.email).font(.body.weight(.semibold)).lineLimit(1)
+                }
                 if !user.confirmed { Chip(text: "onbevestigd", tone: .warn) }
                 if user.isBlocked { Chip(text: "Geblokkeerd", tone: .bad, icon: "nosign") }
                 PlanChip(plan: user.plan)

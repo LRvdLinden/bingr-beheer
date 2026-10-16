@@ -1,9 +1,19 @@
 import Foundation
 
-/// Rij uit `users` (e-mail gemaskeerd door de functie).
+/// Voor- en achternaam uit user_metadata (first_name / last_name): "Jan de Vries", of nil als er niets is.
+enum PersonName {
+    static func full(_ first: String?, _ last: String?) -> String? {
+        let parts = [first, last].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+}
+
+/// Rij uit `users` (e-mail gemaskeerd door de functie; voor- en achternaam uit user_metadata, of nil).
 struct UserRow: Identifiable, Hashable {
     let id: String
     let email: String
+    let firstName: String?
+    let lastName: String?
     let createdAt: Date?
     let lastSignInAt: Date?
     let confirmed: Bool
@@ -23,6 +33,8 @@ struct UserRow: Identifiable, Hashable {
         isBlocked = j["blocked"].object != nil
         blockedUntil = j["blocked"]["until"].date
         email = j["email"].text ?? ""
+        firstName = j["first_name"].text
+        lastName = j["last_name"].text
         createdAt = j["created_at"].date
         lastSignInAt = j["last_sign_in_at"].date
         confirmed = j["confirmed"].bool ?? false
@@ -31,6 +43,9 @@ struct UserRow: Identifiable, Hashable {
         appVersions = j["app_versions"].strings
         profileCount = j["profile_count"].int ?? 0
     }
+
+    /// "Jan de Vries", of nil zonder naam.
+    var fullName: String? { PersonName.full(firstName, lastName) }
 }
 
 /// Antwoord van `user_detail`.
@@ -47,6 +62,8 @@ struct UserDetail {
 
     let id: String
     let email: String
+    let firstName: String?
+    let lastName: String?
     let createdAt: Date?
     let lastSignInAt: Date?
     let confirmed: Bool
@@ -65,6 +82,8 @@ struct UserDetail {
         id = j["id"].text ?? ""
         plan = AccountPlan(j["plan"])
         email = j["email"].text ?? ""
+        firstName = j["first_name"].text
+        lastName = j["last_name"].text
         createdAt = j["created_at"].date
         lastSignInAt = j["last_sign_in_at"].date
         confirmed = j["confirmed"].bool ?? false
@@ -80,6 +99,9 @@ struct UserDetail {
                    osVersion: $0["os_version"].text, createdAt: $0["created_at"].date, lastSeenAt: $0["last_seen_at"].date)
         }
     }
+
+    /// "Jan de Vries", of nil zonder naam.
+    var fullName: String? { PersonName.full(firstName, lastName) }
 }
 
 /// Blokkade van een account (`account_blocks`): reden (ziet de klant), einddatum (nil = onbepaald) en hoe hij eindigde.

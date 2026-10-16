@@ -81,6 +81,10 @@ struct APIError: Error, LocalizedError {
         "build_not_found": "Deze build staat niet (meer) op de server. Vernieuw de lijst.",
         "builds_not_configured": "Downloads nog niet ingericht: draai de workflow Builds.",
         "builds_unreachable": "De server met de builds is niet bereikbaar. Probeer het later opnieuw.",
+        // naam van een account (user_set_name), zelfde teksten als web/admin.js
+        "bad_name": "Ongeldige naam: gebruik geen regeleinden of tekens als < en >.",
+        "name_too_long": "Een naam mag hoogstens 50 tekens zijn.",
+        "name_failed": "De naam kon niet worden opgeslagen. Probeer het opnieuw.",
     ]
 }
 

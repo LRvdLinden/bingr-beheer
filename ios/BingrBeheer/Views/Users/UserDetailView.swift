@@ -2,9 +2,11 @@ import SwiftUI
 
 /// Details van een account (actie `user_detail`) met apparaten, wachtwoord-reset (`send_reset`), blokkeren en opheffen
 /// (`user_block` / `user_unblock`, met geschiedenis) en verwijderen (`user_delete`, met het e-mailadres als bevestiging).
+/// Naam wijzigen (`user_set_name`) en het volledige e-mailadres tonen met het oog (`user_email`, in het logboek).
 struct UserDetailView: View {
     let userID: String
     let fallbackEmail: String
+    var fallbackName: String? = nil
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var user: UserDetail?
@@ -31,6 +33,11 @@ struct UserDetailView: View {
     @State private var planSaving = false
     @State private var planError: String?
     @State private var confirmDowngrade = false
+    // naam en volledig e-mailadres (alleen in deze weergave, niet bewaard)
+    @State private var showName = false
+    @State private var fullEmail: String?
+    @State private var showFullEmail = false
+    @State private var loadingEmail = false
 
     var body: some View {
         ScrollView {
@@ -43,6 +50,35 @@ struct UserDetailView: View {
                 if let u = user {
                     if let b = u.block { blockBanner(b) }
                     VStack(alignment: .leading, spacing: 10) {
+                        InfoRow(label: "Naam") {
+                            HStack(spacing: 10) {
+                                Text(u.fullName ?? "—")
+                                Button("Wijzig") { showName = true }
+                                    .font(.subheadline)
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Naam wijzigen")
+                            }
+                        }
+                        InfoRow(label: "E-mail") {
+                            HStack(spacing: 8) {
+                                Text(showFullEmail ? (fullEmail ?? u.email) : u.email)
+                                    .textSelection(.enabled)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.8)
+                                Button {
+                                    Task { await toggleEmail() }
+                                } label: {
+                                    if loadingEmail {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: showFullEmail ? "eye.slash" : "eye")
+                                    }
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(loadingEmail)
+                                .accessibilityLabel(showFullEmail ? "E-mailadres verbergen" : "Volledig e-mailadres tonen")
+                            }
+                        }
                         InfoRow("Aangemaakt", Fmt.dateTime(u.createdAt))
                         InfoRow("Laatst ingelogd", u.lastSignInAt.map { Fmt.dateTime($0) } ?? "nooit")
                         InfoRow("Bevestigd", u.confirmed ? "Ja" : "Nee")
@@ -104,10 +140,18 @@ struct UserDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .screenBackground()
-        .navigationTitle(user?.email ?? fallbackEmail)
+        .navigationTitle(user.map { $0.fullName ?? $0.email } ?? fallbackName ?? fallbackEmail)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         .task { if user == nil { await load() } }
+        .sheet(isPresented: $showName) {
+            if let u = user {
+                NameSheet(userID: userID, firstName: u.firstName ?? "", lastName: u.lastName ?? "") {
+                    session.usersRevision += 1
+                    Task { await load() }
+                }
+            }
+        }
         .sheet(isPresented: $showBlock) {
             BlockSheet(userID: userID, email: user?.email ?? fallbackEmail) {
                 session.usersRevision += 1
@@ -154,6 +198,26 @@ struct UserDetailView: View {
             if error is CancellationError { return }
             self.error = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
         }
+    }
+
+    // MARK: e-mailadres
+
+    /// Oog: het volledige adres ophalen (actie user_email, staat in het logboek) en tonen; opnieuw tikken verbergt het.
+    /// Eén keer ophalen per weergave; het adres wordt niet bewaard.
+    private func toggleEmail() async {
+        if showFullEmail { showFullEmail = false; return }
+        if fullEmail == nil {
+            loadingEmail = true
+            defer { loadingEmail = false }
+            do {
+                let r = try await session.call("user_email", ["id": userID])
+                fullEmail = r["email"].string ?? ""
+            } catch {
+                session.report(error)
+                return
+            }
+        }
+        showFullEmail = true
     }
 
     // MARK: abonnement
@@ -494,6 +558,83 @@ struct BlockSheet: View {
             ])
             session.show(r["email_sent"].bool == true ? "Account geblokkeerd, klant gemaild." : notify ? "Account geblokkeerd (mail niet verstuurd)." : "Account geblokkeerd.",
                          bad: notify && r["email_sent"].bool != true)
+            onDone()
+            dismiss()
+        } catch {
+            if error is CancellationError { return }
+            if let e = error as? APIError, e.code == "auth" { dismiss(); return }
+            self.error = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
+        }
+    }
+}
+
+/// Voor- en achternaam wijzigen (actie `user_set_name`; leeg = geen naam, max. 50 tekens elk). De voornaam staat in de
+/// aanhef van de beheermails ("Hoi …,").
+struct NameSheet: View {
+    let userID: String
+    @State var firstName: String
+    @State var lastName: String
+    var onDone: () -> Void
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @State private var saving = false
+    @State private var error: String?
+
+    static let maxLength = 50
+
+    init(userID: String, firstName: String, lastName: String, onDone: @escaping () -> Void) {
+        self.userID = userID
+        _firstName = State(initialValue: firstName)
+        _lastName = State(initialValue: lastName)
+        self.onDone = onDone
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Voornaam", text: $firstName)
+                        .textContentType(.givenName)
+                        .autocorrectionDisabled()
+                    TextField("Achternaam", text: $lastName)
+                        .textContentType(.familyName)
+                        .autocorrectionDisabled()
+                } footer: {
+                    Text("Leeg = geen naam. De voornaam staat in de aanhef van de mails (\"Hoi …,\").")
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(Color.warn) }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Naam wijzigen")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Annuleren") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving { ProgressView() } else { Button("Opslaan") { Task { await save() } } }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    /// Spaties aan begin en eind weg, meerdere spaties binnenin één spatie (zoals de functie).
+    private func clean(_ s: String) -> String {
+        s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private func save() async {
+        let first = clean(firstName), last = clean(lastName)
+        guard first.count <= Self.maxLength, last.count <= Self.maxLength else { error = APIError.text("name_too_long"); return }
+        guard !(first + last).contains(where: { $0 == "<" || $0 == ">" }) else { error = APIError.text("bad_name"); return }
+        saving = true
+        error = nil
+        defer { saving = false }
+        do {
+            try await session.call("user_set_name", ["id": userID, "first_name": first, "last_name": last])
+            session.show(first.isEmpty && last.isEmpty ? "Naam verwijderd." : "Naam opgeslagen.")
             onDone()
             dismiss()
         } catch {

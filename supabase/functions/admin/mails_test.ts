@@ -57,3 +57,24 @@ Deno.test("opheffen en verwijderen", () => {
   ok(e.subject === "Your Bingr account has been deleted" && e.text.includes("- Watch history and statistics"), "Engels");
   ok(!/<[a-z]/i.test(d.text + u.text), "geen html in platte tekst");
 });
+
+// ---- aanhef met de voornaam (user_metadata first_name) ----
+import { greeting } from "./mails.ts";
+
+Deno.test("aanhef: Hoi <voornaam>, alleen als die bekend is", () => {
+  ok(greeting("nl", "Jan") === "Hoi Jan," && greeting("en", " Jan ") === "Hi Jan,", "NL en EN");
+  ok(greeting("nl", "") === null && greeting("nl", undefined) === null && greeting("nl", "<b>") === null, "geen aanhef");
+  const b = blockMail("nl", { email: "jan@example.com", reason: "x", until: null, firstName: "Jan" });
+  ok(b.html.includes(">Hoi Jan,</p>") && b.text.includes("Je Bingr-account is geblokkeerd\n\nHoi Jan,\n\nWe hebben"), "blokkeren");
+  const u = unblockMail("en", { email: "jan@example.com", firstName: "Jan" });
+  ok(u.html.includes(">Hi Jan,</p>") && u.text.includes("Hi Jan,"), "opheffen EN");
+  const d = deletedMail("nl", { email: "jan@example.com", ticketsDeleted: false, firstName: "Zoë" });
+  ok(d.html.includes(">Hoi Zoë,</p>"), "verwijderen");
+  const a = announcementMail("nl", "T", "Tekst", U, 2026, "Jan");
+  ok(a.html.includes(">Hoi Jan,</p>") && a.text.includes("T\n\nHoi Jan,\n\nTekst"), "bericht");
+  const none = blockMail("nl", { email: "jan@example.com", reason: "x", until: null });
+  ok(!none.html.includes("Hoi ") && !none.text.includes("Hoi "), "zonder voornaam geen aanhef");
+  ok(!announcementMail("nl", "T", "B", U, 2026).text.includes("Hoi "), "bericht zonder voornaam");
+  const evil = blockMail("nl", { email: "jan@example.com", reason: "x", until: null, firstName: "Jan & \"Co\"" });
+  ok(evil.html.includes("Hoi Jan &amp; &quot;Co&quot;,") || evil.html.includes("Hoi Jan &amp; &#39;"), "ge-escaped");
+});

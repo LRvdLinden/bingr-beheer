@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""App-icoon van Bingr Beheer (1024x1024, zonder transparantie): zwart, wit BINGR, rode balk eronder.
+"""App-icoon van BingrBeheer (1024x1024, zonder transparantie): zwart, wit BINGR, rode balk eronder.
 
 Gebruik: python3 ios/tools/make_icon.py  (schrijft BingrBeheer/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png)
 """

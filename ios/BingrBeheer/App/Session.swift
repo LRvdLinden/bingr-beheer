@@ -172,7 +172,7 @@ final class Session {
             return try await api.send(action, token: token, params: params)
         } catch let e as APIError where e.status == 401 {
             // ingetrokken (overal uitloggen elders, ander wachtwoord) of verlopen; is het widget-token ook ingetrokken,
-            // dan meldt de widget zelf "Open Bingr Beheer om in te loggen"
+            // dan meldt de widget zelf "Open BingrBeheer om in te loggen"
             logout("Je sessie is verlopen. Log opnieuw in.", clearWidgets: false)
             throw APIError(code: "auth", status: 401, body: e.body)
         }
@@ -300,7 +300,7 @@ final class Session {
         let ctx = LAContext()
         ctx.localizedCancelTitle = "Annuleren"
         do {
-            if try await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Ontgrendel Bingr Beheer") {
+            if try await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Ontgrendel BingrBeheer") {
                 isLocked = false
             }
         } catch {

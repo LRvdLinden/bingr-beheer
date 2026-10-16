@@ -1,7 +1,11 @@
 # shellcheck shell=bash
 # Verwerkt aangeleverde buildpakketten voor de afgesloten map builds/ op de server (workflow Builds).
 # Wordt gesourced NA tools/ftps.sh en ftps_connect. Omgeving: ROTATE (true = nieuwe sleutels), REF (Supabase-project),
-# IMPORT_REPO (true = eenmalig de oude pakketten uit versions/ van deze repo overzetten).
+# IMPORT_REPO (true = eenmalig de oude pakketten uit versions/ van deze repo overzetten),
+# INBOX_REPO (privé inbox-repo, standaard LRvdLinden/bingr-inbox) en INBOX_TOKEN (secret BINGR_INBOX_READ_TOKEN:
+# Contents read+write op alleen die repo, om branches na verwerking te verwijderen).
+# H3: iptv-ios-appletv en bingr-android leveren aan bij de privé inbox-repo (geen schrijftoken meer op deze openbare repo);
+# inbox-branches in deze repo zelf (Beheer-app via GITHUB_TOKEN, en oude pakketten van vóór de overgang) worden ook verwerkt.
 # Het log is openbaar: alleen platform, build en gelukt/mislukt; nooit sleutels, mappen of serverantwoorden.
 
 # --- bestanden op de server (relatief aan builds/) ---
@@ -92,15 +96,60 @@ PY
   done
 }
 
-# aangeleverde pakketten op de branches inbox-<platform>
+# --- privé inbox-repo (H3) ---
+# Eigen lege git-map, los van de checkout (die heeft het GITHUB_TOKEN van deze repo als extraheader); het inbox-token
+# gaat alleen via GIT_CONFIG_* mee (niet in een URL, niet in .git/config, niet in argv) en wordt gemaskeerd.
+inbox_ready(){
+  INBOX_REPO="${INBOX_REPO:-LRvdLinden/bingr-inbox}"
+  INBOX_TOKEN=$(printf '%s' "${INBOX_TOKEN:-}" | tr -d '[:space:]')
+  [ -n "$INBOX_TOKEN" ] || return 1
+  [[ "$INBOX_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "::error::Ongeldige INBOX_REPO"; return 1; }
+  if [ -z "${INBOX_GIT:-}" ]; then
+    INBOX_AUTH=$(printf 'x-access-token:%s' "$INBOX_TOKEN" | base64 | tr -d '\n')
+    [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$INBOX_AUTH"
+    INBOX_GIT=$(mktemp -d)
+    git init -q --bare "$INBOX_GIT"
+    git -C "$INBOX_GIT" remote add inbox "${INBOX_REMOTE:-https://github.com/$INBOX_REPO.git}"   # INBOX_REMOTE alleen voor tests
+  fi
+}
+inbox_git(){
+  GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $INBOX_AUTH" git -C "$INBOX_GIT" "$@"
+}
+# git voor een bron: origin = deze repo (checkout), inbox = de privé inbox-repo
+src_git(){ local src="$1"; shift; if [ "$src" = inbox ]; then inbox_git "$@"; else git "$@"; fi; }
+
+# aantal inbox-branches (deze repo + inbox-repo), voor de stap "Iets te doen?"; waarschuwt als het inbox-token ontbreekt
+builds_pending(){
+  local n m=0 out
+  n=$(git ls-remote origin 'refs/heads/inbox-*' | grep -c . || true)
+  if inbox_ready; then
+    if out=$(inbox_git ls-remote inbox 'refs/heads/inbox-*' 2>/dev/null); then m=$(printf '%s' "$out" | grep -c . || true)
+    else echo "::warning::Inbox-repo $INBOX_REPO niet te lezen met BINGR_INBOX_READ_TOKEN (bestaat de repo, klopt het token?)." >&2; fi
+  else
+    echo "::warning::Secret BINGR_INBOX_READ_TOKEN ontbreekt: pakketten uit de privé inbox-repo (${INBOX_REPO:-LRvdLinden/bingr-inbox}) worden niet opgehaald. Zie README.md (H3)." >&2
+  fi
+  echo $((n + m))
+}
+
+# aangeleverde pakketten op de branches inbox-<platform>: eerst in deze repo (overgang en Beheer-app), dan in de inbox-repo
 builds_inbox(){
-  local plat ref sha d k iv
+  builds_inbox_from origin
+  if inbox_ready; then builds_inbox_from inbox
+  else echo "::warning::Secret BINGR_INBOX_READ_TOKEN ontbreekt: inbox-repo overgeslagen."; fi
+  [ -n "${INBOX_GIT:-}" ] && rm -rf "$INBOX_GIT"
+  INBOX_GIT=""; INBOX_AUTH=""
+}
+
+builds_inbox_from(){
+  local src="$1" remote plat sha d k iv
+  remote=$([ "$src" = inbox ] && echo inbox || echo origin)
   for plat in $PLATS; do
-    sha=$(git ls-remote origin "refs/heads/inbox-$plat" | awk '{print $1}')
+    sha=$(src_git "$src" ls-remote "$remote" "refs/heads/inbox-$plat" 2>/dev/null | awk '{print $1}') || sha=""
     [ -n "$sha" ] || continue
-    d="$BW/in-$plat"; mkdir -p "$d"
-    git fetch -q --depth 1 origin "refs/heads/inbox-$plat" || { echo "::warning::$plat: inbox niet op te halen"; continue; }
-    for x in pkg.enc key.enc meta.json; do git show "FETCH_HEAD:$x" > "$d/$x" 2>/dev/null || true; done
+    d="$BW/in-$src-$plat"; rm -rf "$d"; mkdir -p "$d"
+    src_git "$src" fetch -q --depth 1 "$remote" "refs/heads/inbox-$plat" 2>/dev/null || { echo "::warning::$plat ($src): inbox niet op te halen"; continue; }
+    for x in pkg.enc key.enc meta.json; do src_git "$src" show "FETCH_HEAD:$x" > "$d/$x" 2>/dev/null || true; done
     if ! openssl pkeyutl -decrypt -inkey "$BW/srv/private.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
         -pkeyopt rsa_mgf1_md:sha256 -in "$d/key.enc" -out "$d/kiv" 2>/dev/null; then
       echo "::warning::$plat: pakket niet te ontsleutelen (andere sleutel?); laat het opnieuw bouwen."; continue
@@ -124,8 +173,8 @@ PY
     builds_add "$plat" "$d/pkg" "$d/meta.json" || continue
     rm -rf "$d"
     # branch weg, alleen als er intussen niets nieuws op staat
-    git push -q --force-with-lease="refs/heads/inbox-$plat:$sha" origin ":refs/heads/inbox-$plat" 2>/dev/null \
-      || echo "::notice::$plat: inbox-branch niet verwijderd (intussen een nieuwere build?); volgende ronde."
+    src_git "$src" push -q --force-with-lease="refs/heads/inbox-$plat:$sha" "$remote" ":refs/heads/inbox-$plat" 2>/dev/null \
+      || echo "::notice::$plat ($src): inbox-branch niet verwijderd (intussen een nieuwere build?); volgende ronde."
   done
 }
 

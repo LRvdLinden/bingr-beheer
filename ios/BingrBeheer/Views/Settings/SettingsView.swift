@@ -44,7 +44,7 @@ struct SettingsView: View {
                 .disabled(!session.canLock && !lockEnabled)
             } footer: {
                 Text(session.canLock
-                     ? "Bij het openen van de app (en na de achtergrond) vraagt Bingr Beheer om \(session.biometryName) of je toegangscode."
+                     ? "Bij het openen van de app (en na de achtergrond) vraagt BingrBeheer om \(session.biometryName) of je toegangscode."
                      : "Stel eerst een toegangscode in op dit apparaat.")
             }
 
@@ -115,7 +115,7 @@ struct SettingsView: View {
                         Label(AppSection.downloads.title, systemImage: AppSection.downloads.icon)
                     }
                 } footer: {
-                    Text("Buildpakketten van Bingr en Bingr Beheer (APK, Samsung TV, Xcode-projecten) van de server van beheer.bingr.online.")
+                    Text("Buildpakketten van Bingr en BingrBeheer (APK, Samsung TV, Xcode-projecten) van de server van beheer.bingr.online.")
                 }
             }
 

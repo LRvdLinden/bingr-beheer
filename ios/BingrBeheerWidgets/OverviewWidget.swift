@@ -8,7 +8,7 @@ struct OverviewWidget: Widget {
         StaticConfiguration(kind: WidgetShared.overviewKind, provider: OverviewProvider()) { entry in
             OverviewWidgetView(entry: entry)
         }
-        .configurationDisplayName("Bingr Beheer")
+        .configurationDisplayName("BingrBeheer")
         .description("Servicestatus en supporttickets in één widget.")
         .supportedFamilies([.systemMedium, .systemLarge])
     }

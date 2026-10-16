@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-/// Gedeeld tussen de app Bingr Beheer en de widget-extensie (beide targets compileren dit bestand, zie ios/project.yml).
+/// Gedeeld tussen de app BingrBeheer en de widget-extensie (beide targets compileren dit bestand, zie ios/project.yml).
 enum WidgetShared {
     /// Soorten widgets (WidgetKit-kinds); de app herlaadt ze na inloggen, uitloggen en het laden van support/status.
     static let statusKind = "BingrBeheerStatus"

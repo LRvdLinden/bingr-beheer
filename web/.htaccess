@@ -1,6 +1,7 @@
 # Beheer: nooit indexeren en nooit in een frame tonen
 <IfModule mod_headers.c>
   Header always set X-Robots-Tag "noindex, nofollow"
+  Header always set Strict-Transport-Security "max-age=31536000"
   Header always set X-Frame-Options "DENY"
   Header always set Referrer-Policy "no-referrer"
   Header always set X-Content-Type-Options "nosniff"
@@ -14,6 +15,13 @@
 # (bv. bingr.online/beheer.bingr.online/), dan stuurt elke andere host door naar het subdomein
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  # altijd https, naar hetzelfde pad (pad uit de oorspronkelijke aanvraagregel, niet het interne pad van de map;
+  # NE: het pad is al gecodeerd, de querystring gaat automatisch mee)
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteCond %{HTTP_HOST} ^beheer\.bingr\.online$ [NC]
+  RewriteCond %{THE_REQUEST} ^[A-Z]+\s(/[^\s?]*)
+  RewriteRule ^ https://beheer.bingr.online%1 [R=301,L,NE]
   RewriteCond %{HTTP_HOST} !^beheer\.bingr\.online$ [NC]
   RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
   RewriteRule ^ https://beheer.bingr.online/ [R=302,L]

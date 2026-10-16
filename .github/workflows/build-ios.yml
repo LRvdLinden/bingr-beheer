@@ -1,6 +1,6 @@
 name: Beheer-app
 
-# Bouwt de native app Bingr Beheer (ios/, iOS/iPadOS 17+, XcodeGen) voor een generiek iOS-apparaat zonder ondertekening.
+# Bouwt de native app BingrBeheer (ios/, iOS/iPadOS 17+, XcodeGen) voor een generiek iOS-apparaat zonder ondertekening.
 # Lukt dat, dan gaat het Xcode-project (ios/ met het gegenereerde .xcodeproj) als Bingr-Beheer-<versie>-build<N>-Xcode.zip
 # versleuteld naar de branch inbox-beheer (tools/seal_build.sh); de workflow Builds zet het in de afgesloten map builds/ op
 # de server van beheer.bingr.online. Nooit onversleuteld op GitHub.
@@ -100,6 +100,9 @@ jobs:
         if: steps.ios.outcome == 'success'
         env:
           TOKEN: ${{ github.token }}
+          # H3: de Beheer-app levert met het eigen GITHUB_TOKEN aan bij deze repo zelf (alleen inbox-beheer; seal_build.sh
+          # weigert andere platforms naar bingr-beheer). Bingr en Bingr Android gaan naar de privé repo bingr-inbox.
+          BINGR_INBOX_REPO: LRvdLinden/bingr-beheer
         run: |
           set -euo pipefail
           V=$(grep -m1 'MARKETING_VERSION' ios/project.yml | grep -o '[0-9][0-9.]*' | head -1)
@@ -109,7 +112,7 @@ jobs:
           zip -qr "$Z" ios -x 'ios/build/*' 'ios/DerivedData/*' '*.DS_Store' 'ios/*.xcodeproj/xcuserdata/*' 'ios/*.xcodeproj/project.xcworkspace/xcuserdata/*'
           N="$RUNNER_TEMP/notes.md"
           {
-            echo "Bingr Beheer $V (build $B): Xcode-project voor iOS/iPadOS 17+."
+            echo "BingrBeheer $V (build $B): Xcode-project voor iOS/iPadOS 17+."
             echo
             echo "Uitpakken, \`ios/BingrBeheer.xcodeproj\` openen, bij Signing & Capabilities je Team kiezen en op je iPhone/iPad draaien."
             echo

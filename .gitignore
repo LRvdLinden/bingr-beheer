@@ -6,7 +6,7 @@ supabase/.temp/
 supabase/.branches/
 !versions/**/*.zip
 
-# Bingr Beheer (ios/): gegenereerd door XcodeGen en build-mappen
+# BingrBeheer (ios/): gegenereerd door XcodeGen en build-mappen
 ios/*.xcodeproj/
 ios/build/
 ios/DerivedData/

@@ -36,7 +36,28 @@
       <button role="tab" data-tab="downloads">Downloads</button>
       <button role="tab" data-tab="settings">Instellingen</button>
     </nav>
-    <button id="logout" class="link">Uitloggen</button>
+    <!-- menu rechtsboven, zoals het profielmenu van de webspeler op bingr.online: app-icoon met pijltje, paneel met items -->
+    <div class="umenu">
+      <button id="menuBtn" class="menu-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="appMenu" aria-label="Menu">
+        <span class="menu-av"><img src="app-icon.png" alt="" width="32" height="32"><span id="menuDot" class="menu-dot hidden"></span></span>
+        <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div id="appMenu" class="menu hidden" role="menu" aria-labelledby="menuBtn">
+        <div class="menu-head"><img src="app-icon.png" alt="" width="40" height="40"><div><b>BingrBeheer</b><span id="menuSession" class="sub"></span></div></div>
+        <div class="menu-sep" role="separator"></div>
+      <button class="menu-it" type="button" role="menuitem" data-go="overview"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Overzicht</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="users"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/></svg><span>Gebruikers</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="support"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg><span>Support</span><span id="menuSupBadge" class="tab-badge hidden"></span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="messages"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4l11 5V5L3 10z"/><path d="M14 8.5c2.6 0 4.5 1.6 4.5 3.5s-1.9 3.5-4.5 3.5M7 15.5l1 4.5h3"/></svg><span>Berichten</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2.5-6 4 12 2.5-6H22"/></svg><span>Status</span></button>
+      <div class="menu-sep" role="separator"></div>
+      <button class="menu-it" type="button" role="menuitem" data-go="downloads"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v9M8 12.5l4 4 4-4"/></svg><span>Downloads</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="settings"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Instellingen</span></button>
+        <div class="menu-sep" role="separator"></div>
+        <button id="mLogoutAll" class="menu-it danger" type="button" role="menuitem"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/><path d="M13 3h2M13 21h2"/></svg><span>Overal uitloggen</span></button>
+        <button id="mLogout" class="menu-it" type="button" role="menuitem"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg><span>Uitloggen</span></button>
+      </div>
+    </div>
   </header>
 
   <main>
@@ -58,11 +79,11 @@
       <div class="row-head"><h1>Gebruikers</h1><span id="userCount" class="sub"></span></div>
       <div class="sup-bar">
         <div id="userFilters" class="sup-filters" role="group" aria-label="Filter op accountstatus"></div>
-        <input id="search" class="search" type="search" placeholder="Zoek op begin van e-mailadres" autocomplete="off">
+        <input id="search" class="search" type="search" placeholder="Zoek op naam of begin van e-mailadres" aria-label="Zoek op naam of begin van e-mailadres" autocomplete="off">
       </div>
       <div class="table-wrap">
         <table class="users">
-          <thead><tr><th>E-mail</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
+          <thead><tr><th>Naam en e-mail</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
           <tbody id="userRows"></tbody>
         </table>
       </div>
@@ -137,7 +158,7 @@
     <section id="tab-downloads" class="tab hidden">
       <div class="row-head"><div><h1>Downloads</h1><p id="dlUpdated" class="sub"></p></div>
         <button id="dlRefresh" class="btn ghost small">Vernieuwen</button></div>
-      <p class="sub bld-intro">Buildpakketten van Bingr en Bingr Beheer. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.</p>
+      <p class="sub bld-intro">Buildpakketten van Bingr en BingrBeheer. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.</p>
       <div id="dlList" class="bld-grid"></div>
     </section>
     <section id="tab-settings" class="tab hidden">
@@ -149,7 +170,7 @@
       </div>
       <div class="panel">
         <h2>Sessies</h2>
-        <p class="sub">Log overal uit: alle sessies van het beheer (deze browser, andere browsers en de app Bingr Beheer) vervallen meteen. Daarna moet je opnieuw inloggen.</p>
+        <p class="sub">Log overal uit: alle sessies van het beheer (deze browser, andere browsers en de app BingrBeheer) vervallen meteen. Daarna moet je opnieuw inloggen.</p>
         <div class="form-btns"><button id="logoutAll" class="btn danger" type="button">Overal uitloggen</button></div>
       </div>
     </section>

@@ -139,7 +139,7 @@ enum StatusLevel {
 enum WidgetLoad: Hashable {
     /// Gegevens; `stale` = laatst bekende stand (geen verbinding).
     case ok(WidgetSummary, stale: Bool)
-    /// Geen (geldig) widget-token: "Open Bingr Beheer om in te loggen".
+    /// Geen (geldig) widget-token: "Open BingrBeheer om in te loggen".
     case signedOut
     /// Geen verbinding en nog niets bewaard.
     case failed

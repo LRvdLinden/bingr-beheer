@@ -1,16 +1,20 @@
 name: Builds
 
 # Zet de buildpakketten van Bingr (APK, Samsung TV .wgt, Xcode-projecten) in de afgesloten map builds/ op de server van
-# beheer.bingr.online. Ze staan nooit onversleuteld op GitHub: de workflows van iptv-ios-appletv, bingr-android en de
-# Beheer-app leveren ze versleuteld aan op de branch inbox-<platform> (tools/seal_build.sh); deze workflow ontsleutelt ze
-# met de privésleutel die alleen op de server staat, zet ze daar neer, werkt builds/manifest.json bij en verwijdert de branch.
+# beheer.bingr.online. Ze staan nooit onversleuteld op GitHub: de workflows van iptv-ios-appletv en bingr-android leveren
+# ze versleuteld aan op de branch inbox-<platform> van de PRIVÉ repo LRvdLinden/bingr-inbox, de Beheer-app op inbox-beheer
+# van deze repo (tools/seal_build.sh). Deze workflow haalt ze op (inbox-repo met secret BINGR_INBOX_READ_TOKEN; branches
+# in deze repo zelf ook, voor de Beheer-app en de overgang), ontsleutelt ze met de privésleutel die alleen op de server
+# staat, zet ze daar neer, werkt builds/manifest.json bij en verwijdert de branch.
+# H3: de aanleverende repo's hebben geen schrijftoken meer op deze openbare repo (BINGR_BEHEER_TOKEN is vervallen).
 # Downloaden kan alleen via het beheer (functie admin -> kortgeldige link naar dl.php).
 # Sleutels: bij de eerste run (of met "Sleutels opnieuw maken") maakt deze workflow een sleutel voor de downloadlinks
 # (builds/key.php en het function-secret BINGR_BUILDS_KEY) en een RSA-sleutelpaar (privé: builds/private.pem op de
 # server; publiek: builds.pub.pem in deze repo).
 # Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, optioneel FTP_USERNAME_ALT en FTP_DIR (zoals Dashboard),
-# SUPABASE_ACCESS_TOKEN en optioneel SUPABASE_PROJECT_REF (zoals Admin-functie). Het log is openbaar: alleen platform,
-# build en gelukt/mislukt.
+# SUPABASE_ACCESS_TOKEN en optioneel SUPABASE_PROJECT_REF (zoals Admin-functie), BINGR_INBOX_READ_TOKEN (fine-grained,
+# alleen LRvdLinden/bingr-inbox, Contents: Read and write) en optioneel de variabele BINGR_INBOX_REPO.
+# Het log is openbaar: alleen platform, build en gelukt/mislukt.
 
 on:
   repository_dispatch:
@@ -25,9 +29,10 @@ on:
         description: 'Pakketten uit versions/ van deze repo overzetten (eenmalig)'
         type: boolean
         default: false
-  # vangnet: aangeleverde pakketten oppikken als het starten vanuit een andere repo niet lukte
+  # de inbox-repo kan deze workflow niet starten (het inbox-token heeft geen rechten hier): elke 15 minuten kijken;
+  # goedkoop, want zonder aangeleverde pakketten stopt hij na één ls-remote
   schedule:
-    - cron: '23 * * * *'
+    - cron: '*/15 * * * *'
 
 permissions:
   contents: write
@@ -51,13 +56,16 @@ jobs:
       REF_DEFAULT: vjewsncmsxmhmhnoxwqx
       ROTATE: ${{ inputs.rotate || 'false' }}
       IMPORT_REPO: ${{ inputs.import_repo || 'false' }}
+      INBOX_REPO: ${{ vars.BINGR_INBOX_REPO || 'LRvdLinden/bingr-inbox' }}
+      INBOX_TOKEN: ${{ secrets.BINGR_INBOX_READ_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 
       - name: Iets te doen?
         id: todo
         run: |
-          n=$(git ls-remote origin 'refs/heads/inbox-*' | wc -l)
+          source tools/builds_process.sh
+          n=$(builds_pending)
           echo "inbox=$n" >> $GITHUB_OUTPUT
           if [ "${{ github.event_name }}" = schedule ] && [ "$n" = 0 ]; then echo "skip=1" >> $GITHUB_OUTPUT; echo "Niets aangeleverd."; fi
 
