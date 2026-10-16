@@ -138,7 +138,7 @@ enum Labels {
 
     static func monitorKind(_ k: String) -> String {
         ["http": "Website (URL)", "auth": "Supabase Auth", "db": "Database", "fn": "Edge Function", "storage": "Opslag",
-         "smtp": "SMTP", "tls": "TLS-certificaat", "gh_asset": "GitHub-release", "gh_workflow": "GitHub-build",
+         "smtp": "SMTP", "tls": "TLS-certificaat", "gh_asset": "GitHub-release", "build": "Build in de opslag", "gh_workflow": "GitHub-build",
          "devices": "Informatie"][k] ?? k
     }
 }

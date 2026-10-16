@@ -3,7 +3,7 @@
 // Alleen met een geldige link uit de functie admin: ?t=<payload>.<handtekening>, HMAC-SHA256 met de sleutel in
 // builds/key.php (gezet door de workflow Builds, zelfde waarde als het function-secret BINGR_BUILDS_KEY).
 // payload = base64url(JSON {"f": "<map>/<bestand>" of "manifest.json", "e": <verloopt, unix-tijd>}); max. 15 minuten geldig.
-// Geen logging van de link. ?ping=1 -> {"ok":true,"ready":bool} voor de controle in de workflows.
+// HEAD geeft alleen de koppen (statuspagina: is het bestand er?). Geen logging van de link. ?ping=1 -> {"ok":true,"ready":bool} voor de controle in de workflows.
 declare(strict_types=1);
 header('X-Robots-Tag: noindex, nofollow');
 header('Referrer-Policy: no-referrer');
@@ -23,7 +23,8 @@ function b64url_decode(string $s) {
 }
 
 if (isset($_GET['ping'])) out(200, ['ok' => true, 'ready' => is_file($dir . '/key.php')]);
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') out(405, ['error' => 'method']);
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method !== 'GET' && $method !== 'HEAD') out(405, ['error' => 'method']);
 
 $t = (string)($_GET['t'] ?? '');
 if (!preg_match('/^([A-Za-z0-9_-]{10,800})\.([A-Za-z0-9_-]{43})$/', $t, $m)) out(400, ['error' => 'bad_token']);
@@ -52,4 +53,6 @@ if ($f === 'manifest.json') {
   header('Content-Disposition: attachment; filename="' . $name . '"');
 }
 header('Content-Length: ' . (string)filesize($path));
+// HEAD (statuscontrole): alleen de koppen, het bestand niet versturen
+if ($method === 'HEAD') exit;
 readfile($path);
