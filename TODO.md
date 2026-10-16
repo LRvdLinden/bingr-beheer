@@ -7,7 +7,7 @@
 
 | Prioriteit | Onderdeel | Open |
 |:--|:--|--:|
-| 🔴 P0 | IPTV en streams | 2 |
+| 🔴 P0 | |  |
 | 🟠 P1 | Statuspagina en buildverhuizing | 5 |
 | 🟠 P1 | Echte pushnotificaties | 14 |
 | 🟠 P1 | Beveiliging en SEO | 4 |
@@ -18,13 +18,8 @@
 
 ---
 
-## 🔴 P0 — IPTV en streams
+## 🔴 P0 
 
-- [ ] **IPTV-verbindingslimiet onderzoeken**  
-  Provider meldt maximaal één verbinding; onderzoek relatie tot Bingr Gratis/Lifetime en toegestane oplossingen. Bingr moet providerlimieten zelfstandig opheffen of omzeilen.
-
-- [ ] **Streams en sessies optimaliseren**  
-  Bij zappen, stoppen, spelerwissel en afsluiten verbindingen correct vrijgeven; spooksessies voorkomen.
 
 ---
 
