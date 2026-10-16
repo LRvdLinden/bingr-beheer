@@ -126,7 +126,7 @@
 
 ## 🔔 Voorbeeld: automatische releasemelding
 
-> **Bingr 1.0.1 (Build 105) is beschikbaar! 🎉**  
+> **Bingr 1.0.1 (Build 105) is beschikbaar!**  
 > Er is een nieuwe versie voor Apple TV. Tik om de wijzigingen te bekijken.
 
 **Acceptatiecriteria:** echte systeem-push waar ondersteund; juiste taal; juiste platform; versie + buildnummer; tik opent de **changelog van precies die build**; geen dubbele meldingen. Geen eigen in-app meldingsvensters als vervanging voor push.
