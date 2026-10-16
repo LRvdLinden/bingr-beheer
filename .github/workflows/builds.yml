@@ -65,6 +65,8 @@ jobs:
         id: todo
         run: |
           source tools/builds_process.sh
+          # eerst hier (niet binnen $(...)), zodat ::add-mask:: in het log komt en niet in de uitvoer van de stap
+          inbox_ready || true
           n=$(builds_pending)
           echo "inbox=$n" >> $GITHUB_OUTPUT
           if [ "${{ github.event_name }}" = schedule ] && [ "$n" = 0 ]; then echo "skip=1" >> $GITHUB_OUTPUT; echo "Niets aangeleverd."; fi
