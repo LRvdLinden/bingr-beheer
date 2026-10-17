@@ -3,6 +3,8 @@
 // Alleen met een geldige link uit de functie admin: ?t=<payload>.<handtekening>, HMAC-SHA256 met de sleutel in
 // builds/key.php (gezet door de workflow Builds, zelfde waarde als het function-secret BINGR_BUILDS_KEY).
 // payload = base64url(JSON {"f": "<map>/<bestand>" of "manifest.json", "e": <verloopt, unix-tijd>}); max. 15 minuten geldig.
+// Openbaar (bingr.online, knop "Testversie downloaden"): ?app=android levert ALLEEN de nieuwste Android-APK uit
+// builds/manifest.json, zonder token. Andere platforms, oudere builds en het manifest blijven alleen via een link uit het beheer.
 // HEAD geeft alleen de koppen (statuspagina: is het bestand er?). Geen logging van de link. ?ping=1 -> {"ok":true,"ready":bool} voor de controle in de workflows.
 declare(strict_types=1);
 header('X-Robots-Tag: noindex, nofollow');
@@ -25,6 +27,24 @@ function b64url_decode(string $s) {
 if (isset($_GET['ping'])) out(200, ['ok' => true, 'ready' => is_file($dir . '/key.php')]);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method !== 'GET' && $method !== 'HEAD') out(405, ['error' => 'method']);
+
+// openbare download van de nieuwste APK (testversie op bingr.online)
+if (isset($_GET['app'])) {
+  if ((string)$_GET['app'] !== 'android') out(400, ['error' => 'bad_app']);
+  $man = is_file($dir . '/manifest.json') ? json_decode((string)file_get_contents($dir . '/manifest.json'), true) : null;
+  $file = is_array($man) ? (string)($man['platforms']['android']['file'] ?? '') : '';
+  if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.apk$/', $file) || strpos($file, '..') !== false) out(404, ['error' => 'not_found']);
+  $path = $dir . '/android/' . $file;
+  if (!is_file($path)) out(404, ['error' => 'not_found']);
+  @set_time_limit(0);
+  while (ob_get_level() > 0) ob_end_clean();
+  header('Content-Type: application/vnd.android.package-archive');
+  header('Content-Disposition: attachment; filename="' . $file . '"');
+  header('Content-Length: ' . (string)filesize($path));
+  if ($method === 'HEAD') exit;
+  readfile($path);
+  exit;
+}
 
 $t = (string)($_GET['t'] ?? '');
 if (!preg_match('/^([A-Za-z0-9_-]{10,800})\.([A-Za-z0-9_-]{43})$/', $t, $m)) out(400, ['error' => 'bad_token']);

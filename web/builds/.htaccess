@@ -1,4 +1,5 @@
-# Builds van Bingr: nooit rechtstreeks op te halen, alleen via dl.php met een kortgeldige link uit het beheer.
+# Builds van Bingr: nooit rechtstreeks op te halen, alleen via dl.php (kortgeldige link uit het beheer; de nieuwste
+# Android-APK ook openbaar via dl.php?app=android voor de testversie op bingr.online).
 <IfModule mod_authz_core.c>
   Require all denied
 </IfModule>
