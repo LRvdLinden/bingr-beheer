@@ -60,12 +60,45 @@ struct BuildPlatform: Identifiable {
     var icon: String { Self.all.first { $0.key == key }?.icon ?? "shippingbox" }
 }
 
-/// Antwoord van `builds`: {ready, platforms, updated?, reason?}.
+/// Verstuurde releasemelding van één build (actie `builds` → `release_push["apple:114"]`, of `build_push` → `push`).
+struct ReleasePushState: Hashable {
+    let sentAt: Date?
+    let devices: Int
+    let queued: Int
+    let sent: Int
+    let failed: Int
+    let done: Bool
+
+    init(_ j: JSON) {
+        sentAt = j["sent_at"].date
+        devices = j["devices"].int ?? 0
+        queued = j["queued"].int ?? 0
+        sent = j["sent"].int ?? 0
+        failed = j["failed"].int ?? 0
+        done = j["done"].bool ?? (queued == 0)
+    }
+
+    /// "12 apparaten, 11 verstuurd, 1 mislukt"
+    var counts: String {
+        var bits = ["\(Fmt.num(devices)) apparaten"]
+        if sent > 0 { bits.append("\(Fmt.num(sent)) verstuurd") }
+        if failed > 0 { bits.append("\(Fmt.num(failed)) mislukt") }
+        if !done && queued > 0 { bits.append("\(Fmt.num(queued)) in wachtrij") }
+        return bits.joined(separator: ", ")
+    }
+
+    /// Platforms in Downloads met een releasemelding, met wie hem krijgt (Samsung TV en BingrBeheer hebben geen push).
+    static let audience: [String: String] = ["apple": "iPhone, iPad en Mac", "android": "Android-telefoons en -tablets"]
+}
+
+/// Antwoord van `builds`: {ready, platforms, updated?, reason?, release_push?}.
 struct BuildsOverview {
     let ready: Bool
     let reason: String?
     let updated: Date?
     let platforms: [BuildPlatform]
+    /// verstuurde releasemeldingen per "platform:build"
+    var pushes: [String: ReleasePushState]
 
     init(_ j: JSON) {
         ready = j["ready"].bool ?? false
@@ -76,6 +109,7 @@ struct BuildsOverview {
             let e = p[def.key]
             return BuildPlatform(key: def.key, latest: BuildInfo(e), history: e["history"].array.compactMap { BuildInfo($0) })
         }
+        pushes = (j["release_push"].object ?? [:]).mapValues { ReleasePushState($0) }
     }
 
     /// Tekst voor de lege of niet-ingerichte toestand (nil als er builds zijn).

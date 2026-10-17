@@ -89,3 +89,32 @@ Deno.test("manifest: build zoeken (nieuwste, uit history, of weigeren)", () => {
 Deno.test("downloadadres", () => {
   ok(buildUrl("a.b") === "https://beheer.bingr.online/dl.php?t=a.b", "url");
 });
+
+Deno.test("releasemelding: versie/build, sleutels en stand per build", async () => {
+  const { releaseOf, releaseKeys, releasePushView, isReleasePushPlatform } = await import("./builds.ts");
+  ok(isReleasePushPlatform("apple") && isReleasePushPlatform("android"), "apple/android");
+  ok(!isReleasePushPlatform("tizen") && !isReleasePushPlatform("beheer") && !isReleasePushPlatform(1), "geen tizen/beheer");
+  const r = releaseOf({ file: "Bingr-1.0.0-build114.zip", version: "1.0.0", build: 114 });
+  ok(r?.version === "1.0.0" && r.build === 114, "geldig");
+  ok(releaseOf({ file: "a.zip", version: "1.0.0", build: "114" })?.build === 114, "build als tekst");
+  ok(releaseOf({ file: "a.zip", version: "x", build: 114 }) === null, "versie ongeldig");
+  ok(releaseOf({ file: "a.zip", version: "1.0.0", build: 0 }) === null, "build 0");
+  ok(releaseOf({ file: "a.zip", version: "1.0.0" }) === null, "zonder build");
+  ok(releaseOf(null) === null, "null");
+  const m = cleanManifest({ platforms: {
+    apple: { file: "Bingr-1.0.0-build114.zip", version: "1.0.0", build: 114, history: [{ file: "Bingr-1.0.0-build113.zip", version: "1.0.0", build: 113 }] },
+    android: { file: "Bingr-1.0.0-build114.apk", version: "1.0.0", build: 114 },
+    tizen: { file: "Bingr-1.0.0-build114.wgt", version: "1.0.0", build: 114 },
+  } });
+  const k = releaseKeys(m).sort();
+  ok(JSON.stringify(k) === JSON.stringify(["release:android:114", "release:apple:113", "release:apple:114"]), `sleutels ${k}`);
+  const v = releasePushView([
+    { dedup_key: "release:apple:114", created_at: "2026-10-17T08:00:00Z", devices: 12, counts: { queued: 0, sent: 11, failed: 1, invalid: 0 }, finished_at: "2026-10-17T08:01:00Z" },
+    { dedup_key: "release:android:114", created_at: "2026-10-17T08:00:00Z", devices: 5, counts: { queued: 3, sent: 2 }, finished_at: null },
+    { dedup_key: "reminder:x:1", devices: 1 }, { dedup_key: "release:tizen:114" }, "rommel", null,
+  ]);
+  ok(Object.keys(v).sort().join(",") === "android:114,apple:114", `stand ${Object.keys(v)}`);
+  ok(v["apple:114"].sent === 11 && v["apple:114"].failed === 1 && v["apple:114"].done, "apple klaar");
+  ok(v["android:114"].queued === 3 && !v["android:114"].done && v["android:114"].invalid === 0, "android bezig");
+  ok(Object.keys(releasePushView("x")).length === 0, "geen lijst");
+});

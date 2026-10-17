@@ -84,6 +84,11 @@
 //                       sha256, date, notes, history:[…]}} | null, updated?, reason?: "not_configured"|"no_builds"|"unreachable"}
 //                       (tab Downloads: builds/manifest.json van de server van beheer.bingr.online, opgehaald via dl.php met
 //                       een token van 60 s; de buildpakketten staan niet op GitHub)
+//                       release_push: {"apple:114": {sent_at, devices, queued, sent, failed, invalid, done}, …} (verstuurde
+//                       releasemeldingen per build; leeg = nog niet verstuurd)
+//   build_push          {token, platform: "apple"|"android", file? (standaard de nieuwste)} -> {ok, duplicate, devices, build,
+//                       missing_channels, push} (releasemelding van die build via push: release met PUSH_ADMIN_SECRET; één
+//                       keer per build; niet automatisch, want de stores keuren pas later goed; in admin_audit platform en build)
 //   build_link          {token, platform: "android"|"tizen"|"apple"|"beheer", file? (standaard de nieuwste; anders alleen
 //                       een bestand uit het manifest)} -> {url, expires_at, file, size}  (https://beheer.bingr.online/dl.php?t=…,
 //                       10 minuten geldig; in admin_audit als build_link met platform en build, nooit de link of het token)
@@ -96,7 +101,10 @@ import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { announcementMail, blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
-import { buildUrl, cleanManifest, findBuild, isBuildPlatform, isValidBuildFile, MIN_KEY, signBuildToken } from "./builds.ts";
+import {
+  buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, releaseKey, releaseKeys, releaseOf,
+  releasePushView, signBuildToken,
+} from "./builds.ts";
 import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
 import { auditDetail, cleanPushInput, cleanTarget, historyView, pageInput, progressView, PUSH_PLATFORMS, type PushTarget } from "./push.ts";
 
@@ -389,6 +397,16 @@ async function pushCall(action: string, payload: Record<string, unknown>): Promi
   }
   return { status: 200, out };
 }
+// Stand van de releasemeldingen voor de builds in Downloads (push_messages, schema in iptv-ios-appletv): per
+// "platform:build" wanneer en de aantallen. Fout = leeg (de tab werkt dan gewoon, zonder stand).
+async function releasePushes(manifest: Manifest, keys = releaseKeys(manifest)) {
+  if (!keys.length) return {};
+  const { data, error } = await admin.from("push_messages").select("dedup_key,created_at,devices,counts,finished_at")
+    .eq("kind", "release").in("dedup_key", keys);
+  if (error) { console.error("admin", "release_push", error.message); return {}; }
+  return releasePushView(data);
+}
+
 // Aantal apparaten voor de bevestiging (push_count): rechtstreeks in push_devices (schema in iptv-ios-appletv; kolommen
 // user_id en platform uit docs/PUSH.md). Alleen platforms met systeem-push. null = (nog) niet te tellen.
 async function countDevices(target: PushTarget) {
@@ -963,7 +981,33 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // tab Downloads: het manifest (alle velden), nooit de sleutel of een token
       const r = await fetchManifest();
       if (!r.ok) return json({ ready: false, platforms: null, reason: r.reason });
-      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated });
+      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated, release_push: await releasePushes(r.manifest) });
+    }
+    case "build_push": {
+      // knop "Pushmelding versturen" bij een build van apple of android: releasemelding via de functie push (actie
+      // release, met PUSH_ADMIN_SECRET). Eén keer per build; wie die build al heeft, krijgt niets.
+      const platform = String(body.platform ?? "");
+      if (!isReleasePushPlatform(platform)) return json({ error: "no_push_platform" }, 400);
+      const file = body.file === undefined || body.file === null || body.file === "" ? undefined : body.file;
+      if (file !== undefined && !isValidBuildFile(file)) return json({ error: "bad_file" }, 400);
+      if (!(await rateOk(`admin-push:${ip}`, PUSH_MAX, PUSH_WINDOW))) return json({ error: "rate_limited", retry_after: PUSH_WINDOW }, 429);
+      const r = await fetchManifest();
+      if (!r.ok) {
+        if (r.reason === "unreachable") return json({ error: "builds_unreachable" }, 502);
+        if (r.reason === "no_builds") return json({ error: "build_not_found" }, 404);
+        return json({ error: "builds_not_configured" }, 503);
+      }
+      const rel = releaseOf(findBuild(r.manifest, platform, file));
+      if (!rel) return json({ error: "build_not_found" }, 404);
+      const { status, out } = await pushCall("release", { platform_group: platform, version: rel.version, build: rel.build });
+      if (status !== 200) return json(out, status);
+      const duplicate = out.duplicate === true;
+      const devices = typeof out.devices === "number" ? out.devices : null;
+      await audit("build_push", ip, null, { platform, build: rel.build, devices, duplicate });
+      const missing = Array.isArray(out.missing_channels)
+        ? out.missing_channels.filter((x): x is string => typeof x === "string" && /^[a-z0-9_]{1,30}$/.test(x)).slice(0, 5) : [];
+      const state = (await releasePushes(r.manifest, [releaseKey(platform, rel.build)]))[`${platform}:${rel.build}`] ?? null;
+      return json({ ok: true, duplicate, devices, build: rel.build, missing_channels: missing, push: state });
     }
     case "build_link": {
       const platform = String(body.platform ?? "");

@@ -11,6 +11,15 @@ struct DownloadsView: View {
     /// "<platform>/<bestand>" waarvoor nu een link wordt gemaakt
     @State private var busy: String?
     @State private var shareLink: BuildLink?
+    /// build waarvoor de releasemelding bevestigd moet worden
+    @State private var pushAsk: PushAsk?
+    @State private var pushing: String?
+
+    struct PushAsk: Identifiable {
+        let platform: String
+        let build: BuildInfo
+        var id: String { "\(platform)/\(build.file)" }
+    }
 
     private let columns = [GridItem(.adaptive(minimum: 320), spacing: 12, alignment: .top)]
 
@@ -48,6 +57,16 @@ struct DownloadsView: View {
         .task { if overview == nil { await load() } }
         .sheet(item: $shareLink) { link in
             BuildLinkSheet(link: link)
+        }
+        .confirmationDialog(pushAsk.map { "Pushmelding voor \($0.build.title) versturen?" } ?? "",
+                            isPresented: Binding(get: { pushAsk != nil }, set: { if !$0 { pushAsk = nil } }),
+                            titleVisibility: .visible, presenting: pushAsk) { a in
+            Button("Versturen naar \(ReleasePushState.audience[a.platform] ?? a.platform)") {
+                Task { await sendPush(a.platform, a.build) }
+            }
+            Button("Annuleren", role: .cancel) {}
+        } message: { a in
+            Text("Doe dit pas als \(a.build.title) goedgekeurd is en in de stores staat. Alleen apparaten met een oudere build krijgen de melding, en dit kan maar één keer per build.")
         }
     }
 
@@ -93,6 +112,12 @@ struct DownloadsView: View {
                     }
                 }
                 buttons(p.key, b, primary: true)
+                if ReleasePushState.audience[p.key] != nil {
+                    pushRow(p.key, b, compact: false)
+                    Text("Pushmelding pas versturen als deze build in de stores staat. Alleen apparaten met een oudere build krijgen hem, één keer per build.")
+                        .font(.caption)
+                        .foregroundStyle(Color.textDim)
+                }
                 if !p.history.isEmpty {
                     Divider().overlay(Color.line)
                     Text("Oudere builds").font(.caption).foregroundStyle(Color.textDim)
@@ -105,6 +130,7 @@ struct DownloadsView: View {
                                 }
                             }
                             Spacer(minLength: 8)
+                            if ReleasePushState.audience[p.key] != nil { pushRow(p.key, h, compact: true) }
                             buttons(p.key, h, primary: false)
                         }
                     }
@@ -145,6 +171,57 @@ struct DownloadsView: View {
             .accessibilityLabel("Downloadlink delen")
         }
         .disabled(busy != nil)
+    }
+
+    /// Knop "Pushmelding versturen", of "Push verstuurd" met datum en aantallen als hij al verstuurd is.
+    @ViewBuilder private func pushRow(_ platform: String, _ b: BuildInfo, compact: Bool) -> some View {
+        if let build = b.build {
+            if let st = overview?.pushes["\(platform):\(build)"] {
+                if compact {
+                    Image(systemName: "bell.badge.fill")
+                        .foregroundStyle(Color.green)
+                        .accessibilityLabel("Pushmelding verstuurd \(Fmt.dateTime(st.sentAt)): \(st.counts)")
+                } else {
+                    Label("Push verstuurd \(Fmt.dateTime(st.sentAt)) · \(st.counts)", systemImage: "bell.badge.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.green)
+                }
+            } else {
+                let isBusy = pushing == "\(platform)/\(b.file)"
+                let button = Button {
+                    pushAsk = PushAsk(platform: platform, build: b)
+                } label: {
+                    HStack(spacing: 6) {
+                        if isBusy { ProgressView().tint(.white) } else { Image(systemName: "bell") }
+                        if !compact { Text("Pushmelding versturen") }
+                    }
+                }
+                .disabled(pushing != nil)
+                .accessibilityLabel("Pushmelding versturen voor \(b.title)")
+                button.buttonStyle(.bingrGhost)
+            }
+        }
+    }
+
+    private func sendPush(_ platform: String, _ b: BuildInfo) async {
+        pushing = "\(platform)/\(b.file)"
+        defer { pushing = nil }
+        do {
+            let r = try await session.call("build_push", ["platform": platform, "file": b.file])
+            let build = r["build"].text ?? b.build ?? ""
+            let missing = r["missing_channels"].array.compactMap { $0.text }.map { PushCounts.note($0) }
+            if r["duplicate"].bool == true {
+                session.show("De pushmelding voor build \(build) was al eerder verstuurd.")
+            } else {
+                let base = "Pushmelding build \(build) verstuurd naar \(Fmt.num(r["devices"].int ?? 0)) apparaten."
+                session.show(missing.isEmpty ? base : "\(base) Let op: \(missing.joined(separator: ", ")).", bad: !missing.isEmpty)
+            }
+            if r["push"].object != nil { overview?.pushes["\(platform):\(build)"] = ReleasePushState(r["push"]) }
+            await load()
+        } catch {
+            session.report(error)
+            if (error as? APIError)?.code == "build_not_found" { await load() }
+        }
     }
 
     private func load() async {

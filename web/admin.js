@@ -1135,6 +1135,19 @@
   function dlButton(p, b, ghost) {
     return `<button class="btn small${ghost ? " ghost" : ""}" type="button" data-dl-p="${esc(p)}" data-dl-f="${esc(b.file)}">Downloaden</button>`;
   }
+  // releasemelding per build (apple/android): niet meer automatisch, want de stores keuren pas later goed; hier per
+  // build met de hand versturen (actie build_push, één keer per build)
+  const DL_PUSH = { apple: "iPhone, iPad en Mac", android: "Android-telefoons en -tablets" };
+  let dlPush = {};
+  function dlPushInfo(p, b, compact) {
+    if (!DL_PUSH[p] || b.build == null || b.build === "") return "";
+    const st = dlPush[`${p}:${b.build}`];
+    if (st) {
+      const nums = [`${st.devices} apparaten`, st.sent ? `${st.sent} verstuurd` : "", st.failed ? `${st.failed} mislukt` : "", !st.done && st.queued ? `${st.queued} in wachtrij` : ""].filter(Boolean).join(", ");
+      return `<span class="chip bld-push-sent" title="${esc(`Pushmelding verstuurd ${fmtDateTime(st.sent_at)}: ${nums}`)}">Push verstuurd${compact ? "" : ` ${esc(fmtDateTime(st.sent_at))} · ${esc(nums)}`}</span>`;
+    }
+    return `<button class="btn small${compact ? " ghost" : ""}" type="button" data-push-p="${esc(p)}" data-push-f="${esc(b.file)}" data-push-b="${esc(b.build)}">Pushmelding versturen</button>`;
+  }
   function dlCard([p, title, hint], b) {
     if (!b) {
       return `<div class="panel bld-card"><div class="bld-head"><div><h2>${esc(title)}</h2><p class="sub">${esc(hint)}</p></div></div>
@@ -1152,9 +1165,10 @@
         ${b.sha256 ? `<dt>SHA-256</dt><dd class="brk bld-hash">${esc(b.sha256)}</dd>` : ""}
       </dl>
       ${typeof b.notes === "string" && b.notes.trim() ? `<div class="bld-notes"><div class="sub">Notities</div><div class="bld-notes-body">${esc(b.notes.trim())}</div></div>` : ""}
-      <div class="form-btns">${dlButton(p, b, false)}</div>
+      <div class="form-btns">${dlButton(p, b, false)}${dlPushInfo(p, b, false)}</div>
+      ${DL_PUSH[p] ? `<p class="sub bld-push-hint">Pushmelding pas versturen als deze build in de stores staat. Alleen apparaten met een oudere build krijgen hem, één keer per build.</p>` : ""}
       ${hist.length ? `<div class="bld-hist"><div class="sub">Oudere builds</div><ul>${hist.map((h) => `<li><span><b>${esc(dlBuild(h))}</b>
-        <span class="sub">${esc([h.version, dlDate(h), fmtSize(h.size)].filter((x) => x && x !== "—").join(" · "))}</span></span>${dlButton(p, h, true)}</li>`).join("")}</ul></div>` : ""}
+        <span class="sub">${esc([h.version, dlDate(h), fmtSize(h.size)].filter((x) => x && x !== "—").join(" · "))}</span></span><span class="bld-hist-btns">${dlPushInfo(p, h, true)}${dlButton(p, h, true)}</span></li>`).join("")}</ul></div>` : ""}
     </div>`;
   }
   $("dlRefresh").onclick = () => loadDownloads();
@@ -1169,8 +1183,29 @@
       return;
     }
     if (r.updated) $("dlUpdated").textContent = `Bijgewerkt ${fmtDateTime(r.updated)}`;
+    dlPush = r.release_push && typeof r.release_push === "object" ? r.release_push : {};
     el.innerHTML = DL_PLATFORMS.map((x) => dlCard(x, r.platforms[x[0]])).join("");
     el.querySelectorAll("button[data-dl-p]").forEach((b) => (b.onclick = () => download(b)));
+    el.querySelectorAll("button[data-push-p]").forEach((b) => (b.onclick = () => releasePush(b)));
+  }
+  async function releasePush(btn) {
+    const p = btn.dataset.pushP, build = btn.dataset.pushB;
+    if (!confirm(`Pushmelding "Bingr build ${build} is beschikbaar" versturen naar ${DL_PUSH[p]} met een oudere build?\n\nDoe dit pas als build ${build} goedgekeurd is en in de stores staat. Dit kan maar één keer per build.`)) return;
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = "Versturen…";
+    try {
+      const r = await call("build_push", { platform: p, file: btn.dataset.pushF });
+      const miss = (r.missing_channels || []).map((c) => PUSH_NOTE[c] || c);
+      if (r.duplicate) toast(`De pushmelding voor build ${r.build} was al eerder verstuurd.`);
+      else toast(`Pushmelding build ${r.build} verstuurd naar ${r.devices ?? 0} apparaten.${miss.length ? ` Let op: ${miss.join(", ")}.` : ""}`, miss.length > 0);
+      if (r.push) dlPush[`${p}:${r.build}`] = r.push;
+      loadDownloads();
+      loaded.messages = false; // geschiedenis van Pushmeldingen opnieuw laden
+    } catch (e) {
+      if (e.code === "build_not_found") loadDownloads();
+      if (e.code !== "auth") toast(errText(e), true);
+      btn.disabled = false; btn.textContent = old;
+    }
   }
   async function download(btn) {
     const old = btn.textContent;

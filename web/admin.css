@@ -532,6 +532,10 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .bld-hist li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line-soft)}
 .bld-hist li:last-child{border-bottom:0}
 .bld-hist li .sub{margin-left:8px}
+.bld-hist-btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.bld-card .form-btns{flex-wrap:wrap;align-items:center}
+.bld-push-hint{margin-top:8px;font-size:13px}
+.chip.bld-push-sent{background:#46d36924;color:var(--ok);border-color:#46d36940}
 @media (max-width:760px){.bld-grid{grid-template-columns:1fr}.bld-intro{margin-top:-16px}}
 
 /* ---- overzicht: instelbaar widget-dashboard (S = 1×1, M = 2×1, L = 2×2; telefoon: één kolom) ---- */

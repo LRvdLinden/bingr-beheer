@@ -96,3 +96,62 @@ export function findBuild(manifest: ReturnType<typeof cleanManifest>, platform: 
   if (p.file === file) return p;
   return p.history.find((h) => h.file === file) ?? null;
 }
+
+// ---- releasemelding per build (tab Downloads, knop "Pushmelding versturen") ----
+// Niet meer automatisch na het plaatsen: Apple en Google keuren een build soms pas na dagen goed. De beheerder stuurt
+// hem per build zelf vanuit Downloads; de functie `push` stuurt één melding per (platform_group, build).
+
+/** Platforms in Downloads met een releasemelding (Samsung TV en de Beheer-app hebben geen push). */
+export const RELEASE_PUSH_PLATFORMS = ["apple", "android"] as const;
+export const isReleasePushPlatform = (p: unknown): p is typeof RELEASE_PUSH_PLATFORMS[number] =>
+  typeof p === "string" && (RELEASE_PUSH_PLATFORMS as readonly string[]).includes(p);
+
+/** Versie en build van een build uit het manifest, of null als die niet geldig zijn (zelfde regels als `push`). */
+export function releaseOf(b: BuildEntry | null): { version: string; build: number } | null {
+  if (!b) return null;
+  const version = typeof b.version === "string" ? b.version.trim() : "";
+  const build = typeof b.build === "number" ? b.build : typeof b.build === "string" && /^\d+$/.test(b.build) ? Number(b.build) : NaN;
+  if (!/^[0-9][0-9A-Za-z.\-]{0,19}$/.test(version) || !Number.isInteger(build) || build <= 0 || build > 1e7) return null;
+  return { version, build };
+}
+
+/** dedup_key van de releasemelding in push_messages (gelijk aan releaseKey in de functie push). */
+export const releaseKey = (platform: string, build: number) => `release:${platform}:${build}`;
+
+/** Alle releasesleutels voor de builds van apple en android in het manifest (nieuwste en history). */
+export function releaseKeys(manifest: ReturnType<typeof cleanManifest>): string[] {
+  const out = new Set<string>();
+  for (const p of RELEASE_PUSH_PLATFORMS) {
+    const e = manifest?.platforms[p];
+    if (!e) continue;
+    for (const b of [e, ...e.history]) {
+      const r = releaseOf(b);
+      if (r) out.add(releaseKey(p, r.build));
+    }
+  }
+  return [...out];
+}
+
+const n0 = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+/**
+ * Stand van verstuurde releasemeldingen per "platform:build" (bv. "apple:114"): wanneer, hoeveel apparaten en de
+ * aantallen. Alleen tellingen, geen account-id's of tokens.
+ */
+export function releasePushView(rows: unknown): Record<string, {
+  sent_at: string | null; devices: number; queued: number; sent: number; failed: number; invalid: number; done: boolean;
+}> {
+  const out: ReturnType<typeof releasePushView> = {};
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!isObj(r) || typeof r.dedup_key !== "string") continue;
+    const m = /^release:(apple|android):(\d{1,7})$/.exec(r.dedup_key);
+    if (!m) continue;
+    const c = isObj(r.counts) ? r.counts : {};
+    const queued = n0(c.queued);
+    out[`${m[1]}:${m[2]}`] = {
+      sent_at: typeof r.created_at === "string" ? r.created_at : null, devices: n0(r.devices),
+      queued, sent: n0(c.sent), failed: n0(c.failed), invalid: n0(c.invalid),
+      done: typeof r.finished_at === "string" || queued === 0,
+    };
+  }
+  return out;
+}
