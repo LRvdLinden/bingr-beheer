@@ -9,6 +9,8 @@
   const nf = new Intl.NumberFormat("nl-NL");
   const fmtDate = (v) => (v ? new Date(v).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" }) : "—");
   const fmtDateTime = (v) => (v ? new Date(v).toLocaleString("nl-NL", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+  // datum en tijd in Nederlandse tijd (nieuwsbrief: volgende verzending)
+  const fmtNl = (v) => (v ? new Date(v).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "—");
   function ago(v) {
     if (!v) return "nooit";
     const m = Math.round((Date.now() - Date.parse(v)) / 60000);
@@ -197,7 +199,7 @@
     appMenu.querySelectorAll("[data-go]").forEach((b) => (b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadPushTab, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -209,7 +211,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "users", "support", "messages", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "users", "support", "messages", "newsletter", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -260,6 +262,8 @@
       opts: { count: ["enum", [3, 5], 3] } },
     push_subscribers: { name: "Pushabonnees", desc: "Accounts en apparaten met pushmeldingen aan, per platform", sizes: ["s", "m", "l"], size: "m",
       opts: { push_platforms: ["set", PUSH_PFS, PUSH_PFS], show_new: ["bool", null, true] } },
+    newsletter: { name: "Nieuwsbrief", desc: "Abonnees van de nieuwsbrief (bevestigd e-mailadres) ten opzichte van alle leden", sizes: ["s", "m"], size: "s",
+      opts: { show_langs: ["bool", null, true] } },
   };
   const OPT_LABEL = {
     metric: ["Getal", Object.fromEntries(Object.entries(METRICS).map(([k, m]) => [k, m.label]))],
@@ -275,6 +279,7 @@
     show_new: ["Nieuw in de laatste 7 dagen tonen"],
     show_incidents: ["Storingen tonen"],
     show_notices: ["Meldingen tonen (lopend en gepland)"],
+    show_langs: ["Nederlands en Engels apart tonen"],
   };
   // standaardindeling: lijkt op het vroegere vaste overzicht
   const DASH_DEFAULT = [
@@ -324,13 +329,14 @@
   function saveLayout() { try { localStorage.setItem(DASH_KEY, JSON.stringify(dash)); } catch { /* privé-venster: alleen deze sessie */ } }
 
   let dash = loadLayout(), dashEdit = false, dashLoading = false, dashCharts = [], dragId = null;
-  const dd = { stats: null, statsErr: null, status: null, statusErr: null, hist: null, histErr: null, subs: null, subsErr: null };
+  const dd = { stats: null, statsErr: null, status: null, statusErr: null, hist: null, histErr: null, subs: null, subsErr: null, nl: null, nlErr: null };
   const visible = () => dash.widgets.filter((w) => !w.hidden);
   const needs = () => {
     const v = visible();
     return {
       status: v.some((w) => w.type === "status" || (w.type === "platforms" && w.options.source === "live")),
       hist: v.some((w) => w.type === "announcements"), subs: v.some((w) => w.type === "push_subscribers"),
+      nl: v.some((w) => w.type === "newsletter"),
     };
   };
 
@@ -354,12 +360,14 @@
     if (dashLoading) return;
     dashLoading = true; $("refresh").disabled = true;
     const n = needs();
-    const [s, st, ph, sb] = await Promise.allSettled([
+    const [s, st, ph, sb, nl] = await Promise.allSettled([
       call("stats"), n.status ? call("status", { op: "overview" }) : Promise.resolve(null),
       n.hist ? call("push_history", { page: 0 }) : Promise.resolve(null), n.subs ? call("push_subscribers") : Promise.resolve(null),
+      n.nl ? call("newsletter_status") : Promise.resolve(null),
     ]);
     dashLoading = false; $("refresh").disabled = false;
-    if ([s, st, ph, sb].some((r) => r.status === "rejected" && r.reason?.code === "auth")) return;
+    if (n.nl) { if (nl.status === "fulfilled") { dd.nl = nl.value; dd.nlErr = null; } else dd.nlErr = errText(nl.reason); }
+    if ([s, st, ph, sb, nl].some((r) => r.status === "rejected" && r.reason?.code === "auth")) return;
     if (s.status === "fulfilled") { dd.stats = s.value; dd.statsErr = null; smtpOk = !!s.value.smtp; }
     else { dd.statsErr = errText(s.reason); toast(dd.statsErr, true); }
     if (n.status) { if (st.status === "fulfilled") { dd.status = st.value; dd.statusErr = null; } else dd.statusErr = errText(st.reason); }
@@ -373,7 +381,7 @@
   // na toevoegen of instellen: ontbrekende gegevens (status, pushmeldingen, abonnees) alsnog ophalen
   function ensureDashData() {
     const n = needs();
-    if ((n.status && !dd.status && !dd.statusErr) || (n.hist && !dd.hist && !dd.histErr) || (n.subs && !dd.subs && !dd.subsErr)
+    if ((n.status && !dd.status && !dd.statusErr) || (n.hist && !dd.hist && !dd.histErr) || (n.subs && !dd.subs && !dd.subsErr) || (n.nl && !dd.nl && !dd.nlErr)
       || (!dd.stats && !dd.statsErr)) loadStats();
   }
   function dashSupportChanged() {
@@ -394,6 +402,7 @@
       case "status": return "Servicestatus";
       case "announcements": return "Laatste pushmeldingen";
       case "push_subscribers": return "Pushabonnees";
+      case "newsletter": return "Nieuwsbrief";
     }
     return WTYPES[w.type].name;
   }
@@ -578,6 +587,23 @@
           if (w.size === "l") hbars(body.querySelector(".hbars"), rows, 5);
           const more = body.querySelector("[data-go]"); if (more) more.onclick = () => showTab("messages");
         }
+        break;
+      }
+      case "newsletter": {
+        // abonnees (recipients.total van de functie newsletter: geabonneerd met bevestigd e-mailadres) / alle leden (stats)
+        if (!dd.nl) { body.innerHTML = dd.nlErr ? fail(dd.nlErr) : wait(); return; }
+        const r = dd.nl.recipients || {}, subs = r.total || 0, all = s.total_users || 0;
+        const pct = all ? `${Math.round((subs / all) * 100)}%` : "—";
+        const state = dd.nl.enabled ? (dd.nl.next?.at ? `aan · volgende ${fmtNl(dd.nl.next.at)}` : "aan") : "uit";
+        const langs = o.show_langs ? `${nf.format(r.nl || 0)} NL · ${nf.format(r.en || 0)} EN` : "";
+        if (w.size === "s") {
+          body.innerHTML = tile(title, `${nf.format(subs)}<small class="w-of"> / ${nf.format(all)}</small>`, esc([`${pct} van de leden`, langs, `verzending ${dd.nl.enabled ? "aan" : "uit"}`].filter(Boolean).join(" · ")));
+        } else {
+          body.innerHTML = `${head(null, "Nieuwsbrief")}<div class="w-sum"><b>${nf.format(subs)}</b> <span class="sub">van ${nf.format(all)} leden (${esc(pct)})</span></div>
+            <p class="sub w-facts">${esc([langs, `Verzending ${state}`].filter(Boolean).join(" · "))}</p>`;
+          const more = body.querySelector("[data-go]"); if (more) more.onclick = () => showTab("newsletter");
+        }
+        if (w.size === "s") onGo = go(() => showTab("newsletter"));
         break;
       }
     }
@@ -802,7 +828,7 @@
     renderUserFilters();
     $("userCount").textContent = `${nf.format(total)} ${total === 1 ? "account" : "accounts"}`;
     $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0"${u.blocked ? ' class="is-blocked"' : ""}>
-      <td class="em">${fullName(u) ? `<span class="u-name">${esc(fullName(u))}</span><span class="u-mail">${esc(u.email)}</span>` : esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.blocked
+      <td class="em">${fullName(u) ? `<span class="u-name">${esc(fullName(u))}</span><span class="u-mail">${esc(u.email)}</span>` : esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.newsletter === false ? ' <span class="chip" title="Krijgt de nieuwsbrief niet (afgemeld of alle mail uit)">Geen nieuwsbrief</span>' : ""}${u.blocked
         ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""} ${planChip(u.plan)}</td>
       <td data-l="Aangemaakt">${esc(fmtDate(u.created_at))}</td>
       <td data-l="Laatst ingelogd">${esc(ago(u.last_sign_in_at))}</td>
@@ -878,6 +904,7 @@
         <dt>Actief (30 d)</dt><dd>${nf.format(u.active_days_30d || 0)} dagen</dd>
         <dt>Kijkt nu</dt><dd>${nf.format(u.watching_now || 0)}</dd>
         <dt>Berichten per e-mail</dt><dd>${u.email_opt_out ? "Afgemeld" : "Aan"}</dd>
+        <dt>Nieuwsbrief</dt><dd id="uNl"></dd>
       </dl>
       <form id="nameForm" class="name-form hidden" novalidate>
         <h3>Naam wijzigen</h3>
@@ -931,6 +958,7 @@
       </section>`;
     wireEmailEye(u);
     wireName(u);
+    wireNewsletter(u);
     $("resetBtn").onclick = async () => {
       if (!confirm(`Een wachtwoord-reset-mail sturen naar ${u.email}?`)) return;
       $("resetBtn").disabled = true;
@@ -950,6 +978,28 @@
     } else wireBlockForm(u);
     wirePlan(u);
     wireDelete(u);
+  }
+  // nieuwsbrief van dit account (user_detail.newsletter, actie user_newsletter_set). Heeft de klant alle mail uitgezet
+  // (email_opt_out), dan alleen de stand: dat zet alleen de klant zelf terug. null = onbekend (kolom nog niet aangemaakt).
+  function wireNewsletter(u) {
+    const el = $("uNl"), n = u.newsletter;
+    if (!n) { el.innerHTML = '<span class="sub">Onbekend</span>'; return; }
+    if (n.email_opt_out) { el.innerHTML = 'Geen e-mail (alles uitgezet) <span class="sub">alleen de klant kan dit weer aanzetten</span>'; return; }
+    el.innerHTML = `<label class="switch nl-user"><input id="uNlSw" type="checkbox" role="switch"${n.subscribed ? " checked" : ""}><span class="track"></span><span id="uNlTxt">${n.subscribed ? "Geabonneerd" : "Afgemeld"}</span></label>`;
+    const sw = $("uNlSw");
+    sw.onchange = async () => {
+      const on = sw.checked;
+      sw.disabled = true;
+      try {
+        const r = await call("user_newsletter_set", { id: u.id, subscribed: on });
+        u.newsletter = r.newsletter || { ...n, subscribed: on, newsletter_opt_out: !on };
+        $("uNlTxt").textContent = u.newsletter.subscribed ? "Geabonneerd" : "Afgemeld";
+        sw.checked = !!u.newsletter.subscribed;
+        toast(u.newsletter.subscribed ? "Nieuwsbrief aangezet voor dit account." : "Nieuwsbrief uitgezet voor dit account.");
+        if (loaded.users) loadUsers();
+      } catch (e) { sw.checked = !on; if (e.code !== "auth") toast(errText(e), true); }
+      finally { sw.disabled = false; }
+    };
   }
   // oog naast het gemaskeerde adres: na een klik het volledige adres (actie user_email, in het logboek), opnieuw = verbergen.
   // Het adres blijft alleen in deze lade (niet opgeslagen); bij een andere gebruiker of opnieuw openen is het weer gemaskeerd.
@@ -1168,7 +1218,10 @@
     return `${new Intl.NumberFormat("nl-NL", { maximumFractionDigits: i && v < 100 ? 1 : 0 }).format(v)} ${u[i]}`;
   }
   const dlBuild = (b) => (b.build != null && b.build !== "" ? `build ${b.build}` : b.file);
-  const dlDate = (b) => (typeof b.date === "string" && b.date ? fmtDate(/^\d{4}-\d{2}-\d{2}$/.test(b.date) ? `${b.date}T12:00:00` : b.date) : "—");
+  // tijd van uploaden (uploaded_at, workflow Builds) als datum en tijd in NL-tijd; oudere builds: alleen date (zonder tijd)
+  const dlDate = (b) => (typeof b.uploaded_at === "string" && !Number.isNaN(Date.parse(b.uploaded_at))
+    ? new Date(b.uploaded_at).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : typeof b.date === "string" && b.date ? fmtDate(/^\d{4}-\d{2}-\d{2}$/.test(b.date) ? `${b.date}T12:00:00` : b.date) : "—");
   function dlButton(p, b, ghost) {
     return `<button class="btn small${ghost ? " ghost" : ""}" type="button" data-dl-p="${esc(p)}" data-dl-f="${esc(b.file)}">Downloaden</button>`;
   }
@@ -1695,6 +1748,165 @@
     $("phPage").textContent = `Pagina ${phPage + 1}`;
   }
 
+
+  // ---- nieuwsbrief (tab "newsletter"; functie admin -> newsletter in iptv-ios-appletv) ----
+  // Acties newsletter_status, newsletter_set_enabled, newsletter_preview (één adres, nooit gelogd) en newsletter_render.
+  // De voorbeeldweergave staat in een Shadow DOM: de HTML wordt eerst inert geparsed (DOMParser), scripts en
+  // event-attributen gaan eruit en style-attributen worden via element.style gezet (de strikte CSP blokkeert style=; een
+  // blob-tabblad of srcdoc-iframe erft die CSP, waardoor de opmaak van de mail daar zou wegvallen).
+  Object.assign(ERR, {
+    newsletter_not_configured: "De nieuwsbrief is nog niet ingesteld (NEWSLETTER_ADMIN_SECRET; workflow Backend in iptv-ios-appletv draaien).",
+    newsletter_not_deployed: "De functie newsletter staat nog niet online (workflow Backend in iptv-ios-appletv draaien).",
+    newsletter_forbidden: "De functie newsletter weigerde de aanvraag (NEWSLETTER_ADMIN_SECRET klopt niet).",
+    newsletter_unreachable: "De functie newsletter is niet bereikbaar. Probeer het later opnieuw.",
+    bad_email: "Vul een geldig e-mailadres in.", bad_lang: "Kies Nederlands of Engels.", bad_enabled: "Ongeldige keuze (aan of uit).",
+    tmdb_unavailable: "De films en series konden niet worden opgehaald (TMDB). Probeer het later opnieuw.",
+    email_opted_out: "Deze klant heeft alle mail van Bingr uitgezet; alleen de klant kan dat weer aanzetten.",
+    newsletter_prefs_unavailable: "De nieuwsbriefstand per account is nog niet beschikbaar (databaseschema bijwerken: workflow Backend in iptv-ios-appletv).",
+  });
+  let nlState = null, nlBusy = false, nlSendLang = "nl", nlViewLang = "nl", nlRender = {};
+  function nlSeg(id, set) {
+    document.querySelectorAll(`#${id} button`).forEach((b) => (b.onclick = () => {
+      document.querySelectorAll(`#${id} button`).forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", String(x === b)); });
+      set(b.dataset.lang);
+    }));
+  }
+  nlSeg("nlSendLang", (l) => { nlSendLang = l; });
+  nlSeg("nlViewLang", (l) => { nlViewLang = l; if (!$("nlView").classList.contains("hidden")) showNlPreview(); });
+
+  function renderNl() {
+    const s = nlState, sw = $("nlEnabled");
+    if (!s) return;
+    sw.checked = !!s.enabled; sw.disabled = nlBusy;
+    $("nlEnabledText").innerHTML = s.enabled ? "<b>Aan</b> · de nieuwsbrief wordt verstuurd" : "<b>Uit</b> · er wordt niets verstuurd";
+    const r = s.recipients || {};
+    const cell = (l, v, h, cls = "") => `<div class="ps-k${cls}"><span class="l">${esc(l)}</span><b>${esc(v)}</b>${h ? `<span class="h">${esc(h)}</span>` : ""}</div>`;
+    $("nlFacts").innerHTML = cell("Volgende verzending", s.enabled && s.next?.at ? fmtNl(s.next.at) : s.next?.at ? "uit" : "—",
+      s.next?.at ? (s.enabled ? "Nederlandse tijd" : `anders ${fmtNl(s.next.at)}`) : "", " nl-next")
+      + cell("Ontvangers", nf.format(r.total || 0), "leden met mail aan", " main")
+      + cell("Nederlands", nf.format(r.nl || 0), "NL") + cell("Engels", nf.format(r.en || 0), "EN");
+    const eds = s.editions || [];
+    $("nlEditions").innerHTML = eds.map((e) => {
+      const n = (v, label, cls) => `<span class="ph-n ${cls}"><b>${nf.format(v || 0)}</b> ${label}</span>`;
+      return `<div class="ph"><div class="ph-main"><div class="ph-top"><span class="kind rem">Editie</span><span class="tt">${esc(e.key || "—")}</span></div>
+          <div class="meta"><span>${esc(fmtDateTime(e.created_at))}</span>${e.done ? "" : '<span class="chip warn">bezig</span>'}</div></div>
+        <div class="ph-nums nl-nums" aria-label="Aantallen">${n(e.recipients, "ontvangers", "")}${n(e.sent, "verstuurd", "s")}${n(e.failed, "mislukt", "f")}</div></div>`;
+    }).join("") || '<p class="empty">Nog geen edities verstuurd.</p>';
+  }
+  function nlNotice(msg) { $("nlNotice").textContent = msg || ""; $("nlNotice").classList.toggle("hidden", !msg); }
+  async function loadNewsletter() {
+    let r;
+    try { r = await call("newsletter_status"); }
+    catch (e) {
+      if (e.code === "auth") return;
+      nlState = null; nlNotice(errText(e));
+      $("nlEnabled").disabled = true; $("nlEnabledText").textContent = "Niet beschikbaar";
+      $("nlFacts").innerHTML = ""; $("nlEditions").innerHTML = '<p class="empty">Geen gegevens.</p>';
+      return;
+    }
+    nlNotice(""); nlState = r; dd.nl = r; dd.nlErr = null; renderNl();
+  }
+  $("nlRefresh").onclick = loadNewsletter;
+  $("nlEnabled").onchange = async () => {
+    const sw = $("nlEnabled"), on = sw.checked;
+    if (!nlState || nlBusy) { sw.checked = !on; return; }
+    if (on) {
+      const r = nlState.recipients || {}, total = r.total || 0;
+      const when = nlState.next?.at ? `\n\nVolgende verzending: ${fmtNl(nlState.next.at)}.` : "";
+      if (!confirm(`De nieuwsbrief aanzetten? Hij gaat naar ${nf.format(total)} ${total === 1 ? "lid" : "leden"} (${nf.format(r.nl || 0)} NL, ${nf.format(r.en || 0)} EN).${when}`)) { sw.checked = false; return; }
+    }
+    nlBusy = true; sw.disabled = true;
+    try {
+      const r = await call("newsletter_set_enabled", { enabled: on });
+      nlState.enabled = !!r.enabled;
+      toast(r.enabled ? "Nieuwsbrief staat aan." : "Nieuwsbrief staat uit.");
+      loadNewsletter();
+    } catch (e) { sw.checked = !on; if (e.code !== "auth") toast(errText(e), true); }
+    finally { nlBusy = false; renderNl(); }
+  };
+  $("nlPreviewForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const to = $("nlTo").value.trim(), err = (m) => { $("nlSendErr").textContent = m; };
+    err("");
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[A-Za-z]{2,}$/.test(to) || to.length > 254) return err(ERR.bad_email);
+    $("nlSend").disabled = true;
+    try {
+      await call("newsletter_preview", { to, lang: nlSendLang });
+      toast(`Voorbeeld (${nlSendLang.toUpperCase()}) verstuurd.`);
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    finally { $("nlSend").disabled = false; }
+  };
+
+  async function nlHtml(lang) {
+    if (nlRender[lang] && Date.now() - nlRender[lang].at < 120000) return nlRender[lang];
+    const r = await call("newsletter_render", { lang });
+    nlRender[lang] = { subject: r.subject || "", html: r.html || "", at: Date.now() };
+    return nlRender[lang];
+  }
+  const NL_DROP = "script,iframe,frame,frameset,object,embed,applet,form,input,button,textarea,select,base,meta,link,noscript,template,svg script";
+  // mail-HTML veilig in de Shadow DOM zetten: inert parsen, gevaarlijke elementen en attributen weg, style via element.style
+  function mountMail(host, html) {
+    // eerst als tekst: <style>-blokken eruit en style= hernoemen, zodat ook het inerte parsen geen CSP-meldingen geeft
+    const cssParts = [];
+    const src = String(html).replace(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, (_, c) => { cssParts.push(c); return ""; })
+      .replace(/(<[a-z][^>]*?\s)style(\s*=)/gi, "$1data-nl-style$2");
+    const doc = new DOMParser().parseFromString(src, "text/html");
+    const css = cssParts.concat([...doc.querySelectorAll("style")].map((s) => s.textContent || "")).join("\n");
+    doc.querySelectorAll(`style,${NL_DROP}`).forEach((n) => n.remove());
+    doc.querySelectorAll("*").forEach((el) => {
+      for (const a of [...el.attributes]) {
+        const n = a.name.toLowerCase(), v = a.value.trim().toLowerCase();
+        if (n.startsWith("on") || n === "srcset" || n === "formaction") el.removeAttribute(a.name);
+        else if ((n === "href" || n === "src" || n === "action" || n === "background") && !/^(https:|mailto:|#)/.test(v)) el.removeAttribute(a.name);
+        else if (n === "style") { el.setAttribute("data-nl-style", a.value); el.removeAttribute("style"); }
+      }
+      if (el.tagName === "A") { el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener noreferrer"); }
+    });
+    const root = host.shadowRoot || host.attachShadow({ mode: "open" });
+    root.replaceChildren();
+    try {
+      const base = new CSSStyleSheet();
+      base.replaceSync(":host{display:block;background:#fff;color:#111}.nl-body{min-height:200px;overflow:auto}img{max-width:100%;height:auto}");
+      const sheets = [base];
+      if (css.trim()) { const s = new CSSStyleSheet(); s.replaceSync(css); sheets.push(s); }
+      root.adoptedStyleSheets = sheets;
+    } catch { /* geen constructable stylesheets: alleen de inline stijlen */ }
+    const wrap = document.createElement("div");
+    wrap.className = "nl-body";
+    const body = doc.body;
+    for (const a of ["bgcolor", "data-nl-style"]) if (body.hasAttribute(a)) wrap.setAttribute(a, body.getAttribute(a));
+    wrap.append(...[...body.childNodes].map((n) => document.importNode(n, true)));
+    root.append(wrap);
+    root.querySelectorAll("[data-nl-style]").forEach((el) => { el.style.cssText = el.getAttribute("data-nl-style"); el.removeAttribute("data-nl-style"); });
+    if (wrap.hasAttribute("bgcolor")) wrap.style.backgroundColor = wrap.getAttribute("bgcolor");
+  }
+  async function showNlPreview() {
+    const btn = $("nlShow"), lang = nlViewLang;
+    btn.disabled = true;
+    try {
+      const r = await nlHtml(lang);
+      if (lang !== nlViewLang) return;
+      $("nlSubject").innerHTML = `<span class="sub">Onderwerp</span> <b>${esc(r.subject || "—")}</b>`;
+      $("nlSubject").classList.remove("hidden");
+      $("nlView").classList.remove("hidden");
+      mountMail($("nlView"), r.html);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { btn.disabled = false; }
+  }
+  $("nlShow").onclick = showNlPreview;
+  $("nlDownload").onclick = async () => {
+    const btn = $("nlDownload"), lang = nlViewLang;
+    btn.disabled = true;
+    try {
+      const r = await nlHtml(lang);
+      const url = URL.createObjectURL(new Blob([r.html], { type: "text/html;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `bingr-nieuwsbrief-${lang}.html`; a.rel = "noopener";
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { btn.disabled = false; }
+  };
 
   // ---- status ----
   const ST = { up: "Werkt", degraded: "Verminderd", down: "Storing" };

@@ -167,6 +167,7 @@ struct UserRowView: View {
                     Text(user.email).font(.body.weight(.semibold)).lineLimit(1)
                 }
                 if !user.confirmed { Chip(text: "onbevestigd", tone: .warn) }
+                if user.newsletter == false { Chip(text: "Geen nieuwsbrief", icon: "envelope.badge") }
                 if user.isBlocked { Chip(text: "Geblokkeerd", tone: .bad, icon: "nosign") }
                 PlanChip(plan: user.plan)
             }

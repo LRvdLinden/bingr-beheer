@@ -689,3 +689,15 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .name-form input{margin-top:6px}
 .name-form .sub{margin-top:8px}
 .name-form .form-btns{margin-top:14px}
+/* nieuwsbrief (tab Nieuwsbrief, widget en gebruikerslade) */
+.nl-switch{margin-top:6px}
+.nl-facts{grid-template-columns:repeat(4,minmax(0,1fr))}
+.nl-facts .nl-next b{font-size:17px;line-height:1.35}
+@media (max-width:600px){.nl-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.nl-lang{display:flex;align-items:center;gap:12px;margin-top:14px}
+.nl-subject{margin-top:16px;font-size:14px;overflow-wrap:anywhere}
+.nl-view{margin-top:12px;border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:720px;background:#fff}
+.nl-nums{grid-template-columns:repeat(3,auto)}
+@media (max-width:760px){.nl-nums{grid-template-columns:repeat(3,1fr)}}
+.w-of{font-size:.5em;font-weight:700;color:var(--sec);letter-spacing:0}
+.nl-user{margin-top:0;font-size:14px}

@@ -139,6 +139,10 @@ struct DashWidgetSettingsView: View {
             Section("Gegevens") {
                 Toggle("Nieuw in de laatste 7 dagen tonen", isOn: value(\.showNew, true))
             }
+        case .newsletter:
+            Section("Gegevens") {
+                Toggle("Nederlands en Engels apart tonen", isOn: value(\.showLangs, true))
+            }
         }
     }
 

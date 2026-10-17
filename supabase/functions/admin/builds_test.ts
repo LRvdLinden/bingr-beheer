@@ -56,8 +56,8 @@ const RAW = {
   platforms: {
     android: {
       version: "1.0.0", build: 105, file: "Bingr-1.0.0-build105.apk", path: "android/Bingr-1.0.0-build105.apk", size: 123,
-      sha256: "ab", date: "2026-10-16", notes: "**nieuw**",
-      history: [{ version: "1.0.0", build: 104, file: "Bingr-1.0.0-build104.apk", size: 120, history: [{ file: "diep.apk" }] },
+      sha256: "ab", date: "2026-10-16", notes: "**nieuw**", uploaded_at: "2026-10-17T06:02:11+00:00",
+      history: [{ version: "1.0.0", build: 104, file: "Bingr-1.0.0-build104.apk", size: 120, uploaded_at: "gisteren", history: [{ file: "diep.apk" }] },
         { file: "../key.php" }, "onzin"],
     },
     tizen: { file: "../../etc/passwd" },
@@ -72,6 +72,8 @@ Deno.test("manifest: alleen bekende platforms en geldige bestanden, alle velden 
   const a = m.platforms.android;
   ok(a.build === 105 && a.sha256 === "ab" && a.notes === "**nieuw**" && a.size === 123 && a.path === "android/Bingr-1.0.0-build105.apk", "velden");
   ok(a.history.length === 1 && a.history[0].build === 104 && !("history" in a.history[0]), "history");
+  ok(a.uploaded_at === "2026-10-17T06:02:11+00:00", "uploaded_at doorgegeven");
+  ok(!("uploaded_at" in a.history[0]), "ongeldige uploaded_at valt weg (oude build: alleen date)");
   ok(cleanManifest(null) === null && cleanManifest({}) === null && cleanManifest({ platforms: [] }) === null, "geen manifest");
 });
 

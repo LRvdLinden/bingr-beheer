@@ -38,6 +38,8 @@ struct UserDetailView: View {
     @State private var fullEmail: String?
     @State private var showFullEmail = false
     @State private var loadingEmail = false
+    // nieuwsbrief van dit account (user_newsletter_set)
+    @State private var newsletterSaving = false
 
     var body: some View {
         ScrollView {
@@ -87,6 +89,7 @@ struct UserDetailView: View {
                         InfoRow("Actief (30 d)", "\(Fmt.num(u.activeDays30d)) dagen")
                         InfoRow("Kijkt nu", Fmt.num(u.watchingNow))
                         InfoRow("Berichten per e-mail", u.emailOptOut ? "Afgemeld" : "Aan")
+                        newsletterRow(u)
                     }
                     .card()
 
@@ -204,6 +207,44 @@ struct UserDetailView: View {
 
     /// Oog: het volledige adres ophalen (actie user_email, staat in het logboek) en tonen; opnieuw tikken verbergt het.
     /// Eén keer ophalen per weergave; het adres wordt niet bewaard.
+    /// Nieuwsbrief: schakelaar, of alleen de stand als de klant alle mail heeft uitgezet (dat zet alleen de klant terug).
+    @ViewBuilder private func newsletterRow(_ u: UserDetail) -> some View {
+        InfoRow(label: "Nieuwsbrief") {
+            if let n = u.newsletter {
+                if n.emailOptOut {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Geen e-mail (alles uitgezet)")
+                        Text("Alleen de klant kan dit weer aanzetten.").font(.caption).foregroundStyle(Color.textDim)
+                    }
+                } else {
+                    Toggle(isOn: Binding(get: { n.subscribed }, set: { on in Task { await setNewsletter(on) } })) {
+                        Text(n.subscribed ? "Geabonneerd" : "Afgemeld")
+                    }
+                    .tint(.bingrRed)
+                    .disabled(newsletterSaving)
+                }
+            } else {
+                Text("Onbekend").foregroundStyle(Color.textDim)
+            }
+        }
+    }
+
+    private func setNewsletter(_ on: Bool) async {
+        newsletterSaving = true
+        defer { newsletterSaving = false }
+        do {
+            let r = try await session.call("user_newsletter_set", ["id": userID, "subscribed": on])
+            if let n = NewsletterPref(r["newsletter"]) { user?.newsletter = n } else {
+                user?.newsletter?.subscribed = on
+                user?.newsletter?.newsletterOptOut = !on
+            }
+            session.show(on ? "Nieuwsbrief aangezet voor dit account." : "Nieuwsbrief uitgezet voor dit account.")
+            session.usersRevision += 1
+        } catch {
+            session.report(error)
+        }
+    }
+
     private func toggleEmail() async {
         if showFullEmail { showFullEmail = false; return }
         if fullEmail == nil {

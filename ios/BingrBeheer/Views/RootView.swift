@@ -81,7 +81,7 @@ struct RootView: View {
     }
 }
 
-/// iPhone: tabbalk met de vijf onderdelen; Downloads en Instellingen via het menu rechtsboven. Vraagt iets anders om
+/// iPhone: tabbalk met de vijf onderdelen; Nieuwsbrief, Downloads en Instellingen via het menu rechtsboven. Vraagt iets anders om
 /// Downloads of Instellingen (deeplink bingrbeheer://downloads uit een pushmelding), dan opent dat als blad.
 struct TabLayout: View {
     @Environment(Session.self) private var session
@@ -106,11 +106,13 @@ struct TabLayout: View {
         }
         .sheet(item: $sheet) { s in
             NavigationStack {
-                if s == .downloads {
-                    DownloadsView()
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) { Button("Klaar") { sheet = nil } }
-                        }
+                if s == .downloads || s == .newsletter {
+                    Group {
+                        if s == .downloads { DownloadsView() } else { NewsletterView() }
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Klaar") { sheet = nil } }
+                    }
                 } else {
                     SettingsView()
                 }
@@ -128,7 +130,7 @@ struct SplitLayout: View {
         NavigationSplitView(columnVisibility: $visibility) {
             List(selection: Binding<AppSection?>(get: { session.section }, set: { if let s = $0 { session.section = s } })) {
                 Section {
-                    ForEach([AppSection.overview, .users, .support, .messages, .status]) { s in
+                    ForEach([AppSection.overview, .users, .support, .messages, .newsletter, .status]) { s in
                         Label(s.title, systemImage: s.icon)
                             .badge(s == .support ? (session.supportCounts?.unread ?? 0) : 0)
                             .tag(s)
@@ -162,6 +164,7 @@ struct SectionScreen: View {
     @Environment(Session.self) private var session
     @State private var showSettings = false
     @State private var showDownloads = false
+    @State private var showNewsletter = false
     @State private var confirmLogout = false
     @State private var confirmLogoutAll = false
 
@@ -187,6 +190,14 @@ struct SectionScreen: View {
                     }
             }
         }
+        .sheet(isPresented: $showNewsletter) {
+            NavigationStack {
+                NewsletterView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Klaar") { showNewsletter = false } }
+                    }
+            }
+        }
         .confirmationDialog("Uitloggen?", isPresented: $confirmLogout, titleVisibility: .visible) {
             Button("Uitloggen", role: .destructive) { session.logout() }
         }
@@ -208,6 +219,7 @@ struct SectionScreen: View {
             case .users: UsersView()
             case .support: SupportView()
             case .messages: MessagesView()
+            case .newsletter: NewsletterView()
             case .status: StatusView()
             case .downloads: DownloadsView()
             case .settings: SettingsView()
@@ -220,6 +232,7 @@ struct SectionScreen: View {
                     select: { s in
                         if compact && s == .settings { showSettings = true }
                         else if compact && s == .downloads { showDownloads = true }
+                        else if compact && s == .newsletter { showNewsletter = true }
                         else { session.section = s }
                     },
                     logout: { confirmLogout = true },
@@ -249,7 +262,7 @@ struct AppMenuButton: View {
     var body: some View {
         Menu {
             Section {
-                ForEach([AppSection.overview, .users, .support, .messages, .status]) { s in
+                ForEach([AppSection.overview, .users, .support, .messages, .newsletter, .status]) { s in
                     Button { select(s) } label: {
                         Label(title(s), systemImage: !compact && s == session.section ? "checkmark" : s.icon)
                     }

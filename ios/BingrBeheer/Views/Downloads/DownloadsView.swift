@@ -85,7 +85,7 @@ struct DownloadsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     InfoRow("Versie", b.version ?? "—")
                     InfoRow("Build", b.build ?? "—")
-                    InfoRow("Datum", Fmt.date(b.date))
+                    InfoRow(b.uploadedAt == nil ? "Datum" : "Geüpload", b.when ?? "—")
                     InfoRow("Grootte", BuildInfo.sizeText(b.size))
                     InfoRow(label: "Bestand") {
                         Text(verbatim: b.file).textSelection(.enabled)

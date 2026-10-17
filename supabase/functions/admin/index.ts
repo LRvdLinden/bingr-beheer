@@ -25,6 +25,11 @@
 //                       items[].plan = {plan, max_streams?, max_devices?, source?}; items[].first_name / last_name uit
 //                       user_metadata, of null. q zoekt op het begin van e-mailadres, voornaam, achternaam of "voornaam achternaam")
 //   user_detail         {token, id}       -> {…, first_name, last_name, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
+//   (nieuwsbrief) users: items[].newsletter = true|false|null; user_detail: newsletter = {subscribed, email_opt_out,
+//                       newsletter_opt_out} | null (null = onbekend, bv. kolom newsletter_opt_out nog niet aangemaakt)
+//   user_newsletter_set {token, id, subscribed: bool} -> {ok, newsletter}  (account_email_prefs.newsletter_opt_out; heeft de
+//                       klant alle mail uit (email_opt_out), dan 409 email_opted_out: dat zet alleen de klant terug.
+//                       503 newsletter_prefs_unavailable als de kolom ontbreekt. In admin_audit alleen subscribed.)
 //   user_set_name       {token, id, first_name, last_name} -> {ok, first_name, last_name}  (opgeschoond, max. 50 tekens elk;
 //                       leeg = weg; via auth.admin.updateUserById user_metadata, de rest van de metadata blijft. In admin_audit
 //                       alleen of de namen gezet zijn, nooit de naam zelf; zie names.ts)
@@ -104,6 +109,17 @@
 //                       10 minuten geldig; in admin_audit als build_link met platform en build, nooit de link of het token)
 //                       Tokens: HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY (gezet door de workflow Builds, dezelfde
 //                       sleutel als builds/key.php op de server); zie builds.ts. Zonder sleutel: ready=false / 503 builds_not_configured.
+//   Nieuwsbrief (functie `newsletter` in iptv-ios-appletv, header x-newsletter-secret = function-secret
+//   NEWSLETTER_ADMIN_SECRET; zie newsletter.ts / newsletter_test.ts). Alleen aantallen terug, nooit adressen.
+//   newsletter_status      {token}           -> {enabled, next:{key, at} | null, recipients:{nl, en, total}, editions:[{key,
+//                          created_at, recipients, sent, failed, done}]}
+//   newsletter_set_enabled {token, enabled: bool} -> {ok, enabled}  (in admin_audit met enabled)
+//   newsletter_preview     {token, to, lang?: nl|en} -> {ok}  (de huidige editie alleen naar dat adres; het adres wordt
+//                          gecontroleerd en nooit gelogd: in admin_audit alleen "preview" en de taal. Max. 10 per uur per IP.)
+//   newsletter_render      {token, lang?}    -> {subject, html}  (alleen doorgeven, voor de voorbeeldweergave)
+//                          Fouten: newsletter_not_configured (geen geheim), newsletter_not_deployed, newsletter_forbidden,
+//                          newsletter_unreachable, en van newsletter zelf bv. bad_email, rate_limited, tmdb_unavailable,
+//                          smtp_not_configured.
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -120,6 +136,9 @@ import { auditDetail, cleanPushInput, cleanTarget, historyView, pageInput, progr
 import {
   apnsHost, apnsJwt, apnsResult, cleanDeviceId, cleanPrefs, cleanRegister, DEFAULT_TOPIC, importApnsKey, summarizeSubscribers, testPayload,
 } from "./admin_push.ts";
+import {
+  cleanEmail, cleanEnabled, cleanLang, missingColumn, newsletterCall, planPrefChange, prefMap, prefView, renderView, statusView,
+} from "./newsletter.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -405,6 +424,26 @@ async function pushCall(action: string, payload: Record<string, unknown>): Promi
   }
   return { status: 200, out };
 }
+// ---- nieuwsbrief: doorgeven aan de functie `newsletter` (iptv-ios-appletv) met NEWSLETTER_ADMIN_SECRET ----
+// Nooit het geheim of het adres van een voorbeeldmail loggen (newsletter.ts logt alleen actie en HTTP-status).
+const NL_PREVIEW_MAX = 10, NL_PREVIEW_WINDOW = 3600;
+const nlCall = (action: string, payload: Record<string, unknown> = {}) =>
+  newsletterCall(env("SUPABASE_URL"), env("NEWSLETTER_ADMIN_SECRET"), action, payload);
+
+// Nieuwsbrief per account (account_email_prefs.newsletter_opt_out; schema in iptv-ios-appletv). Bestaat de kolom nog
+// niet, dan is de stand onbekend (null) en geen fout.
+async function newsletterPref(id: string) {
+  const { data, error } = await admin.from("account_email_prefs").select("email_opt_out,newsletter_opt_out").eq("user_id", id).maybeSingle();
+  if (error) { console.error("admin", "newsletter_pref", missingColumn(error) ? "kolom ontbreekt" : error.code ?? "db"); return null; }
+  return prefView(data);
+}
+async function newsletterPrefs(ids: string[]): Promise<Record<string, boolean> | null> {
+  if (!ids.length) return {};
+  const { data, error } = await admin.from("account_email_prefs").select("user_id,email_opt_out,newsletter_opt_out").in("user_id", ids);
+  if (error) { console.error("admin", "newsletter_prefs", missingColumn(error) ? "kolom ontbreekt" : error.code ?? "db"); return null; }
+  return prefMap(ids, data);
+}
+
 // Stand van de releasemeldingen voor de builds in Downloads (push_messages, schema in iptv-ios-appletv): per
 // "platform:build" wanneer en de aantallen. Fout = leeg (de tab werkt dan gewoon, zonder stand).
 async function releasePushes(manifest: Manifest, keys = releaseKeys(manifest)) {
@@ -653,7 +692,12 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       // build 97: zoeken in accounts (op e-mailadres of naam) in het logboek; alleen lengte van de zoekterm, niet de term zelf
       if (q) await audit("users_search", ip, null, { q_length: q.length, filter: body.filter || undefined, page, results: data?.total ?? 0 });
-      const items = (data?.items ?? []).map((u: Record<string, unknown>) => ({ ...u, email: maskEmail(u.email) }));
+      const rows = (data?.items ?? []) as Record<string, unknown>[];
+      // nieuwsbrief per account (true/false; null = onbekend, bv. kolom nog niet aangemaakt)
+      const nl = await newsletterPrefs(rows.map((u) => String(u.id ?? "")).filter(isUuid).map((id) => id.toLowerCase()));
+      const items = rows.map((u) => ({
+        ...u, email: maskEmail(u.email), newsletter: nl && isUuid(u.id) ? nl[String(u.id).toLowerCase()] ?? null : null,
+      }));
       return json({
         total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null,
         free_total: data?.free_total ?? null, page, page_size: size, items,
@@ -666,7 +710,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (!data) return json({ error: "not_found" }, 404);
       // build 97: inzage van een account in het logboek (wie, geen inhoud)
       await audit("user_view", ip, String(body.id).toLowerCase());
-      return json({ ...data, email: maskEmail(data.email) });
+      return json({ ...data, email: maskEmail(data.email), newsletter: await newsletterPref(String(body.id).toLowerCase()) });
     }
     case "user_email": {
       // het volledige e-mailadres (oog naast het gemaskeerde adres); in het logboek alleen dat het bekeken is
@@ -698,6 +742,30 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         changed: (before.first_name ?? null) !== fn.value || (before.last_name ?? null) !== ln.value,
       });
       return json({ ok: true, first_name: fn.value, last_name: ln.value });
+    }
+    case "user_newsletter_set": {
+      // nieuwsbrief van een account aan/uit (account_email_prefs.newsletter_opt_out). Alle mail uit (email_opt_out) wordt
+      // niet overschreven: dan 409 email_opted_out. In admin_audit alleen aan/uit, nooit het e-mailadres.
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const subscribed = body.subscribed;
+      if (typeof subscribed !== "boolean") return json({ error: "bad_enabled" }, 400);
+      const id = String(body.id).toLowerCase();
+      if (!(await authUser(id))) return json({ error: "not_found" }, 404);
+      const cur = await newsletterPref(id);
+      if (!cur) return json({ error: "newsletter_prefs_unavailable" }, 503);
+      const plan = planPrefChange(cur, subscribed);
+      if (!plan.ok) return json({ error: plan.error, newsletter: cur }, 409);
+      if (plan.changed) {
+        const { error } = await admin.from("account_email_prefs").upsert(
+          { user_id: id, newsletter_opt_out: plan.newsletter_opt_out, updated_at: new Date().toISOString() }, { onConflict: "user_id" },
+        );
+        if (error) {
+          if (missingColumn(error)) return json({ error: "newsletter_prefs_unavailable" }, 503);
+          throw new Error(error.message);
+        }
+      }
+      await audit("user_newsletter_set", ip, id, { subscribed });
+      return json({ ok: true, newsletter: prefView({ email_opt_out: cur.email_opt_out, newsletter_opt_out: plan.newsletter_opt_out }) });
     }
     case "plan_get": {
       if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
@@ -910,6 +978,42 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
     case "push_subscribers": {
       // pushabonnees van de Bingr-apps: alleen tellingen (overzicht en tab Pushmeldingen)
       return json((await countSubscribers()) ?? { devices: null });
+    }
+    case "newsletter_status": {
+      const { status, out } = await nlCall("status");
+      if (status !== 200) return json(out, status);
+      return json(statusView(out));
+    }
+    case "newsletter_set_enabled": {
+      const enabled = cleanEnabled(body.enabled);
+      if (enabled === null) return json({ error: "bad_enabled" }, 400);
+      const { status, out } = await nlCall("set_enabled", { enabled });
+      if (status !== 200) return json(out, status);
+      const now = typeof out.enabled === "boolean" ? out.enabled : enabled;
+      await audit("newsletter_set_enabled", ip, null, { enabled: now });
+      return json({ ok: true, enabled: now });
+    }
+    case "newsletter_preview": {
+      // voorbeeldmail naar één adres: nooit het adres loggen of in het logboek zetten
+      const to = cleanEmail(body.to);
+      if (!to) return json({ error: "bad_email" }, 400);
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      if (!(await rateOk(`admin-nlpreview:${ip}`, NL_PREVIEW_MAX, NL_PREVIEW_WINDOW))) {
+        return json({ error: "rate_limited", retry_after: NL_PREVIEW_WINDOW }, 429);
+      }
+      const { status, out } = await nlCall("preview", { to, lang });
+      if (status !== 200) return json(out, status);
+      await audit("newsletter_preview", ip, null, { kind: "preview", lang });
+      return json({ ok: true });
+    }
+    case "newsletter_render": {
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      const { status, out } = await nlCall("render", { lang });
+      if (status !== 200) return json(out, status);
+      const r = renderView(out);
+      return r ? json(r) : json({ error: "server_error" }, 502);
     }
     case "admin_push_register": {
       // pushmeldingen van de Beheer-app op dit apparaat (de cron van de functie push leest admin_push_devices)

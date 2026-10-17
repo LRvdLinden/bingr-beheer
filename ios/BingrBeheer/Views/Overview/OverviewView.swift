@@ -189,6 +189,8 @@ struct OverviewView: View {
             session.section = .status
         case .messages:
             session.section = .messages
+        case .newsletter:
+            session.section = .newsletter
         }
     }
 
@@ -200,12 +202,14 @@ struct OverviewView: View {
 
     private var needsPushHistory: Bool { layout.visible.contains { $0.type == .announcements } }
     private var needsPushSubscribers: Bool { layout.visible.contains { $0.type == .pushSubscribers } }
+    private var needsNewsletter: Bool { layout.visible.contains { $0.type == .newsletter } }
 
     /// Na toevoegen of instellen: ontbrekende gegevens (status, pushmeldingen, abonnees) alsnog ophalen.
     private func ensureData() {
         let missing = (needsStatus && data.status == nil && data.statusError == nil)
             || (needsPushHistory && data.pushHistory == nil && data.pushHistoryError == nil)
             || (needsPushSubscribers && data.pushSubscribers == nil && data.pushSubscribersError == nil)
+            || (needsNewsletter && data.newsletter == nil && data.newsletterError == nil)
         if missing { Task { await load() } }
     }
 
@@ -231,8 +235,9 @@ struct OverviewView: View {
         async let statusResult = fetch("status", ["op": "overview"], when: needsStatus)
         async let historyResult = fetch("push_history", ["page": 0], when: needsPushHistory)
         async let subsResult = fetch("push_subscribers", when: needsPushSubscribers)
-        let (rs, rst, rh, rp) = await (statsResult, statusResult, historyResult, subsResult)
-        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(rh) || Self.isAuth(rp) { return }
+        async let newsletterResult = fetch("newsletter_status", when: needsNewsletter)
+        let (rs, rst, rh, rp, rn) = await (statsResult, statusResult, historyResult, subsResult, newsletterResult)
+        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(rh) || Self.isAuth(rp) || Self.isAuth(rn) { return }
 
         var d = data
         switch rs {
@@ -275,6 +280,15 @@ struct OverviewView: View {
             d.pushSubscribersError = d.pushSubscribers == nil ? "Nog niet te tellen." : nil
         case .failure(let e)?:
             d.pushSubscribersError = Self.message(e)
+        case nil:
+            break
+        }
+        switch rn {
+        case .success(let j)?:
+            d.newsletter = NewsletterStatus(j)
+            d.newsletterError = nil
+        case .failure(let e)?:
+            d.newsletterError = Self.message(e)
         case nil:
             break
         }

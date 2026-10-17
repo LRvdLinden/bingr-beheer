@@ -18,6 +18,16 @@ enum Fmt {
         return d.formatted(.dateTime.day().month(.abbreviated).year().hour().minute().locale(nl))
     }
 
+    /// Datum en tijd in Nederlandse tijd (Europe/Amsterdam), los van de tijdzone van het apparaat: "17 okt 2026, 08:02".
+    static func dateTimeNL(_ d: Date?) -> String {
+        guard let d else { return "—" }
+        let style = Date.FormatStyle(locale: nl, timeZone: amsterdam)
+            .day().month(.abbreviated).year().hour(.twoDigits(amPM: .omitted)).minute()
+        return d.formatted(style)
+    }
+
+    static let amsterdam = TimeZone(identifier: "Europe/Amsterdam") ?? .current
+
     static func time(_ d: Date?) -> String {
         guard let d else { return "—" }
         return d.formatted(.dateTime.hour().minute().locale(nl))

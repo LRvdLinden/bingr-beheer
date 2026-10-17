@@ -21,6 +21,8 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     /// `announcements` (type-id blijft voor bewaarde indelingen) toont sinds build 14 de pushgeschiedenis (push_history).
     case platforms, versions, plans, support, status, announcements
     case pushSubscribers = "push_subscribers"
+    /// Abonnees van de nieuwsbrief (newsletter_status: recipients.total) ten opzichte van alle leden (stats).
+    case newsletter
 
     var id: String { rawValue }
 
@@ -35,6 +37,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .status: return "Servicestatus"
         case .announcements: return "Laatste pushmeldingen"
         case .pushSubscribers: return "Pushabonnees"
+        case .newsletter: return "Nieuwsbrief"
         }
     }
 
@@ -49,6 +52,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .status: return "Totaalstatus, storingen en meldingen van de statusmonitor"
         case .announcements: return "De nieuwste pushmeldingen: beheer, releases en herinneringen"
         case .pushSubscribers: return "Accounts en apparaten met pushmeldingen aan, per platform"
+        case .newsletter: return "Abonnees van de nieuwsbrief (bevestigd e-mailadres) ten opzichte van alle leden"
         }
     }
 
@@ -63,12 +67,13 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .status: return "waveform.path.ecg"
         case .announcements: return "bell.badge"
         case .pushSubscribers: return "person.2.wave.2"
+        case .newsletter: return "envelope.badge"
         }
     }
 
     var sizes: [DashSize] {
         switch self {
-        case .metric: return [.s, .m]
+        case .metric, .newsletter: return [.s, .m]
         case .dailyChart, .plans, .support, .status, .pushSubscribers: return [.s, .m, .l]
         case .platforms, .versions, .announcements: return [.m, .l]
         }
@@ -76,7 +81,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
 
     var defaultSize: DashSize {
         switch self {
-        case .metric, .support: return .s
+        case .metric, .support, .newsletter: return .s
         case .plans, .status, .pushSubscribers: return .m
         default: return .l
         }
@@ -136,11 +141,12 @@ struct DashOptions: Codable, Equatable {
     var showNotices: Bool?
     var pushPlatforms: [String]?
     var showNew: Bool?
+    var showLangs: Bool?
 
     enum CodingKeys: String, CodingKey {
         case metric, series, days, display, source, platforms, plans, statuses, count
         case onlyActive = "only_active", showIncidents = "show_incidents", showNotices = "show_notices"
-        case pushPlatforms = "push_platforms", showNew = "show_new"
+        case pushPlatforms = "push_platforms", showNew = "show_new", showLangs = "show_langs"
     }
 
     init() {}
@@ -161,6 +167,7 @@ struct DashOptions: Codable, Equatable {
         showNotices = try? c.decodeIfPresent(Bool.self, forKey: .showNotices)
         pushPlatforms = try? c.decodeIfPresent([String].self, forKey: .pushPlatforms)
         showNew = try? c.decodeIfPresent(Bool.self, forKey: .showNew)
+        showLangs = try? c.decodeIfPresent(Bool.self, forKey: .showLangs)
     }
 
     static let seriesValues = ["new_users", "signins", "active_users"]
@@ -215,6 +222,8 @@ struct DashOptions: Codable, Equatable {
         case .pushSubscribers:
             o.pushPlatforms = Self.subset(pushPlatforms, Self.pushPlatformValues, Self.pushPlatformValues)
             o.showNew = showNew ?? true
+        case .newsletter:
+            o.showLangs = showLangs ?? true
         }
         return o
     }

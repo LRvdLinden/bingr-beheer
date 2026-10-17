@@ -111,6 +111,17 @@ struct APIError: Error, LocalizedError {
         "apns_not_configured": "APNs (Apple) is nog niet ingesteld op de server (APNS_KEY_P8, APNS_KEY_ID, APNS_TEAM_ID).",
         "apns_invalid": "Apple weigerde het pushtoken van dit apparaat (verlopen of andere omgeving). Open de app opnieuw om je opnieuw aan te melden.",
         "apns_failed": "De testmelding kon niet worden verstuurd. Probeer het later opnieuw.",
+        // nieuwsbrief (newsletter_* en user_newsletter_set), zelfde teksten als web/admin.js
+        "newsletter_not_configured": "De nieuwsbrief is nog niet ingesteld (NEWSLETTER_ADMIN_SECRET; workflow Backend in iptv-ios-appletv draaien).",
+        "newsletter_not_deployed": "De functie newsletter staat nog niet online (workflow Backend in iptv-ios-appletv draaien).",
+        "newsletter_forbidden": "De functie newsletter weigerde de aanvraag (NEWSLETTER_ADMIN_SECRET klopt niet).",
+        "newsletter_unreachable": "De functie newsletter is niet bereikbaar. Probeer het later opnieuw.",
+        "bad_email": "Vul een geldig e-mailadres in.",
+        "bad_lang": "Kies Nederlands of Engels.",
+        "bad_enabled": "Ongeldige keuze (aan of uit).",
+        "tmdb_unavailable": "De films en series konden niet worden opgehaald (TMDB). Probeer het later opnieuw.",
+        "email_opted_out": "Deze klant heeft alle mail van Bingr uitgezet; alleen de klant kan dat weer aanzetten.",
+        "newsletter_prefs_unavailable": "De nieuwsbriefstand per account is nog niet beschikbaar (databaseschema bijwerken: workflow Backend in iptv-ios-appletv).",
     ]
 }
 

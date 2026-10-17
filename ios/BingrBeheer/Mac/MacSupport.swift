@@ -33,12 +33,12 @@ struct MacWindowConfigurator: UIViewRepresentable {
     }
 }
 
-/// Menubalk: menu Beheer met Vernieuwen (⌘R) en de onderdelen (⌘1 … ⌘6), Instellingen (⌘,) in het app-menu,
+/// Menubalk: menu Beheer met Vernieuwen (⌘R) en de onderdelen (⌘1 … ⌘7), Instellingen (⌘,) in het app-menu,
 /// geen Nieuw venster (één venster), en in Help de links naar het web.
 struct BeheerCommands: Commands {
     let session: Session
 
-    private static let sections: [AppSection] = [.overview, .users, .support, .messages, .status, .downloads]
+    private static let sections: [AppSection] = [.overview, .users, .support, .messages, .newsletter, .status, .downloads]
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}

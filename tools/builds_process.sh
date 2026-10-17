@@ -52,6 +52,8 @@ with open(path, "rb") as f:
     for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
 e = {k: meta.get(k) for k in ("version", "build", "date", "notes")}
 e.update(file=meta["file"], path=f"{plat}/{meta['file']}", size=os.path.getsize(path), sha256=h.hexdigest())
+# moment van plaatsen op de server (UTC); blijft bij de build staan, ook in history
+e["uploaded_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 cur = m["platforms"].get(plat)
 hist = []
 if cur:

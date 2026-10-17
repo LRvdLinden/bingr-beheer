@@ -6,6 +6,8 @@ struct BuildInfo: Identifiable, Hashable {
     let version: String?
     let build: String?
     let date: Date?
+    /// Moment van plaatsen op de server (`uploaded_at`, workflow Builds); ontbreekt bij oudere builds.
+    let uploadedAt: Date?
     let size: Int?
     let sha256: String?
     let notes: String?
@@ -18,6 +20,7 @@ struct BuildInfo: Identifiable, Hashable {
         version = j["version"].text
         build = j["build"].text
         date = j["date"].date
+        uploadedAt = j["uploaded_at"].date
         size = j["size"].int
         sha256 = j["sha256"].text
         notes = j["notes"].text
@@ -28,7 +31,13 @@ struct BuildInfo: Identifiable, Hashable {
 
     /// Versie, datum en grootte op één regel (voor oudere builds).
     var detail: String {
-        [version, date.map { Fmt.date($0) }, size.map { BuildInfo.sizeText($0) }].compactMap { $0 }.joined(separator: " · ")
+        [version, when, size.map { BuildInfo.sizeText($0) }].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Geüpload als datum en tijd (NL-tijd), anders alleen de datum uit het pakket.
+    var when: String? {
+        if let uploadedAt { return Fmt.dateTimeNL(uploadedAt) }
+        return date.map { Fmt.date($0) }
     }
 
     static func sizeText(_ n: Int?) -> String {

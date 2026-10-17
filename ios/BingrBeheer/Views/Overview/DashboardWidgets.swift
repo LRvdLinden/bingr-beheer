@@ -16,6 +16,9 @@ struct DashData {
     /// Pushabonnees (push_subscribers)
     var pushSubscribers: PushSubscribers?
     var pushSubscribersError: String?
+    /// Nieuwsbrief (newsletter_status): abonnees en of hij aan staat
+    var newsletter: NewsletterStatus?
+    var newsletterError: String?
 
     /// Platforms die in de gegevens voorkomen (keuzelijst bij Apparaten per platform en App-versies).
     var knownPlatforms: [String] {
@@ -31,6 +34,7 @@ enum DashTarget {
     case support(String)
     case status
     case messages
+    case newsletter
 }
 
 enum DashText {
@@ -49,6 +53,7 @@ enum DashText {
         case .status: return "Servicestatus"
         case .announcements: return "Laatste pushmeldingen"
         case .pushSubscribers: return "Pushabonnees"
+        case .newsletter: return "Nieuwsbrief"
         }
     }
 
@@ -184,6 +189,7 @@ struct DashWidgetCard: View {
         case .support: return .support(DashText.supportFilter(for: o.statusList))
         case .status: return .status
         case .announcements, .pushSubscribers: return .messages
+        case .newsletter: return .newsletter
         default: return nil
         }
     }
@@ -240,6 +246,7 @@ struct DashWidgetCard: View {
             case .status: statusView
             case .announcements: pushHistoryView
             case .pushSubscribers: pushSubscribersView
+            case .newsletter: newsletterView
             }
         }
     }
@@ -501,6 +508,31 @@ struct DashWidgetCard: View {
             }
         } else {
             placeholder(data.pushHistoryError)
+        }
+    }
+
+    // Nieuwsbrief: abonnees (bevestigd e-mailadres, uit newsletter_status) / alle leden (stats)
+    @ViewBuilder private var newsletterView: some View {
+        if let n = data.newsletter {
+            let all = data.stats?.totalUsers ?? 0
+            let subs = n.recipientsTotal
+            let pct = all > 0 ? "\(Int((Double(subs) / Double(all) * 100).rounded()))%" : "—"
+            let langs = o.showLangs == false ? nil : "\(Fmt.num(n.recipientsNl)) NL · \(Fmt.num(n.recipientsEn)) EN"
+            let state = n.enabled ? (n.nextAt.map { "aan · volgende \(Fmt.longDateTimeNL($0))" } ?? "aan") : "uit"
+            if widget.size == .s {
+                tile(title, "\(Fmt.num(subs)) / \(Fmt.num(all))",
+                     ["\(pct) van de leden", langs, "verzending \(n.enabled ? "aan" : "uit")"].compactMap { $0 }.joined(separator: " · "))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    head(nil, trailing: Fmt.num(subs))
+                    Text("\(Fmt.num(subs)) van \(Fmt.plural(all, "lid", "leden")) (\(pct))")
+                        .font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2)
+                    Text([langs, "Verzending \(state)"].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(Color.textDim).lineLimit(2)
+                }
+            }
+        } else {
+            placeholder(data.newsletterError)
         }
     }
 

@@ -26,9 +26,12 @@ struct UserRow: Identifiable, Hashable {
     let blockedUntil: Date?
     /// Abonnement (`plan`: Gratis als het ontbreekt).
     let plan: AccountPlan
+    /// Krijgt de nieuwsbrief (`newsletter`); nil = onbekend.
+    let newsletter: Bool?
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        newsletter = j["newsletter"].bool
         plan = AccountPlan(j["plan"])
         isBlocked = j["blocked"].object != nil
         blockedUntil = j["blocked"]["until"].date
@@ -72,6 +75,8 @@ struct UserDetail {
     let activeDays30d: Int
     let watchingNow: Int
     let emailOptOut: Bool
+    /// Nieuwsbrief van dit account (`newsletter`); nil = onbekend (kolom nog niet aangemaakt).
+    var newsletter: NewsletterPref?
     let devices: [Device]
     /// Actieve blokkade en de geschiedenis (nieuwste eerst, max. 20).
     let block: AccountBlock?
@@ -92,6 +97,7 @@ struct UserDetail {
         activeDays30d = j["active_days_30d"].int ?? 0
         watchingNow = j["watching_now"].int ?? 0
         emailOptOut = j["email_opt_out"].bool ?? false
+        newsletter = NewsletterPref(j["newsletter"])
         block = j["block"].object != nil ? AccountBlock(j["block"]) : nil
         blocks = j["blocks"].array.map(AccountBlock.init)
         devices = j["devices"].array.map {

@@ -64,8 +64,11 @@ const HISTORY_MAX = 10;
 /** Eén build uit het manifest: alle velden blijven, maar alleen met een geldige bestandsnaam (anders null). */
 function entry(v: unknown): BuildEntry | null {
   if (!isObj(v) || !isValidBuildFile(v.file)) return null;
-  const { history: _h, ...rest } = v;
-  return rest as BuildEntry;
+  const { history: _h, uploaded_at, ...rest } = v;
+  // uploaded_at (workflow Builds, UTC ISO 8601): alleen een geldige tijd; oudere builds hebben het niet (dan alleen date)
+  const up = typeof uploaded_at === "string" && uploaded_at.length <= 40 && /^\d{4}-\d{2}-\d{2}T/.test(uploaded_at)
+    && !Number.isNaN(Date.parse(uploaded_at)) ? uploaded_at : undefined;
+  return (up ? { ...rest, uploaded_at: up } : rest) as BuildEntry;
 }
 
 /**
