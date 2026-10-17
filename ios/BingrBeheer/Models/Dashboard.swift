@@ -18,7 +18,9 @@ enum DashSize: String, Codable, CaseIterable, Identifiable {
 enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     case metric
     case dailyChart = "daily_chart"
+    /// `announcements` (type-id blijft voor bewaarde indelingen) toont sinds build 14 de pushgeschiedenis (push_history).
     case platforms, versions, plans, support, status, announcements
+    case pushSubscribers = "push_subscribers"
 
     var id: String { rawValue }
 
@@ -31,7 +33,8 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .plans: return "Abonnementen"
         case .support: return "Supporttickets"
         case .status: return "Servicestatus"
-        case .announcements: return "Laatste berichten"
+        case .announcements: return "Laatste pushmeldingen"
+        case .pushSubscribers: return "Pushabonnees"
         }
     }
 
@@ -44,7 +47,8 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .plans: return "Gratis, Lifetime en accounts met eigen limieten"
         case .support: return "Tickets per status en wat op een reactie wacht"
         case .status: return "Totaalstatus, storingen en meldingen van de statusmonitor"
-        case .announcements: return "De nieuwste berichten aan de apps"
+        case .announcements: return "De nieuwste pushmeldingen: beheer, releases en herinneringen"
+        case .pushSubscribers: return "Accounts en apparaten met pushmeldingen aan, per platform"
         }
     }
 
@@ -57,14 +61,15 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .plans: return "star"
         case .support: return "lifepreserver"
         case .status: return "waveform.path.ecg"
-        case .announcements: return "megaphone"
+        case .announcements: return "bell.badge"
+        case .pushSubscribers: return "person.2.wave.2"
         }
     }
 
     var sizes: [DashSize] {
         switch self {
         case .metric: return [.s, .m]
-        case .dailyChart, .plans, .support, .status: return [.s, .m, .l]
+        case .dailyChart, .plans, .support, .status, .pushSubscribers: return [.s, .m, .l]
         case .platforms, .versions, .announcements: return [.m, .l]
         }
     }
@@ -72,7 +77,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     var defaultSize: DashSize {
         switch self {
         case .metric, .support: return .s
-        case .plans, .status: return .m
+        case .plans, .status, .pushSubscribers: return .m
         default: return .l
         }
     }
@@ -129,10 +134,13 @@ struct DashOptions: Codable, Equatable {
     var onlyActive: Bool?
     var showIncidents: Bool?
     var showNotices: Bool?
+    var pushPlatforms: [String]?
+    var showNew: Bool?
 
     enum CodingKeys: String, CodingKey {
         case metric, series, days, display, source, platforms, plans, statuses, count
         case onlyActive = "only_active", showIncidents = "show_incidents", showNotices = "show_notices"
+        case pushPlatforms = "push_platforms", showNew = "show_new"
     }
 
     init() {}
@@ -151,6 +159,8 @@ struct DashOptions: Codable, Equatable {
         onlyActive = try? c.decodeIfPresent(Bool.self, forKey: .onlyActive)
         showIncidents = try? c.decodeIfPresent(Bool.self, forKey: .showIncidents)
         showNotices = try? c.decodeIfPresent(Bool.self, forKey: .showNotices)
+        pushPlatforms = try? c.decodeIfPresent([String].self, forKey: .pushPlatforms)
+        showNew = try? c.decodeIfPresent(Bool.self, forKey: .showNew)
     }
 
     static let seriesValues = ["new_users", "signins", "active_users"]
@@ -158,6 +168,7 @@ struct DashOptions: Codable, Equatable {
     static let planValues = ["free", "lifetime", "custom"]
     static let statusValues = ["new", "open", "pending", "resolved", "closed"]
     static let countValues = [3, 5]
+    static let pushPlatformValues = ["ios", "ipados", "macos", "android", "web"]
 
     private static func pick<T: Equatable>(_ v: T?, _ allowed: [T], _ def: T) -> T {
         if let v, allowed.contains(v) { return v }
@@ -201,7 +212,9 @@ struct DashOptions: Codable, Equatable {
             o.showNotices = showNotices ?? true
         case .announcements:
             o.count = Self.pick(count, Self.countValues, 3)
-            o.onlyActive = onlyActive ?? false
+        case .pushSubscribers:
+            o.pushPlatforms = Self.subset(pushPlatforms, Self.pushPlatformValues, Self.pushPlatformValues)
+            o.showNew = showNew ?? true
         }
         return o
     }
@@ -213,6 +226,7 @@ struct DashOptions: Codable, Equatable {
     var platformList: [String] { platforms ?? [] }
     var planList: [String] { plans ?? Self.planValues }
     var statusList: [String] { statuses ?? ["new", "open", "pending"] }
+    var pushPlatformList: [String] { pushPlatforms ?? Self.pushPlatformValues }
 }
 
 struct DashWidget: Codable, Equatable, Identifiable {

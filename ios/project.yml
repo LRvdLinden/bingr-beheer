@@ -14,7 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "13"
+    CURRENT_PROJECT_VERSION: "14"
     # Team van Léon van der Linden (zelfde als de Bingr-apps); automatisch ondertekenen
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -33,6 +33,9 @@ targets:
     entitlements:
       path: BingrBeheer/BingrBeheer.entitlements
       properties:
+        # pushmeldingen (APNs, topic nl.lrvdlinden.bingr.beheer): development hier; bij archiveren/distribueren zet Xcode
+        # dit op production. De Mac (Catalyst) heeft dezelfde capability in BingrBeheer-macOS.entitlements.
+        aps-environment: development
         # eerst de eigen groep van de app (daar blijft het sessietoken), daarna de gedeelde groep voor het widget-token
         keychain-access-groups:
           - $(AppIdentifierPrefix)nl.lrvdlinden.bingr.beheer

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Gegevens voor het dashboard: `stats` altijd, `status` (op overview) en `announcements_list` alleen als een zichtbare
-/// widget ze nodig heeft. Support-tellers komen uit de sessie.
+/// Gegevens voor het dashboard: `stats` altijd, `status` (op overview), `push_history` en `push_subscribers` alleen als
+/// een zichtbare widget ze nodig heeft. Support-tellers komen uit de sessie.
 struct DashData {
     var stats: Stats?
     var statsError: String?
@@ -10,8 +10,12 @@ struct DashData {
     var statusLevel = "operational"
     var statusAffected: [String] = []
     var statusError: String?
-    var announcements: [Announcement]?
-    var announcementsError: String?
+    /// Laatste pushmeldingen (push_history, eerste bladzijde)
+    var pushHistory: [PushMessage]?
+    var pushHistoryError: String?
+    /// Pushabonnees (push_subscribers)
+    var pushSubscribers: PushSubscribers?
+    var pushSubscribersError: String?
 
     /// Platforms die in de gegevens voorkomen (keuzelijst bij Apparaten per platform en App-versies).
     var knownPlatforms: [String] {
@@ -43,7 +47,8 @@ enum DashText {
         case .plans: return "Abonnementen"
         case .support: return o.statusList == ["new", "open", "pending"] ? "Open tickets" : "Supporttickets"
         case .status: return "Servicestatus"
-        case .announcements: return "Laatste berichten"
+        case .announcements: return "Laatste pushmeldingen"
+        case .pushSubscribers: return "Pushabonnees"
         }
     }
 
@@ -178,7 +183,7 @@ struct DashWidgetCard: View {
         case .plans: return .users(widget.size == .s ? (o.planList.first ?? "") : "")
         case .support: return .support(DashText.supportFilter(for: o.statusList))
         case .status: return .status
-        case .announcements: return .messages
+        case .announcements, .pushSubscribers: return .messages
         default: return nil
         }
     }
@@ -216,7 +221,7 @@ struct DashWidgetCard: View {
 
     private var needsStats: Bool {
         switch widget.type {
-        case .support, .status, .announcements: return false
+        case .support, .status, .announcements, .pushSubscribers: return false
         case .platforms: return o.source != "live"
         default: return true
         }
@@ -233,7 +238,8 @@ struct DashWidgetCard: View {
             case .plans: plansView
             case .support: supportView
             case .status: statusView
-            case .announcements: announcementsView
+            case .announcements: pushHistoryView
+            case .pushSubscribers: pushSubscribersView
             }
         }
     }
@@ -473,27 +479,57 @@ struct DashWidgetCard: View {
         }
     }
 
-    // Laatste berichten
-    @ViewBuilder private var announcementsView: some View {
-        if let all = data.announcements {
-            let items = Array(all.filter { o.onlyActive != true || $0.active }.prefix(widget.size == .m ? 2 : (o.count ?? 3)))
+    // Laatste pushmeldingen (push_history)
+    @ViewBuilder private var pushHistoryView: some View {
+        if let all = data.pushHistory {
+            let items = Array(all.prefix(widget.size == .m ? 2 : (o.count ?? 3)))
             VStack(alignment: .leading, spacing: 8) {
-                head(o.onlyActive == true ? "Actieve berichten" : "Nieuwste eerst")
+                head("Nieuwste eerst")
                 if items.isEmpty {
-                    EmptyText(text: o.onlyActive == true ? "Geen actieve berichten." : "Nog geen berichten.")
+                    EmptyText(text: "Nog geen pushmeldingen.")
                 }
-                ForEach(items) { a in
+                ForEach(items) { m in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(a.titleNl).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(m.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
                         HStack(spacing: 6) {
-                            Chip(text: a.active ? "Actief" : "Verlopen", tone: a.active ? .good : .neutral)
-                            Text(Fmt.date(a.createdAt)).font(.caption).foregroundStyle(Color.textDim)
+                            Chip(text: m.kindLabel, tone: m.kindTone)
+                            Text("\(Fmt.date(m.createdAt)) · \(Fmt.num(m.counts.sent)) verstuurd\(m.done ? "" : " · bezig")")
+                                .font(.caption).foregroundStyle(Color.textDim).lineLimit(1)
                         }
                     }
                 }
             }
         } else {
-            placeholder(data.announcementsError)
+            placeholder(data.pushHistoryError)
+        }
+    }
+
+    // Pushabonnees (push_subscribers)
+    @ViewBuilder private var pushSubscribersView: some View {
+        if let d = data.pushSubscribers {
+            let pf = o.pushPlatformList
+            let all = pf.count == DashOptions.pushPlatformValues.count
+            let devices = all ? d.devices : pf.reduce(0) { $0 + d.count($1) }
+            let newText = o.showNew == false ? nil : "+\(Fmt.num(d.newAccounts7d)) \(d.newAccounts7d == 1 ? "account" : "accounts") in 7 dagen"
+            if widget.size == .s {
+                tile(title, Fmt.num(d.accounts), [Fmt.plural(devices, "apparaat", "apparaten"), newText].compactMap { $0 }.joined(separator: " · "))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    head(all ? "Bingr-apps met pushmeldingen aan" : "Alleen " + pf.map { PushPlatformOption.name($0) }.joined(separator: ", "),
+                         trailing: widget.size == .m ? Fmt.num(d.accounts) : nil)
+                    Text("\(Fmt.plural(d.accounts, "account", "accounts")) · \(Fmt.plural(devices, "apparaat", "apparaten"))\(newText.map { " · " + $0 } ?? "")")
+                        .font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2)
+                    if widget.size == .l {
+                        HBarList(rows: pf.map { .init(label: PushPlatformOption.name($0), icon: Labels.platformIcon($0 == "ipados" ? "ipad" : $0), value: d.count($0)) },
+                                 limit: 5)
+                    } else {
+                        Text(pf.map { "\(PushPlatformOption.name($0)) \(Fmt.num(d.count($0)))" }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(Color.textDim).lineLimit(2)
+                    }
+                }
+            }
+        } else {
+            placeholder(data.pushSubscribersError)
         }
     }
 

@@ -206,3 +206,29 @@ struct PushMessage: Identifiable {
     /// Hostnaam van de link ("link naar bingr.online").
     var urlHost: String? { url.flatMap { URL(string: $0)?.host } }
 }
+
+/// Pushabonnees van de Bingr-apps (`push_subscribers`, uit push_devices): alleen tellingen.
+struct PushSubscribers: Equatable {
+    /// Platforms met systeem-push, in vaste volgorde.
+    static let platforms = ["ios", "ipados", "macos", "android", "web"]
+
+    let accounts: Int
+    let devices: Int
+    let byPlatform: [String: Int]
+    let newDevices7d: Int
+    let newAccounts7d: Int
+
+    /// nil als de server (nog) niet kan tellen (`devices: null`).
+    init?(_ j: JSON) {
+        guard let d = j["devices"].int else { return nil }
+        devices = d
+        accounts = j["accounts"].int ?? 0
+        var by: [String: Int] = [:]
+        for p in Self.platforms { by[p] = j["by_platform"][p].int ?? 0 }
+        byPlatform = by
+        newDevices7d = j["new_7d"]["devices"].int ?? 0
+        newAccounts7d = j["new_7d"]["accounts"].int ?? 0
+    }
+
+    func count(_ platform: String) -> Int { byPlatform[platform] ?? 0 }
+}

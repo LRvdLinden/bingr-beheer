@@ -111,6 +111,11 @@
 
     <section id="tab-messages" class="tab hidden">
       <div class="row-head"><h1>Pushmeldingen</h1><button id="pushRefresh" class="btn ghost small" type="button">Vernieuwen</button></div>
+      <div class="panel ps-panel">
+        <h2>Pushabonnees</h2>
+        <p class="sub">Accounts en apparaten van de Bingr-apps met pushmeldingen aan (iPhone, iPad, Mac, Android en de webspeler).</p>
+        <div id="pushSubs" class="ps-grid" aria-live="polite"><p class="empty">Laden…</p></div>
+      </div>
       <div class="grid2 compose-grid">
         <form id="composeForm" class="panel" novalidate>
           <h2>Nieuwe pushmelding</h2>
@@ -148,13 +153,9 @@
               <label class="pf off"><input type="checkbox" disabled><span>Samsung TV <small>geen systeem-push</small></span></label>
             </div>
           </fieldset>
-          <label class="switch"><input id="mail" type="checkbox"><span class="track"></span><span>Ook per e-mail sturen</span></label>
-          <p id="mailHint" class="sub">E-mail gaat naar alle accounts met berichtenmail aan; alleen bij <b>Alle gebruikers</b>.</p>
-          <p id="smtpHint" class="sub hidden">E-mail is niet ingesteld (BINGR_SMTP_* ontbreken).</p>
           <div id="composeErr" class="err" role="alert"></div>
           <button id="sendBtn" class="btn" type="submit">Versturen</button>
           <div id="progress" class="progress hidden" aria-live="polite"><div class="bar"><span></span></div><p class="sub"></p></div>
-          <div id="mailProgress" class="progress hidden" aria-live="polite"><div class="bar"><span></span></div><p class="sub"></p></div>
         </form>
         <div class="panel">
           <div class="row-head"><h2>Voorbeeld</h2><div id="pvSeg" class="seg"><button type="button" data-lang="nl" class="on">NL</button><button type="button" data-lang="en">EN</button></div></div>
@@ -174,7 +175,6 @@
         <div id="pushList" class="ph-list"></div>
         <div class="pager"><button id="phPrev" class="btn ghost small" type="button">Nieuwere</button><span id="phPage"></span><button id="phNext" class="btn ghost small" type="button">Oudere</button></div>
       </div>
-      <div class="panel"><h2>E-mail en oude berichten</h2><p class="sub">Berichten per e-mail, en de berichten van vóór de pushmeldingen (in-app banner, bestaat niet meer).</p><div id="annList" class="ann-list"></div></div>
     </section>
 
     <section id="tab-status" class="tab hidden">

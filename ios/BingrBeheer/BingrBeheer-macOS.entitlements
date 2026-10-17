@@ -4,10 +4,14 @@
   Entitlements van BingrBeheer op de Mac (Mac Catalyst; CODE_SIGN_ENTITLEMENTS[sdk=macosx*] in ios/project.yml).
   iOS gebruikt het door XcodeGen gegenereerde BingrBeheer.entitlements. Houd de Keychain-groepen gelijk aan project.yml:
   eerst de eigen groep van de app (sessietoken), daarna de gedeelde groep voor het widget-token.
+  Pushmeldingen (APNs): com.apple.developer.aps-environment (de macOS-vorm van aps-environment op iOS); development hier,
+  bij archiveren/distribueren zet Xcode dit op production.
   Geen bestandstoegang nodig: downloads gaan via de standaardbrowser (dl.php), delen en kopiëren alleen als link.
 -->
 <plist version="1.0">
 <dict>
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<key>com.apple.security.network.client</key>

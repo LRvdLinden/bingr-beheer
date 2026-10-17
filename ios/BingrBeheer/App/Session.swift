@@ -41,25 +41,6 @@ struct Toast: Equatable {
     let bad: Bool
 }
 
-/// Voortgang van het e-mailen van een bericht (blijft lopen als je van tab wisselt).
-struct MailProgress: Equatable {
-    var announcementID: String
-    var total: Int
-    var sent = 0
-    var failed = 0
-    var done = false
-
-    var fraction: Double {
-        total > 0 ? min(1, Double(sent + failed) / Double(total)) : (done ? 1 : 0)
-    }
-
-    var text: String {
-        var s = "\(Fmt.num(sent)) verstuurd"
-        if failed > 0 { s += ", \(Fmt.num(failed)) mislukt" }
-        return s + " van \(Fmt.num(total))" + (done ? " · klaar" : "…")
-    }
-}
-
 /// Inlogsessie, vergrendeling en gedeelde toestand van de app.
 @MainActor
 @Observable
@@ -87,9 +68,7 @@ final class Session {
     // support-tellers (badge op de tab, tegel in Overzicht)
     var supportCounts: SupportCounts?
 
-    // pushmeldingen (tab messages) en berichten per e-mail
-    var mailProgress: MailProgress?
-    var announcementsVersion = 0
+    // pushmeldingen (tab messages)
     /// Voortgang van de laatst verstuurde pushmelding (push_progress tot done).
     var pushProgress: PushProgress?
     /// Wordt opgehoogd na versturen: de geschiedenis laadt opnieuw.
@@ -144,6 +123,8 @@ final class Session {
         startCountsPolling()
         // widgets: meteen een nieuw widget-token (30 dagen), daarna herladen de widgets
         Task { await refreshWidgetToken(force: true) }
+        // pushmeldingen: opnieuw aanmelden en (eenmalig, op een rustig moment) om toestemming vragen
+        PushService.shared.didSignIn()
     }
 
     /// build 97: overal uitloggen (actie logout_all): alle beheer-tokens vervallen, ook op het web en andere apparaten.
@@ -154,10 +135,13 @@ final class Session {
 
     /// Uitloggen. `clearWidgets` false alleen als de sessie (12 uur) vanzelf verloopt: het widget-token (30 dagen) blijft
     /// dan werken. Zelf uitloggen of overal uitloggen wist het widget-token (overal uitloggen trekt het op de server ook in).
+    /// Zelf uitloggen meldt ook de pushmeldingen van dit apparaat af (admin_push_unregister, met het token dat net eindigt);
+    /// verloopt alleen de sessie, dan blijven ze aan tot je opnieuw inlogt (zoals de widgets).
     func logout(_ message: String? = nil, clearWidgets: Bool = true) {
         if clearWidgets {
             WidgetTokenStore.delete()
             widgetTokenTriedAt = nil
+            PushService.shared.signOut(token: token)
         }
         WidgetCenter.shared.reloadAllTimelines()
         Keychain.delete(Self.keychainAccount)
@@ -166,7 +150,6 @@ final class Session {
         loginMessage = message
         supportCounts = nil
         supportPath = []
-        mailProgress = nil
         pushProgress = nil
         countsTask?.cancel()
         countsTask = nil
@@ -281,13 +264,15 @@ final class Session {
 
     // MARK: deep links
 
-    /// bingrbeheer://support/1001 of https://beheer.bingr.online/#support/1001; uit de widgets ook bingrbeheer://support,
-    /// bingrbeheer://status en bingrbeheer://overview (die tab openen).
+    /// bingrbeheer://support/1001 of https://beheer.bingr.online/#support/1001; uit de widgets en pushmeldingen ook
+    /// bingrbeheer://support, bingrbeheer://status, bingrbeheer://downloads en bingrbeheer://overview (die tab openen;
+    /// Downloads op de iPhone als blad, zie TabLayout).
     func open(_ url: URL) {
         if url.scheme?.lowercased() == "bingrbeheer" {
             switch url.host?.lowercased() {
             case "status": section = .status; return
             case "overview": section = .overview; return
+            case "downloads": section = .downloads; return
             default: break
             }
         }

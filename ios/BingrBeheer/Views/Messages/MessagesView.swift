@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Tab Pushmeldingen (vroeger Berichten): nieuwe pushmelding (NL/EN, link, doelgroep) met voorbeeld, bevestiging met het
-/// aantal apparaten, voortgang, de geschiedenis (ook releasemeldingen) en de e-mails/oude berichten. Zoals de tab in
-/// web/admin.js; acties push_count, push_send, push_progress, push_history (functie admin → push, docs/PUSH.md).
+/// Tab Pushmeldingen: bovenaan de pushabonnees, dan een nieuwe pushmelding (NL/EN, link, doelgroep) met voorbeeld,
+/// bevestiging met het aantal apparaten, voortgang en de geschiedenis (ook releasemeldingen). Alleen pushmeldingen (geen
+/// e-mail of berichten in de apps). Zoals de tab in web/admin.js; acties push_subscribers, push_count, push_send,
+/// push_progress, push_history (functie admin → push, docs/PUSH.md).
 struct MessagesView: View {
     @Environment(Session.self) private var session
 
@@ -17,7 +18,6 @@ struct MessagesView: View {
     @State private var selectedAccounts: [UserRow] = []
     @State private var accountQuery = ""
     @State private var accountResults: [UserRow] = []
-    @State private var mail = false
     @State private var previewLang = "nl"
     @State private var error = ""
     @State private var busy = false
@@ -30,11 +30,9 @@ struct MessagesView: View {
     @State private var page = 0
     @State private var hasMore = false
 
-    // e-mail en oude berichten
-    @State private var announcements: [Announcement] = []
-    @State private var smtpOK = true
-    @State private var annLoaded = false
-    @State private var deleting: Announcement?
+    // pushabonnees (push_subscribers)
+    @State private var subscribers: PushSubscribers?
+    @State private var subscribersError: String?
 
     private static let titleMax = 100
     private static let bodyMax = 600
@@ -42,6 +40,7 @@ struct MessagesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                subscribersCard
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         composeCard
@@ -54,7 +53,6 @@ struct MessagesView: View {
                     }
                 }
                 historyCard
-                announcementsCard
             }
             .padding(16)
         }
@@ -63,28 +61,19 @@ struct MessagesView: View {
         .navigationTitle("Pushmeldingen")
         .refreshableCommand { await loadAll() }
         .task { if !historyLoaded { await loadAll() } }
-        .onChange(of: session.announcementsVersion) { _, _ in Task { await loadAnnouncements() } }
         .onChange(of: session.pushVersion) { _, _ in Task { await loadHistory() } }
-        .onChange(of: audience) { _, a in if a != .all { mail = false } }
         .task(id: accountQuery) { await searchAccounts() }
         .alert("Pushmelding versturen", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }), presenting: pending) { p in
             Button("Annuleren", role: .cancel) {}
-            Button(p.devices == 0 ? "Alleen e-mailen" : (p.mail ? "Versturen en e-mailen" : "Versturen")) { Task { await send(p) } }
+            Button("Versturen") { Task { await send(p) } }
         } message: { p in
             Text(p.message)
-        }
-        .alert("Bericht verwijderen", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { a in
-            Button("Annuleren", role: .cancel) {}
-            Button("Verwijderen", role: .destructive) { Task { await delete(a) } }
-        } message: { a in
-            Text("\"\(a.titleNl)\" uit de lijst verwijderen?")
         }
     }
 
     // MARK: opstellen
 
     private var pushRunning: Bool { session.pushProgress.map { !$0.done } ?? false }
-    private var mailRunning: Bool { session.mailProgress.map { !$0.done } ?? false }
 
     private var composeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -128,13 +117,6 @@ struct MessagesView: View {
 
             audienceSection
 
-            Toggle("Ook per e-mail sturen", isOn: $mail)
-                .disabled(!smtpOK || audience != .all)
-            Text(smtpOK ? "E-mail gaat naar alle accounts met berichtenmail aan; alleen bij Alle gebruikers."
-                        : "E-mail is niet ingesteld (BINGR_SMTP_* ontbreken).")
-                .font(.caption).foregroundStyle(Color.textDim)
-                .opacity(audience == .all ? 1 : 0.6)
-
             if !error.isEmpty {
                 Text(error).font(.subheadline).foregroundStyle(Color.warn)
             }
@@ -143,23 +125,17 @@ struct MessagesView: View {
             } label: {
                 HStack {
                     if busy { ProgressView().tint(.white) }
-                    Text(mail ? "Versturen en e-mailen" : "Versturen")
+                    Text("Versturen")
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bingr)
-            .disabled(busy || pushRunning || mailRunning)
+            .disabled(busy || pushRunning)
 
             if let p = session.pushProgress {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: p.fraction).tint(Color.ok)
                     Text(p.text).font(.caption).foregroundStyle(Color.textDim)
-                }
-            }
-            if let p = session.mailProgress {
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView(value: p.fraction).tint(Color.stateInfo)
-                    Text("E-mail: " + p.text).font(.caption).foregroundStyle(Color.textDim)
                 }
             }
         }
@@ -381,23 +357,6 @@ struct MessagesView: View {
         .card()
     }
 
-    private var announcementsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            CardHeader(title: "E-mail en oude berichten",
-                       subtitle: "Berichten per e-mail, en de berichten van vóór de pushmeldingen (in-app banner, bestaat niet meer).")
-            if annLoaded && announcements.isEmpty {
-                EmptyText(text: "Nog geen berichten.")
-            }
-            ForEach(announcements) { a in
-                AnnouncementRow(item: a, canResume: !mailRunning,
-                                resume: { Task { await sendMails(id: a.id, total: a.emailTotal) } },
-                                delete: { deleting = a })
-                if a.id != announcements.last?.id { Divider().overlay(Color.line) }
-            }
-        }
-        .card()
-    }
-
     // MARK: acties
 
     private func trim(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -453,7 +412,6 @@ struct MessagesView: View {
         if tEn.isEmpty != bEn.isEmpty { error = APIError.text("en_incomplete"); return }
         if !url.isEmpty && validLink(url) == nil { error = APIError.text("bad_link"); return }
         guard let t = target() else { error = APIError.text(audience == .accounts ? "no_accounts" : "no_platforms"); return }
-        let withMail = mail && smtpOK && audience == .all
 
         busy = true
         defer { busy = false }
@@ -479,24 +437,21 @@ struct MessagesView: View {
         } catch {
             return
         }
-        if devices == 0 && !withMail {
+        if devices == 0 {
             error = "Geen apparaten met pushmeldingen in deze doelgroep; er is niets verstuurd."
             return
         }
-        var message: String
+        let message: String
         if let n = devices {
-            message = n == 0 ? "Geen apparaten met pushmeldingen in deze doelgroep. Alleen de e-mail versturen?"
-                : "Pushmelding versturen naar \(Fmt.plural(n, "apparaat", "apparaten"))\(parts.isEmpty ? "" : " (\(parts))")?\(accountsLine)"
+            message = "Pushmelding versturen naar \(Fmt.plural(n, "apparaat", "apparaten"))\(parts.isEmpty ? "" : " (\(parts))")?\(accountsLine)"
         } else {
             message = "Het aantal apparaten is nog niet bekend. Toch versturen?"
         }
-        if withMail { message += "\n\nDaarna gaat hetzelfde bericht ook per e-mail naar alle accounts met berichtenmail aan." }
 
         var params: [String: Any] = ["title_nl": tNl, "body_nl": bNl, "target": t]
         if !tEn.isEmpty { params["title_en"] = tEn; params["body_en"] = bEn }
         if !url.isEmpty { params["url"] = url }
-        pending = PendingPush(message: message, devices: devices, params: params, mail: withMail,
-                              mailParams: ["title_nl": tNl, "body_nl": bNl, "title_en": tEn, "body_en": bEn, "email": true])
+        pending = PendingPush(message: message, devices: devices, params: params)
     }
 
     private func send(_ p: PendingPush) async {
@@ -504,13 +459,11 @@ struct MessagesView: View {
         defer { busy = false }
         var messageID: String?
         do {
-            if p.devices != 0 {
-                let r = try await session.call("push_send", p.params.mapValues { Optional($0) })
-                let progress = PushProgress(r)
-                session.pushProgress = progress
-                messageID = progress.done ? nil : progress.messageID
-                if progress.done { session.show("Pushmelding: \(progress.counts.text).", bad: progress.counts.failed > 0) }
-            }
+            let r = try await session.call("push_send", p.params.mapValues { Optional($0) })
+            let progress = PushProgress(r)
+            session.pushProgress = progress
+            messageID = progress.done ? nil : progress.messageID
+            if progress.done { session.show("Pushmelding: \(progress.counts.text).", bad: progress.counts.failed > 0) }
         } catch let e as APIError {
             if e.code != "auth" { error = e.errorDescription ?? "" }
             return
@@ -518,21 +471,9 @@ struct MessagesView: View {
             return
         }
         // verstuurd: formulier leeg, geschiedenis vernieuwen
-        titleNl = ""; bodyNl = ""; titleEn = ""; bodyEn = ""; link = ""; mail = false
+        titleNl = ""; bodyNl = ""; titleEn = ""; bodyEn = ""; link = ""
         page = 0
         session.pushVersion += 1
-        if p.mail {
-            do {
-                let a = try await session.call("announce", p.mailParams.mapValues { Optional($0) })
-                if let id = a["id"].text {
-                    let total = a["email_total"].int ?? 0
-                    session.announcementsVersion += 1
-                    Task { await sendMails(id: id, total: total) }
-                }
-            } catch let e as APIError {
-                if e.code != "auth" { session.show("Pushmelding verstuurd, maar de e-mail niet: \(e.errorDescription ?? "")", bad: true) }
-            } catch {}
-        }
         if let messageID { await followPush(messageID) }
     }
 
@@ -559,47 +500,55 @@ struct MessagesView: View {
         session.pushVersion += 1
     }
 
-    /// Verstuurt de mails in batches (`announce_send` herhalen tot done), zoals sendMails() in admin.js.
-    private func sendMails(id: String, total: Int) async {
-        if let p = session.mailProgress, !p.done { return }
-        session.mailProgress = MailProgress(announcementID: id, total: total)
-        var last = JSON.null
-        for _ in 0..<2000 {
-            do {
-                last = try await session.call("announce_send", ["id": id])
-            } catch {
-                if let e = error as? APIError, e.code != "auth" {
-                    session.show("\(e.errorDescription ?? "") Je kunt later verder verzenden.", bad: true)
-                }
-                session.mailProgress?.done = true
-                session.announcementsVersion += 1
-                return
-            }
-            let done = last["done"].bool ?? false
-            session.mailProgress = MailProgress(announcementID: id, total: last["email_total"].int ?? total,
-                                                sent: last["email_sent"].int ?? 0, failed: last["email_failed"].int ?? 0, done: done)
-            if done { break }
-            try? await Task.sleep(for: .milliseconds(800))
-        }
-        session.mailProgress?.done = true
-        let sent = last["email_sent"].int ?? 0, failed = last["email_failed"].int ?? 0
-        session.show("E-mail klaar: \(Fmt.num(sent)) verstuurd\(failed > 0 ? ", \(Fmt.num(failed)) mislukt" : "").", bad: failed > 0)
-        session.announcementsVersion += 1
-    }
-
-    private func delete(_ a: Announcement) async {
-        do {
-            try await session.call("announcement_delete", ["id": a.id])
-            session.show("Bericht verwijderd.")
-            await loadAnnouncements()
-        } catch {
-            session.report(error)
-        }
-    }
-
     private func loadAll() async {
+        await loadSubscribers()
         await loadHistory()
-        await loadAnnouncements()
+    }
+
+    private func loadSubscribers() async {
+        do {
+            let r = try await session.call("push_subscribers")
+            subscribers = PushSubscribers(r)
+            subscribersError = subscribers == nil ? "Nog niet te tellen." : nil
+        } catch let e as APIError {
+            if e.code == "auth" { return }
+            subscribersError = e.errorDescription
+        } catch {}
+    }
+
+    // MARK: pushabonnees
+
+    private var subscribersCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(title: "Pushabonnees",
+                       subtitle: "Accounts en apparaten van de Bingr-apps met pushmeldingen aan (iPhone, iPad, Mac, Android en de webspeler).")
+            if let s = subscribers {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], alignment: .leading, spacing: 8) {
+                    subscriberCell("Accounts", s.accounts, hint: "+\(Fmt.num(s.newAccounts7d)) in 7 dagen", big: true)
+                    subscriberCell("Apparaten", s.devices, hint: "+\(Fmt.num(s.newDevices7d)) in 7 dagen", big: true)
+                    ForEach(PushSubscribers.platforms, id: \.self) { p in
+                        subscriberCell(PushPlatformOption.name(p), s.count(p))
+                    }
+                }
+            } else if let subscribersError {
+                EmptyText(text: subscribersError)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .card()
+    }
+
+    private func subscriberCell(_ label: String, _ value: Int, hint: String? = nil, big: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption.weight(.semibold)).foregroundStyle(Color.textSecondary).lineLimit(1)
+            Text(Fmt.num(value)).font(big ? .title.weight(.heavy) : .title3.weight(.bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+            if let hint { Text(hint).font(.caption2).foregroundStyle(Color.textDim).lineLimit(1) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.surface2))
+        .accessibilityElement(children: .combine)
     }
 
     private func loadHistory() async {
@@ -618,29 +567,15 @@ struct MessagesView: View {
         }
         historyLoaded = true
     }
-
-    private func loadAnnouncements() async {
-        do {
-            let r = try await session.call("announcements_list")
-            announcements = r["items"].array.map(Announcement.init)
-            smtpOK = r["smtp"].bool != false
-            if !smtpOK { mail = false }
-            annLoaded = true
-        } catch {
-            session.report(error)
-        }
-    }
 }
 
 /// Bevestiging vóór versturen (met het aantal apparaten uit push_count).
 struct PendingPush: Identifiable {
     let id = UUID()
     let message: String
-    /// nil = aantal onbekend; 0 = geen apparaten (dan alleen de e-mail).
+    /// nil = aantal onbekend.
     let devices: Int?
     let params: [String: Any]
-    let mail: Bool
-    let mailParams: [String: Any]
 }
 
 /// Eén pushmelding in de geschiedenis: soort, titel, datum, doelgroep en de tellers.
@@ -687,43 +622,5 @@ struct PushMessageRow: View {
             Text(Fmt.num(n)).font(.headline.monospacedDigit()).foregroundStyle(color)
             Text(label).font(.caption2).foregroundStyle(Color.textDim)
         }
-    }
-}
-
-/// E-mail of oud bericht (announcements_list).
-struct AnnouncementRow: View {
-    let item: Announcement
-    let canResume: Bool
-    let resume: () -> Void
-    let delete: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(item.titleNl).font(.subheadline.weight(.bold))
-                if let en = item.titleEn { Text("/ \(en)").font(.caption).foregroundStyle(Color.textDim) }
-            }
-            Text(item.bodyNl).font(.subheadline).foregroundStyle(Color.textSecondary).lineLimit(4)
-            HStack(spacing: 6) {
-                Chip(text: item.mailOnly ? "E-mail" : "Banner (oud)", tone: .neutral, icon: item.mailOnly ? "envelope" : nil)
-                Text(Fmt.dateTime(item.createdAt))
-            }
-            .font(.caption)
-            .foregroundStyle(Color.textDim)
-            if item.email {
-                Text("E-mail: \(Fmt.num(item.emailSent)) / \(Fmt.num(item.emailTotal))"
-                     + (item.emailFailed > 0 ? ", \(Fmt.num(item.emailFailed)) mislukt" : "")
-                     + (item.emailDoneAt == nil ? " (niet afgerond)" : ""))
-                    .font(.caption).foregroundStyle(Color.textDim)
-            }
-            HStack(spacing: 8) {
-                if item.canResume {
-                    Button("Verder verzenden", action: resume).buttonStyle(.bingrGhost).disabled(!canResume)
-                }
-                Button("Verwijderen", action: delete).buttonStyle(.bingrDanger)
-            }
-            .controlSize(.small)
-        }
-        .padding(.vertical, 4)
     }
 }

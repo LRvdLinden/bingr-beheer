@@ -253,17 +253,8 @@ legend .sub{font-weight:400}
 .progress .bar{height:8px;background:#ffffff14;border-radius:8px;overflow:hidden}
 .progress .bar span{display:block;height:100%;width:0;background:var(--ok);border-radius:8px;transition:width .3s}
 .progress .sub{margin-top:8px}
-.ann-list{margin-top:8px}
-.ann{display:flex;gap:16px;align-items:flex-start;padding:18px 0;border-bottom:1px solid var(--line-soft)}
-.ann:last-child{border-bottom:0}
-.ann .main{flex:1;min-width:0}
-.ann .tt{font-weight:800;font-size:16px}
-.ann .bd{color:var(--sec);font-size:14px;margin-top:4px;white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.ann .meta{margin-top:8px;font-size:13px;color:var(--dim);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .badge{font-size:12px;font-weight:700;border-radius:5px;padding:2px 8px}
 .badge.on{background:#46d36924;color:var(--ok);box-shadow:inset 0 0 0 1px #46d36940}.badge.off{background:#ffffff14;color:var(--sec)}
-.ann .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.badge.mail{background:#2f7cf61f;color:#9cc3ff;box-shadow:inset 0 0 0 1px #2f7cf640}
 
 /* pushmeldingen */
 .pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
@@ -292,9 +283,6 @@ legend .sub{font-weight:400}
 .pf small{display:block;color:var(--dim);font-size:12px;font-weight:400}
 .pf.off{cursor:default;color:var(--dim)}
 .pf.off input{opacity:.4}
-#mailHint{margin-top:6px}
-#mailHint.dim{opacity:.55}
-#mailProgress .bar span{background:#5aa9ff}
 .pv-note{display:flex;gap:12px;align-items:flex-start;width:100%;max-width:380px;background:#2b2b2bd9;border:1px solid #ffffff1a;border-radius:20px;padding:12px 14px;box-shadow:0 24px 60px #000b;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .pv-note img{flex:none;width:38px;height:38px;border-radius:9px}
 .pv-main{flex:1;min-width:0}
@@ -303,6 +291,18 @@ legend .sub{font-weight:400}
 .pv-note .pv-body{color:#e6e6e6;font-size:14px;line-height:1.35;margin-top:1px;min-height:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
 .pv-link{margin-top:6px;font-size:12px;color:#9cc3ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pv-hint{margin-top:10px}
+/* pushabonnees (tab Pushmeldingen) */
+.ps-panel{margin-bottom:16px}
+.ps-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-top:14px}
+.ps-k{background:#ffffff08;border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;min-width:0}
+.ps-k .l{display:block;font-size:12px;font-weight:600;color:var(--sec)}
+.ps-k b{display:block;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.25}
+.ps-k .h{display:block;font-size:12px;color:var(--dim)}
+.ps-k.main b{font-size:28px}
+.ps-grid .empty{grid-column:1/-1}
+@media (max-width:1000px){.ps-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:600px){.ps-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.w-li .kind{margin-right:4px}
 .ph-list{margin-top:4px}
 .ph{display:flex;gap:16px;align-items:flex-start;padding:16px 0;border-bottom:1px solid var(--line-soft)}
 .ph:last-child{border-bottom:0}
@@ -405,7 +405,7 @@ legend .sub{font-weight:400}
   .users td.em{font-size:15px;margin-bottom:4px}
   .users td[data-l]::before{content:attr(data-l) ": ";color:var(--dim);font-size:13px}
   .users td.em::before{content:none}
-  .ann{flex-direction:column;gap:10px}.ann .btns{justify-content:flex-start}
+  
   .st-kpis{grid-template-columns:repeat(2,1fr)}
   .sm-row{grid-template-columns:repeat(3,1fr);gap:8px}
   .sm-name,.sm-bars,.sm-dev{grid-column:1 / -1}

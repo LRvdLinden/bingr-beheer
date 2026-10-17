@@ -39,13 +39,8 @@
 //                       reason? (intern, alleen in het logboek)} -> {ok, email_sent, tickets_deleted}
 //                       (alle accountgegevens via on delete cascade, profielfoto's, daarna de bevestigingsmail vanaf support@)
 //   send_reset          {token, user_id}  -> {ok}    (standaard reset-mail van Supabase; beheer ziet of zet nooit wachtwoorden)
-//   announce            {token, title_nl, body_nl, title_en?, body_en?, email: true} -> {ok, id, email_total}
-//                       (pushmeldingen: alleen nog een e-mail aan alle accounts met berichtenmail aan; de in-app banner is
-//                       vervallen. Het record krijgt expires_at = nu, zodat ook oudere apps (device-auth announcements) het
-//                       niet meer als banner tonen. Zonder email: 400 email_required.)
-//   announce_send       {token, id}       -> {email_total, email_sent, email_failed, done}  (volgende batch; herhalen tot done)
-//   announcements_list  {token}           -> {items:[…, mail_only], smtp}  (oude berichten en e-mails, voor de geschiedenis)
-//   announcement_delete {token, id}       -> {ok}
+//   (build 14 Beheer-app: de oude acties announce, announce_send, announcements_list en announcement_delete zijn weg;
+//   de tab Pushmeldingen en de widget Laatste pushmeldingen gebruiken alleen push_history.)
 //   Pushmeldingen (docs/PUSH.md in iptv-ios-appletv): doorgegeven aan de functie `push` met het geheim PUSH_ADMIN_SECRET
 //   (header x-push-secret; zet de Backend-workflow daar klaar), net als support. Zie push.ts / push_test.ts.
 //   push_count          {token, target}   -> {devices, by_platform:{ios,ipados,macos,android,web}, accounts?} | {devices:null}
@@ -60,6 +55,21 @@
 //                       {type, count?|platforms?}, platform_group, version, build, devices, queued, sent, failed, invalid, done,
 //                       notes}], page, has_more}  (push: admin_history; zonder account-id's)
 //                       Fouten: push_not_configured (geen PUSH_ADMIN_SECRET), push_not_deployed, push_forbidden, push_unreachable.
+//   push_subscribers    {token}           -> {accounts, devices, by_platform:{ios,ipados,macos,android,web}, new_7d:{devices,
+//                       accounts}} | {devices:null}  (pushabonnees van de Bingr-apps, uit push_devices; alleen tellingen)
+//   Pushmeldingen van de app BingrBeheer zelf (tabel admin_push_devices, schema in iptv-ios-appletv; de cron van de functie
+//   push stuurt ze, topic nl.lrvdlinden.bingr.beheer). Zie admin_push.ts / admin_push_test.ts. In admin_audit alleen de
+//   actie en het platform, nooit device_id of token.
+//   admin_push_register   {token, device_id, apns_token, platform: ios|ipados|macos, sandbox, app_build, prefs:{tickets,
+//                         replies, builds, status}} -> {ok}  (upsert op device_id; een token die al bij een ander device_id
+//                         hoort, gaat eerst weg. Max. 30 per uur per IP.)
+//   admin_push_unregister {token, device_id} -> {ok, removed}
+//   admin_push_prefs      {token, device_id, prefs} -> {ok} | 404 not_registered
+//   admin_push_test       {token, device_id} -> {ok} | 503 apns_not_configured | 404 not_registered | 410 apns_invalid
+//                         (testmelding rechtstreeks via APNs naar alleen dit apparaat: ES256-JWT met de function-secrets
+//                         APNS_KEY_P8 / APNS_KEY_ID / APNS_TEAM_ID, topic BEHEER_APNS_TOPIC of nl.lrvdlinden.bingr.beheer,
+//                         sandbox of productie per apparaat. Max. 10 per uur per IP.)
+//   Overal uitloggen (logout_all) maakt admin_push_devices ook leeg.
 //   status              {token, op: overview|checks|monitor_save|monitor_delete|run|notice_save|notice_update|notice_delete|
 //                        subscribers|mail_run, …} -> antwoord van de functie `status` (meldingen: storingen en gepland onderhoud)
 //   support_counts      {token}           -> {new, open, pending, resolved, closed, active, unread, total, last_7d, smtp}
@@ -98,7 +108,7 @@
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
-import { announcementMail, blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
+import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
 import {
@@ -107,6 +117,9 @@ import {
 } from "./builds.ts";
 import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
 import { auditDetail, cleanPushInput, cleanTarget, historyView, pageInput, progressView, PUSH_PLATFORMS, type PushTarget } from "./push.ts";
+import {
+  apnsHost, apnsJwt, apnsResult, cleanDeviceId, cleanPrefs, cleanRegister, DEFAULT_TOPIC, importApnsKey, summarizeSubscribers, testPayload,
+} from "./admin_push.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -139,7 +152,6 @@ const linkView = (v: unknown) => {
   const o = v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
   return Object.fromEntries(LINK_KEYS.map((k) => [k, typeof o[k] === "boolean" ? o[k] : DEFAULT_LINK[k]]));
 };
-const BATCH = 25;
 
 // ---- downloads (tab Downloads): builds/manifest.json op de server van beheer.bingr.online, alleen via dl.php ----
 // De sleutel (BINGR_BUILDS_KEY) zet de workflow Builds; zonder sleutel is de tab "nog niet ingericht". Nooit de sleutel,
@@ -284,9 +296,6 @@ async function widgetSummary() {
   ]);
   return { status: summarizeStatus(st), support: summarizeSupport(sp), generated_at: new Date().toISOString() };
 }
-async function unsubToken(userId: string) {
-  return `${userId}.${b64u((await hmac(unsubMaterial(), `unsub:${userId}`)).subarray(0, 18))}`;
-}
 async function unsubUser(t: unknown): Promise<string | null> {
   if (typeof t !== "string" || t.length > 120) return null;
   const [id, sig] = t.split(".");
@@ -358,9 +367,8 @@ async function rateOk(key: string, max: number, windowSec: number): Promise<bool
   return data !== false;
 }
 const UNSUB_MAX = 20, UNSUB_ONECLICK_MAX = 200, UNSUB_WINDOW = 600, AUTHED_MAX = 300, AUTHED_WINDOW = 60, WIDGET_MAX = 30;
-// afmelden met één klik (RFC 8058): de mailclient doet POST <functie-URL>?unsubscribe=<token> met List-Unsubscribe=One-Click.
-// Een GET (oudere clients openen de link in de browser) gaat door naar de afmeldpagina op bingr.online; die vraagt eerst.
-const oneClickUrl = (t: string) => `${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/admin?unsubscribe=${encodeURIComponent(t)}`;
+// afmelden met één klik (RFC 8058) uit oudere berichtenmails: de mailclient doet POST <functie-URL>?unsubscribe=<token>
+// met List-Unsubscribe=One-Click. Een GET gaat door naar de afmeldpagina op bingr.online; die vraagt eerst.
 async function unsubscribe(t: unknown): Promise<boolean> {
   const id = await unsubUser(t);
   if (!id) return false;
@@ -429,6 +437,70 @@ async function countDevices(target: PushTarget) {
     by[p] = count ?? 0;
   }
   return { devices: Object.values(by).reduce((a, b) => a + b, 0), by_platform: by };
+}
+
+// Pushabonnees van de Bingr-apps (push_subscribers): alle rijen van push_devices per 1000 (alleen user_id, platform en
+// created_at), geteld in admin_push.ts. Hoogstens 200.000 rijen; daarboven telt de rest niet mee. null = niet te tellen.
+async function countSubscribers() {
+  const rows: unknown[] = [];
+  const PAGE = 1000;
+  for (let from = 0; from < 200_000; from += PAGE) {
+    const { data, error } = await admin.from("push_devices").select("user_id,platform,created_at")
+      .order("id", { ascending: true }).range(from, from + PAGE - 1);
+    if (error) { console.error("admin", "push_subscribers", error.message); return null; }
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return summarizeSubscribers(rows);
+}
+
+// ---- pushmeldingen van de Beheer-app: testmelding rechtstreeks via APNs (zelfde function-secrets als de functie push) ----
+// Provider token 50 minuten in het geheugen (Apple: max. 60). Nooit de sleutel, de JWT of het devicetoken loggen.
+const PUSHREG_MAX = 30, PUSHREG_WINDOW = 3600, PUSHTEST_MAX = 10, PUSHTEST_WINDOW = 3600;
+const apnsConfigured = () => !!(env("APNS_KEY_P8") && env("APNS_KEY_ID") && env("APNS_TEAM_ID"));
+let apnsAuth: { jwt: string; at: number; kid: string } | null = null;
+async function apnsBearer(): Promise<string> {
+  const now = Date.now(), kid = env("APNS_KEY_ID");
+  if (apnsAuth && apnsAuth.kid === kid && now - apnsAuth.at < 50 * 60_000) return apnsAuth.jwt;
+  const jwt = await apnsJwt(await importApnsKey(env("APNS_KEY_P8")), kid, env("APNS_TEAM_ID"), Math.floor(now / 1000));
+  apnsAuth = { jwt, at: now, kid };
+  return jwt;
+}
+async function sendApnsTest(token: string, sandbox: boolean): Promise<{ ok: true } | { ok: false; invalid: boolean; error: string }> {
+  let bearer: string;
+  try { bearer = await apnsBearer(); } catch (e) {
+    console.error("admin", "push_test", "sleutel", e instanceof Error ? e.name : "key");
+    return { ok: false, invalid: false, error: "apns_bad_key" };
+  }
+  let res: Response;
+  try {
+    // HTTP/2: Deno-fetch onderhandelt h2 via ALPN (zoals de functie push)
+    res = await fetch(`${apnsHost(sandbox)}/3/device/${token}`, {
+      method: "POST",
+      headers: {
+        authorization: `bearer ${bearer}`,
+        "apns-topic": env("BEHEER_APNS_TOPIC") || DEFAULT_TOPIC,
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+        "apns-expiration": String(Math.floor(Date.now() / 1000) + 3600),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(testPayload()),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (e) {
+    console.error("admin", "push_test", e instanceof Error ? e.name : "fetch");
+    return { ok: false, invalid: false, error: "apns_unreachable" };
+  }
+  let reason = "";
+  if (res.status !== 200) { try { reason = String((await res.json())?.reason ?? ""); } catch { /* geen json */ } }
+  else await res.body?.cancel().catch(() => {});
+  const r = apnsResult(res.status, reason);
+  if (!r.ok) {
+    if (/ProviderToken/.test(reason)) apnsAuth = null;
+    console.error("admin", "push_test", r.error);
+  }
+  return r;
 }
 
 Deno.serve(async (req) => {
@@ -557,7 +629,10 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // build 97: overal uitloggen (web en app): tokenversie + 1
       const { data, error } = await admin.rpc("bingr_admin_logout_all");
       if (error) throw new Error(error.message);
-      await audit("logout_all", ip, null, { version: data });
+      // pushmeldingen van de Beheer-app: alle apparaten afmelden (na opnieuw inloggen meldt de app zich weer aan)
+      const { count: pushRemoved, error: pe } = await admin.from("admin_push_devices").delete({ count: "exact" }).neq("device_id", "");
+      if (pe) console.error("admin", "logout_all push", pe.message);
+      await audit("logout_all", ip, null, { version: data, push_devices: pe ? null : pushRemoved ?? 0 });
       return json({ ok: true });
     }
     case "stats": {
@@ -798,99 +873,6 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       });
       return json({ ok: true, email_sent: sent.ok, email_error: sent.error, tickets_deleted: ticketsDeleted });
     }
-    case "announce": {
-      // pushmeldingen: geen in-app banner meer, alleen nog per e-mail. expires_at = nu: device-auth (announcements) geeft
-      // alleen berichten met expires_at in de toekomst, dus ook oudere apps tonen dit record niet als banner.
-      const t = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
-      const row = {
-        title_nl: t(body.title_nl, 120), body_nl: t(body.body_nl, 4000),
-        title_en: t(body.title_en, 120), body_en: t(body.body_en, 4000),
-        expires_at: new Date().toISOString(), email: true, email_total: 0,
-      };
-      if (!row.title_nl || !row.body_nl) return json({ error: "text_missing" }, 400);
-      if (body.email !== true) return json({ error: "email_required" }, 400);
-      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 400);
-      const { data: n, error: ne } = await admin.rpc("bingr_email_recipients");
-      if (ne) throw new Error(ne.message);
-      row.email_total = Number(n ?? 0);
-      const { data, error } = await admin.from("announcements").insert(row).select("id").single();
-      if (error) throw new Error(error.message);
-      await audit("announce", ip, null, { id: data.id, email: row.email, email_total: row.email_total });
-      return json({ ok: true, id: data.id, email_total: row.email_total });
-    }
-    case "announce_send": {
-      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
-      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 400);
-      const { data: a } = await admin.from("announcements").select("title_nl,body_nl,title_en,body_en").eq("id", body.id).maybeSingle();
-      if (!a) return json({ error: "not_found" }, 404);
-      // build 97: per ontvanger bijhouden (announcement_sends). bingr_announce_take claimt een batch als 'sending'; na
-      // elke mail zet bingr_announce_mark die ontvanger op 'sent' of 'failed'. Stopt de functie halverwege, dan komen de
-      // ontvangers die nog op 'sending' staan na 10 minuten opnieuw aan de beurt (vroeger kregen ze nooit een mail).
-      const { data: claim, error } = await admin.rpc("bingr_announce_take", { p_id: body.id, p_batch: BATCH });
-      if (error) throw new Error(error.message);
-      let sent = 0, failed = 0;
-      // meldingen die niet in de database kwamen: aan het eind nog één keer samen
-      const unsent: string[] = [], unfailed: string[] = [];
-      const mark = async (id: string, ok: boolean) => {
-        const { error: me } = await admin.rpc("bingr_announce_mark", { p_id: body.id, p_sent: ok ? [id] : [], p_failed: ok ? [] : [id] });
-        if (me) { console.error("announce_send mark", me.message); (ok ? unsent : unfailed).push(id); }
-      };
-      // first_name: voornaam voor de aanhef "Hoi <voornaam>," (bingr_announce_take; ontbreekt bij een ouder schema = geen aanhef)
-      const items: { id: string; email: string; lang: string | null; first_name?: string | null }[] = claim?.items ?? [];
-      if (items.length) {
-        const tx = transport();
-        try {
-          for (const r of items) {
-            const en = r.lang !== "nl" && !!a.title_en && !!a.body_en;
-            const tok = await unsubToken(r.id);
-            const url = `${SITE}/unsubscribe/?t=${encodeURIComponent(tok)}`;
-            const m = announcementMail(en ? "en" : "nl", en ? a.title_en : a.title_nl, en ? a.body_en : a.body_nl, url, undefined, r.first_name);
-            let ok = false;
-            try {
-              await tx.sendMail({
-                from: smtpFrom(), to: r.email, subject: m.subject, text: m.text, html: m.html,
-                headers: { "List-Unsubscribe": `<${oneClickUrl(tok)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-              });
-              ok = true; sent++;
-            } catch (e) {
-              failed++;
-              console.error("announce_send", e instanceof Error ? e.message : e);
-            }
-            await mark(r.id, ok);
-            await new Promise((r) => setTimeout(r, 150));
-          }
-        } finally { tx.close(); }
-      }
-      // altijd melden (ook bij een lege batch): eerst wat nog niet gemeld was, dan de tellers ophalen
-      if (unsent.length || unfailed.length) {
-        const { error: me } = await admin.rpc("bingr_announce_mark", { p_id: body.id, p_sent: unsent, p_failed: unfailed });
-        if (me) console.error("announce_send mark (opnieuw)", me.message);
-      }
-      const { data: rep, error: re } = await admin.rpc("bingr_announce_report", { p_id: body.id, p_sent: 0, p_failed: 0 });
-      if (re) throw new Error(re.message);
-      if (rep?.done || claim?.done) await audit("announce_email", ip, null, { id: body.id, ...rep });
-      return json({ ...rep, done: !!(rep?.done || claim?.done), busy: !!claim?.busy, batch_sent: sent, batch_failed: failed });
-    }
-    case "announcements_list": {
-      const { data, error } = await admin.from("announcements")
-        .select("id,title_nl,body_nl,title_en,body_en,created_at,expires_at,email,email_total,email_sent,email_failed,email_done_at")
-        .order("created_at", { ascending: false }).limit(50);
-      if (error) throw new Error(error.message);
-      const cut = Date.now() - 30 * 864e5;
-      // mail_only: sinds de pushmeldingen (verloopt bij het plaatsen, nooit als banner getoond)
-      const items = (data ?? []).map((a) => ({
-        ...a, active: Date.parse(a.created_at) > cut && (!a.expires_at || Date.parse(a.expires_at) > Date.now()),
-        mail_only: !!a.expires_at && Date.parse(a.expires_at) <= Date.parse(a.created_at) + 60000,
-      }));
-      return json({ items, smtp: smtpConfigured() });
-    }
-    case "announcement_delete": {
-      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
-      const { error } = await admin.from("announcements").delete().eq("id", body.id);
-      if (error) throw new Error(error.message);
-      await audit("announcement_delete", ip, null, { id: body.id });
-      return json({ ok: true });
-    }
     case "push_count": {
       const t = cleanTarget(body.target);
       if (!t.ok) return json({ error: t.error }, 400);
@@ -924,6 +906,70 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const { status, out } = await pushCall("admin_history", { page });
       if (status !== 200) return json(out, status);
       return json(historyView(out, page));
+    }
+    case "push_subscribers": {
+      // pushabonnees van de Bingr-apps: alleen tellingen (overzicht en tab Pushmeldingen)
+      return json((await countSubscribers()) ?? { devices: null });
+    }
+    case "admin_push_register": {
+      // pushmeldingen van de Beheer-app op dit apparaat (de cron van de functie push leest admin_push_devices)
+      const r = cleanRegister(body);
+      if (!r.ok) return json({ error: r.error }, 400);
+      if (!(await rateOk(`admin-pushreg:${ip}`, PUSHREG_MAX, PUSHREG_WINDOW))) return json({ error: "rate_limited", retry_after: PUSHREG_WINDOW }, 429);
+      const v = r.value;
+      // dezelfde APNs-token bij een ander device_id (app opnieuw geïnstalleerd): die rij eerst weg (token is uniek)
+      const { error: de } = await admin.from("admin_push_devices").delete().eq("token", v.apns_token).neq("device_id", v.device_id);
+      if (de) throw new Error(de.message);
+      const { error } = await admin.from("admin_push_devices").upsert({
+        device_id: v.device_id, token: v.apns_token, platform: v.platform, sandbox: v.sandbox, prefs: v.prefs,
+        app_build: v.app_build, updated_at: new Date().toISOString(), last_error: null,
+      }, { onConflict: "device_id" });
+      if (error) throw new Error(error.message);
+      await audit("admin_push_register", ip, null, { platform: v.platform });
+      return json({ ok: true });
+    }
+    case "admin_push_unregister": {
+      const id = cleanDeviceId(body.device_id);
+      if (!id) return json({ error: "bad_device_id" }, 400);
+      const { data, error } = await admin.from("admin_push_devices").delete().eq("device_id", id).select("platform");
+      if (error) throw new Error(error.message);
+      await audit("admin_push_unregister", ip, null, { platform: data?.[0]?.platform ?? null });
+      return json({ ok: true, removed: (data?.length ?? 0) > 0 });
+    }
+    case "admin_push_prefs": {
+      const id = cleanDeviceId(body.device_id);
+      if (!id) return json({ error: "bad_device_id" }, 400);
+      const prefs = cleanPrefs(body.prefs);
+      if (!prefs) return json({ error: "bad_prefs" }, 400);
+      const { data, error } = await admin.from("admin_push_devices").update({ prefs, updated_at: new Date().toISOString() })
+        .eq("device_id", id).select("platform");
+      if (error) throw new Error(error.message);
+      if (!data?.length) return json({ error: "not_registered" }, 404);
+      await audit("admin_push_prefs", ip, null, { platform: data[0].platform ?? null });
+      return json({ ok: true });
+    }
+    case "admin_push_test": {
+      // testmelding naar alleen dit apparaat, rechtstreeks via APNs (zonder de functie push)
+      const id = cleanDeviceId(body.device_id);
+      if (!id) return json({ error: "bad_device_id" }, 400);
+      if (!apnsConfigured()) return json({ error: "apns_not_configured" }, 503);
+      if (!(await rateOk(`admin-pushtest:${ip}`, PUSHTEST_MAX, PUSHTEST_WINDOW))) return json({ error: "rate_limited", retry_after: PUSHTEST_WINDOW }, 429);
+      const { data: dev, error } = await admin.from("admin_push_devices").select("token,sandbox,platform").eq("device_id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!dev) return json({ error: "not_registered" }, 404);
+      const r = await sendApnsTest(String(dev.token), dev.sandbox === true);
+      await audit("admin_push_test", ip, null, { platform: dev.platform ?? null });
+      if (r.ok) {
+        await admin.from("admin_push_devices").update({ last_error: null }).eq("device_id", id);
+        return json({ ok: true });
+      }
+      if (r.invalid) {
+        // token verlopen of hoort niet bij deze app/omgeving: opruimen; de app meldt zich bij de volgende start opnieuw aan
+        await admin.from("admin_push_devices").delete().eq("device_id", id);
+        return json({ error: "apns_invalid", detail: r.error }, 410);
+      }
+      await admin.from("admin_push_devices").update({ last_error: r.error.slice(0, 120) }).eq("device_id", id);
+      return json({ error: "apns_failed", detail: r.error }, 502);
     }
     case "status": {
       // tab Status: doorgeven aan de functie `status` met het geheim (staat alleen op de server)

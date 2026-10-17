@@ -101,7 +101,16 @@ struct APIError: Error, LocalizedError {
         "bad_account": "Ongeldig account in de lijst.",
         "no_platforms": "Kies minstens één platform.",
         "no_push_platform": "Apple TV, Android TV en Samsung TV hebben geen systeem-push.",
-        "email_required": "Berichten in de apps bestaan niet meer; gebruik een pushmelding (eventueel ook per e-mail).",
+        // pushmeldingen van deze app (admin_push_register / _prefs / _test)
+        "bad_device_id": "Ongeldige apparaat-id voor pushmeldingen.",
+        "bad_apns_token": "Ongeldig pushtoken van Apple.",
+        "bad_prefs": "Ongeldige keuze voor de meldingen.",
+        "bad_sandbox": "Ongeldige push-omgeving.",
+        "bad_app_build": "Ongeldig buildnummer.",
+        "not_registered": "Dit apparaat is nog niet aangemeld voor pushmeldingen. Sta meldingen toe en probeer het opnieuw.",
+        "apns_not_configured": "APNs (Apple) is nog niet ingesteld op de server (APNS_KEY_P8, APNS_KEY_ID, APNS_TEAM_ID).",
+        "apns_invalid": "Apple weigerde het pushtoken van dit apparaat (verlopen of andere omgeving). Open de app opnieuw om je opnieuw aan te melden.",
+        "apns_failed": "De testmelding kon niet worden verstuurd. Probeer het later opnieuw.",
     ]
 }
 

@@ -43,7 +43,21 @@ struct RootView: View {
             if phase == .inactive { session.didResignActive() }
             if phase == .active { session.didBecomeActive() }
             #endif
-            if phase == .active { Task { await session.refreshSupportCounts() } }
+            if phase == .active {
+                Task { await session.refreshSupportCounts() }
+                // pushmeldingen: toestemming kan in de systeeminstellingen veranderd zijn; token opnieuw ophalen
+                Task { await PushService.shared.refresh() }
+            }
+        }
+        // pushmeldingen: eenmalig na het inloggen, op een rustig moment (PushService.didSignIn)
+        .alert("Pushmeldingen aanzetten?", isPresented: Binding(
+            get: { PushService.shared.showPrompt && session.isSignedIn && !shielded },
+            set: { if !$0 && PushService.shared.showPrompt { PushService.shared.answerPrompt(false) } }
+        )) {
+            Button("Niet nu", role: .cancel) { PushService.shared.answerPrompt(false) }
+            Button("Aanzetten") { PushService.shared.answerPrompt(true) }
+        } message: {
+            Text("BingrBeheer kan een melding sturen bij nieuwe supporttickets, antwoorden van klanten, nieuwe builds en statuswijzigingen. Per soort aan of uit te zetten in Instellingen.")
         }
     }
 
@@ -67,18 +81,39 @@ struct RootView: View {
     }
 }
 
-/// iPhone: tabbalk met de vijf onderdelen; Downloads en Instellingen via het menu rechtsboven.
+/// iPhone: tabbalk met de vijf onderdelen; Downloads en Instellingen via het menu rechtsboven. Vraagt iets anders om
+/// Downloads of Instellingen (deeplink bingrbeheer://downloads uit een pushmelding), dan opent dat als blad.
 struct TabLayout: View {
     @Environment(Session.self) private var session
+    @State private var sheet: AppSection?
+
+    private static let tabs: [AppSection] = [.overview, .users, .support, .messages, .status]
 
     var body: some View {
         @Bindable var session = session
         TabView(selection: $session.section) {
-            ForEach([AppSection.overview, .users, .support, .messages, .status]) { s in
+            ForEach(Self.tabs) { s in
                 SectionScreen(section: s)
                     .tabItem { Label(s.title, systemImage: s.icon) }
                     .tag(s)
                     .badge(s == .support ? (session.supportCounts?.unread ?? 0) : 0)
+            }
+        }
+        .onChange(of: session.section, initial: true) { old, new in
+            guard !Self.tabs.contains(new) else { return }
+            sheet = new
+            session.section = Self.tabs.contains(old) ? old : .overview
+        }
+        .sheet(item: $sheet) { s in
+            NavigationStack {
+                if s == .downloads {
+                    DownloadsView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) { Button("Klaar") { sheet = nil } }
+                        }
+                } else {
+                    SettingsView()
+                }
             }
         }
     }

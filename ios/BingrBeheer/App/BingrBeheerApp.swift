@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct BingrBeheerApp: App {
+    /// Pushmeldingen: delegate van het meldingencentrum en het APNs-token (App/PushService.swift)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var session = Session()
 
     var body: some Scene {
@@ -22,6 +24,7 @@ struct BingrBeheerApp: App {
                 .preferredColorScheme(.dark)
                 .tint(.bingrRed)
                 .onOpenURL { session.open($0) }
+                .task { PushService.shared.attach(session) }
                 #if targetEnvironment(macCatalyst)
                 .background { MacWindowConfigurator() }
                 #endif

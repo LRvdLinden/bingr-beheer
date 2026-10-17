@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Tab Overzicht: instelbaar dashboard met widgets (kengetallen, grafieken per dag, platforms, versies, abonnementen,
-/// support, servicestatus, berichten). Grootte, volgorde, zichtbaarheid en getoonde gegevens zijn in te stellen;
+/// support, servicestatus, pushmeldingen, pushabonnees). Grootte, volgorde, zichtbaarheid en getoonde gegevens zijn in te stellen;
 /// de indeling staat als JSON in UserDefaults (zelfde model als het web-dashboard, zie Models/Dashboard.swift).
 struct OverviewView: View {
     @Environment(Session.self) private var session
@@ -198,12 +198,14 @@ struct OverviewView: View {
         layout.visible.contains { $0.type == .status || ($0.type == .platforms && $0.options.source == "live") }
     }
 
-    private var needsAnnouncements: Bool { layout.visible.contains { $0.type == .announcements } }
+    private var needsPushHistory: Bool { layout.visible.contains { $0.type == .announcements } }
+    private var needsPushSubscribers: Bool { layout.visible.contains { $0.type == .pushSubscribers } }
 
-    /// Na toevoegen of instellen: ontbrekende gegevens (status, berichten) alsnog ophalen.
+    /// Na toevoegen of instellen: ontbrekende gegevens (status, pushmeldingen, abonnees) alsnog ophalen.
     private func ensureData() {
         let missing = (needsStatus && data.status == nil && data.statusError == nil)
-            || (needsAnnouncements && data.announcements == nil && data.announcementsError == nil)
+            || (needsPushHistory && data.pushHistory == nil && data.pushHistoryError == nil)
+            || (needsPushSubscribers && data.pushSubscribers == nil && data.pushSubscribersError == nil)
         if missing { Task { await load() } }
     }
 
@@ -227,9 +229,10 @@ struct OverviewView: View {
         defer { loading = false }
         async let statsResult = fetch("stats")
         async let statusResult = fetch("status", ["op": "overview"], when: needsStatus)
-        async let annResult = fetch("announcements_list", when: needsAnnouncements)
-        let (rs, rst, ra) = await (statsResult, statusResult, annResult)
-        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(ra) { return }
+        async let historyResult = fetch("push_history", ["page": 0], when: needsPushHistory)
+        async let subsResult = fetch("push_subscribers", when: needsPushSubscribers)
+        let (rs, rst, rh, rp) = await (statsResult, statusResult, historyResult, subsResult)
+        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(rh) || Self.isAuth(rp) { return }
 
         var d = data
         switch rs {
@@ -257,12 +260,21 @@ struct OverviewView: View {
         case nil:
             break
         }
-        switch ra {
+        switch rh {
         case .success(let j)?:
-            d.announcements = j["items"].array.map(Announcement.init)
-            d.announcementsError = nil
+            d.pushHistory = j["items"].array.map(PushMessage.init)
+            d.pushHistoryError = nil
         case .failure(let e)?:
-            d.announcementsError = Self.message(e)
+            d.pushHistoryError = Self.message(e)
+        case nil:
+            break
+        }
+        switch rp {
+        case .success(let j)?:
+            d.pushSubscribers = PushSubscribers(j)
+            d.pushSubscribersError = d.pushSubscribers == nil ? "Nog niet te tellen." : nil
+        case .failure(let e)?:
+            d.pushSubscribersError = Self.message(e)
         case nil:
             break
         }

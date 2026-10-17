@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Instellingen: vergrendelen met Face ID / Touch ID (Mac: ook wachtwoord), upgrade-link per platform (app_settings), sessie, uitloggen, Downloads (iPhone) en links.
+/// Instellingen: vergrendelen met Face ID / Touch ID (Mac: ook wachtwoord), widgets, pushmeldingen, upgrade-link per platform (app_settings), sessie, uitloggen, Downloads (iPhone) en links.
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
@@ -14,6 +14,10 @@ struct SettingsView: View {
     @State private var links: [String: Bool]?
     @State private var linksError: String?
     @State private var linksSaving = false
+    @State private var testing = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var push: PushService { PushService.shared }
 
     private struct LinkPlatform: Hashable {
         let key: String
@@ -69,6 +73,8 @@ struct SettingsView: View {
             } footer: {
                 Text("Servicestatus en supporttickets \(Platform.isMac ? "op je bureaublad en in het berichtencentrum" : "op je beginscherm en toegangsscherm") (alleen aantallen en statusnamen). Daarvoor bewaart de app een apart widget-token (30 dagen, alleen voor de widgets) in de Keychain van dit apparaat. Uitloggen of Overal uitloggen trekt het in. Let op: widgets zijn zichtbaar zonder \(session.biometryName).")
             }
+
+            pushSection
 
             Section {
                 if let links {
@@ -162,6 +168,79 @@ struct SettingsView: View {
             }
         } message: {
             Text("Alle sessies van het beheer (deze app, andere apparaten en het web-dashboard) vervallen meteen.")
+        }
+    }
+
+    // MARK: pushmeldingen
+
+    private var permissionText: (String, Color) {
+        switch push.permission {
+        case .allowed: return ("Toegestaan", .ok)
+        case .denied: return ("Geweigerd", .warn)
+        case .notDetermined: return ("Nog niet gevraagd", .textSecondary)
+        case .unknown: return ("Onbekend", .textSecondary)
+        }
+    }
+
+    private func prefToggle(_ title: String, _ icon: String, _ key: WritableKeyPath<PushPrefs, Bool>) -> some View {
+        Toggle(isOn: Binding(get: { push.prefs[keyPath: key] }, set: { v in push.setPref { $0[keyPath: key] = v } })) {
+            Label(title, systemImage: icon)
+        }
+        .tint(.bingrRed)
+    }
+
+    @ViewBuilder private var pushSection: some View {
+        Section {
+            LabeledContent("Systeemtoestemming") {
+                Text(permissionText.0).foregroundStyle(permissionText.1)
+            }
+            switch push.permission {
+            case .notDetermined, .unknown:
+                Button { Task { await push.requestPermission() } } label: {
+                    Label("Meldingen toestaan", systemImage: "bell.badge")
+                }
+            case .denied:
+                Button { push.openSystemSettings() } label: {
+                    Label("Open systeeminstellingen", systemImage: "gear")
+                }
+            case .allowed:
+                LabeledContent("Aangemeld bij de server") {
+                    Text(push.registered ? "Ja" : "Nog niet").foregroundStyle(push.registered ? Color.ok : Color.textSecondary)
+                }
+            }
+            if let e = push.lastError {
+                Text(e).font(.caption).foregroundStyle(Color.warn)
+            }
+            prefToggle("Nieuwe tickets", "lifepreserver", \.tickets)
+            prefToggle("Nieuwe antwoorden", "bubble.left.and.bubble.right", \.replies)
+            prefToggle("Nieuwe builds", "arrow.down.circle", \.builds)
+            prefToggle("Statuswijzigingen", "waveform.path.ecg", \.status)
+            Button {
+                Task { await sendTest() }
+            } label: {
+                HStack {
+                    Label("Testmelding sturen", systemImage: "paperplane")
+                    if testing { Spacer(); ProgressView() }
+                }
+            }
+            .disabled(testing || push.permission != .allowed)
+        } header: {
+            Text("Pushmeldingen")
+        } footer: {
+            Text("Meldingen van BingrBeheer op dit apparaat: nieuwe supporttickets, antwoorden van klanten, nieuwe builds in Downloads en wijzigingen van de servicestatus. Tik op een melding om het ticket, Downloads of Status te openen. Uitloggen meldt dit apparaat af; Overal uitloggen meldt alle apparaten af.")
+        }
+        .onChange(of: scenePhase) { _, p in if p == .active { Task { await push.refresh() } } }
+        .task { await push.refresh() }
+    }
+
+    private func sendTest() async {
+        testing = true
+        defer { testing = false }
+        do {
+            try await push.sendTest()
+            session.show("Testmelding verstuurd. Hij komt binnen een paar seconden binnen.")
+        } catch {
+            session.report(error)
         }
     }
 

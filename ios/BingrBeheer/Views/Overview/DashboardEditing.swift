@@ -121,9 +121,23 @@ struct DashWidgetSettingsView: View {
         case .announcements:
             Section("Gegevens") {
                 Picker("Aantal", selection: value(\.count, 3)) {
-                    ForEach(DashOptions.countValues, id: \.self) { n in Text("\(n) berichten").tag(n) }
+                    ForEach(DashOptions.countValues, id: \.self) { n in Text("\(n) meldingen").tag(n) }
                 }
-                Toggle("Alleen actieve berichten", isOn: value(\.onlyActive, false))
+            }
+        case .pushSubscribers:
+            Section {
+                ForEach(DashOptions.pushPlatformValues, id: \.self) { k in
+                    Toggle(isOn: member(\.pushPlatforms, k, all: DashOptions.pushPlatformValues, minOne: true)) {
+                        Label(PushPlatformOption.name(k), systemImage: Labels.platformIcon(k == "ipados" ? "ipad" : k))
+                    }
+                }
+            } header: {
+                Text("Platforms")
+            } footer: {
+                Text("Minstens één. Accounts tellen altijd alle platforms.")
+            }
+            Section("Gegevens") {
+                Toggle("Nieuw in de laatste 7 dagen tonen", isOn: value(\.showNew, true))
             }
         }
     }
