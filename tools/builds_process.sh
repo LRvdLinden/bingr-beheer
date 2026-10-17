@@ -173,8 +173,11 @@ PY
     builds_add "$plat" "$d/pkg" "$d/meta.json" || continue
     rm -rf "$d"
     # branch weg, alleen als er intussen niets nieuws op staat
-    src_git "$src" push -q --force-with-lease="refs/heads/inbox-$plat:$sha" "$remote" ":refs/heads/inbox-$plat" 2>/dev/null \
-      || echo "::notice::$plat ($src): inbox-branch niet verwijderd (intussen een nieuwere build?); volgende ronde."
+    # bij een fout alleen de soort fout in het log (geen URL's of tokens: alleen letters, cijfers en een paar leestekens)
+    if ! perr=$(src_git "$src" push -q --force-with-lease="refs/heads/inbox-$plat:$sha" "$remote" ":refs/heads/inbox-$plat" 2>&1); then
+      perr=$(printf '%s' "$perr" | grep -iE "rejected|stale|denied|protected|rule|error" | grep -v "://" | head -2 | tr -cd 'A-Za-z0-9 ._:()/\n-' | tr '\n' ' ' | cut -c1-200)
+      echo "::notice::$plat ($src): inbox-branch niet verwijderd (${perr:-onbekende fout}); volgende ronde."
+    fi
   done
 }
 
