@@ -1750,7 +1750,8 @@
 
 
   // ---- nieuwsbrief (tab "newsletter"; functie admin -> newsletter in iptv-ios-appletv) ----
-  // Acties newsletter_status, newsletter_set_enabled, newsletter_preview (één adres, nooit gelogd) en newsletter_render.
+  // Acties newsletter_status, newsletter_set_enabled, newsletter_preview (één adres, nooit gelogd) en newsletter_render;
+  // blok Welkomstmail: welcome_preview en welcome_render (zelfde veilige weergave), aantallen uit newsletter_status.welcome.
   // De voorbeeldweergave staat in een Shadow DOM: de HTML wordt eerst inert geparsed (DOMParser), scripts en
   // event-attributen gaan eruit en style-attributen worden via element.style gezet (de strikte CSP blokkeert style=; een
   // blob-tabblad of srcdoc-iframe erft die CSP, waardoor de opmaak van de mail daar zou wegvallen).
@@ -1773,6 +1774,11 @@
   }
   nlSeg("nlSendLang", (l) => { nlSendLang = l; });
   nlSeg("nlViewLang", (l) => { nlViewLang = l; if (!$("nlView").classList.contains("hidden")) showNlPreview(); });
+  // welkomstmail (acties welcome_preview / welcome_render; aantallen uit newsletter_status.welcome)
+  let wlSendLang = "nl", wlViewLang = "nl";
+  const wlRender = {};
+  nlSeg("wlSendLang", (l) => { wlSendLang = l; });
+  nlSeg("wlViewLang", (l) => { wlViewLang = l; if (!$("wlView").classList.contains("hidden")) showWlPreview(); });
 
   function renderNl() {
     const s = nlState, sw = $("nlEnabled");
@@ -1792,6 +1798,10 @@
           <div class="meta"><span>${esc(fmtDateTime(e.created_at))}</span>${e.done ? "" : '<span class="chip warn">bezig</span>'}</div></div>
         <div class="ph-nums nl-nums" aria-label="Aantallen">${n(e.recipients, "ontvangers", "")}${n(e.sent, "verstuurd", "s")}${n(e.failed, "mislukt", "f")}</div></div>`;
     }).join("") || '<p class="empty">Nog geen edities verstuurd.</p>';
+    const w = s.welcome;
+    $("wlFacts").innerHTML = w
+      ? cell("Verstuurd", nf.format(w.sent_7d || 0), "laatste 7 dagen", " main") + cell("Wachtend", nf.format(w.pending || 0), "gaat binnen 5 minuten")
+      : '<p class="empty">Nog geen gegevens (workflow Backend in iptv-ios-appletv draaien).</p>';
   }
   function nlNotice(msg) { $("nlNotice").textContent = msg || ""; $("nlNotice").classList.toggle("hidden", !msg); }
   async function loadNewsletter() {
@@ -1802,6 +1812,7 @@
       nlState = null; nlNotice(errText(e));
       $("nlEnabled").disabled = true; $("nlEnabledText").textContent = "Niet beschikbaar";
       $("nlFacts").innerHTML = ""; $("nlEditions").innerHTML = '<p class="empty">Geen gegevens.</p>';
+      $("wlFacts").innerHTML = '<p class="empty">Geen gegevens.</p>';
       return;
     }
     nlNotice(""); nlState = r; dd.nl = r; dd.nlErr = null; renderNl();
@@ -1894,6 +1905,37 @@
     finally { btn.disabled = false; }
   }
   $("nlShow").onclick = showNlPreview;
+
+  $("wlPreviewForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const to = $("wlTo").value.trim(), err = (m) => { $("wlSendErr").textContent = m; };
+    err("");
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[A-Za-z]{2,}$/.test(to) || to.length > 254) return err(ERR.bad_email);
+    $("wlSend").disabled = true;
+    try {
+      await call("welcome_preview", { to, lang: wlSendLang });
+      toast(`Voorbeeld van de welkomstmail (${wlSendLang.toUpperCase()}) verstuurd.`);
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    finally { $("wlSend").disabled = false; }
+  };
+  async function showWlPreview() {
+    const btn = $("wlShow"), lang = wlViewLang;
+    btn.disabled = true;
+    try {
+      if (!wlRender[lang] || Date.now() - wlRender[lang].at > 120000) {
+        const r = await call("welcome_render", { lang });
+        wlRender[lang] = { subject: r.subject || "", html: r.html || "", at: Date.now() };
+      }
+      if (lang !== wlViewLang) return;
+      const r = wlRender[lang];
+      $("wlSubject").innerHTML = `<span class="sub">Onderwerp</span> <b>${esc(r.subject || "—")}</b>`;
+      $("wlSubject").classList.remove("hidden");
+      $("wlView").classList.remove("hidden");
+      mountMail($("wlView"), r.html);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { btn.disabled = false; }
+  }
+  $("wlShow").onclick = showWlPreview;
   $("nlDownload").onclick = async () => {
     const btn = $("nlDownload"), lang = nlViewLang;
     btn.disabled = true;

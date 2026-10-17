@@ -61,6 +61,13 @@ export function editionView(v: unknown) {
   };
 }
 
+/** Welkomstmail: alleen aantallen (verstuurd in 7 dagen, wachtend); null als de functie ze (nog) niet meegeeft. */
+export function welcomeView(v: unknown): { sent_7d: number; pending: number } | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = obj(v);
+  return { sent_7d: nat(o.sent_7d), pending: nat(o.pending) };
+}
+
 /** Stand van de nieuwsbrief (actie status van `newsletter`) voor het dashboard. */
 export function statusView(v: unknown) {
   const o = obj(v), next = obj(o.next), r = obj(o.recipients);
@@ -71,6 +78,7 @@ export function statusView(v: unknown) {
     next: str(next.at, 40) ? { key: keyOf(next.key), at: str(next.at, 40) } : null,
     recipients: { nl, en, total: typeof r.total === "number" ? nat(r.total) : nl + en },
     editions,
+    welcome: welcomeView(o.welcome),
   };
 }
 

@@ -4,7 +4,8 @@ import WebKit
 /// Onderdeel Nieuwsbrief (zoals de tab in web/admin.js): schakelaar aan/uit (bevestiging bij aanzetten met het aantal
 /// leden), volgende verzending (NL-tijd), ontvangers NL/EN, voorbeeld sturen naar één adres (nooit bewaard of gelogd),
 /// voorbeeld bekijken en de geschiedenis van edities. Acties newsletter_status, newsletter_set_enabled,
-/// newsletter_preview en newsletter_render (functie admin → newsletter).
+/// newsletter_preview en newsletter_render (functie admin → newsletter). Blok Welkomstmail: aantallen uit
+/// newsletter_status.welcome, voorbeeld sturen (welcome_preview) en bekijken (welcome_render).
 struct NewsletterView: View {
     @Environment(Session.self) private var session
 
@@ -23,6 +24,13 @@ struct NewsletterView: View {
     @State private var rendering = false
     @State private var rendered: RenderedMail?
 
+    @State private var wTo = ""
+    @State private var wSendLang = "nl"
+    @State private var wSending = false
+    @State private var wSendError = ""
+    @State private var wViewLang = "nl"
+    @State private var wRendering = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -37,6 +45,18 @@ struct NewsletterView: View {
                     VStack(spacing: 12) {
                         sendCard
                         viewCard
+                    }
+                }
+                welcomeCard
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        welcomeSendCard
+                        welcomeViewCard
+                    }
+                    .frame(minWidth: 760)
+                    VStack(spacing: 12) {
+                        welcomeSendCard
+                        welcomeViewCard
                     }
                 }
                 historyCard
@@ -184,6 +204,90 @@ struct NewsletterView: View {
         .card()
     }
 
+    // MARK: welkomstmail
+
+    private var welcomeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(title: "Welkomstmail",
+                       subtitle: "Gaat automatisch naar nieuwe leden zodra ze hun e-mailadres hebben bevestigd (binnen 5 minuten, één keer per account): welkom, de eerste stappen (eigen bron, browser, tv koppelen, apps, hulp) en de nieuwsbrief met uitschrijflink. Los van de schakelaar hierboven; de alinea over de nieuwsbrief staat er alleen in als die aan staat en het lid ingeschreven is. Ook als iemand alle berichten heeft uitgezet. Leden van vóór de invoering krijgen hem niet.")
+            if let s = status {
+                if let w = s.welcome {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 8) {
+                        cell("Verstuurd", Fmt.num(w.sent7d), hint: "laatste 7 dagen")
+                        cell("Wachtend", Fmt.num(w.pending), hint: "gaat binnen 5 minuten")
+                    }
+                } else {
+                    EmptyText(text: "Nog geen gegevens (workflow Backend in iptv-ios-appletv draaien).")
+                }
+            } else if loadError != nil {
+                EmptyText(text: "Geen gegevens.")
+            } else {
+                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .card()
+    }
+
+    private var welcomeSendCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(title: "Welkomstmail: voorbeeld sturen",
+                       subtitle: "Stuurt de welkomstmail (met de voorbeeldnaam Alex) alleen naar dit adres. Het adres wordt niet bewaard en niet gelogd. Zelfde limiet als het voorbeeld van de nieuwsbrief.")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("E-mailadres").font(.caption.weight(.semibold)).foregroundStyle(Color.textSecondary)
+                TextField("", text: $wTo)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .fieldStyle()
+                    .onChange(of: wTo) { _, v in if v.count > 254 { wTo = String(v.prefix(254)) } }
+            }
+            Picker("Taal", selection: $wSendLang) {
+                Text("Nederlands").tag("nl")
+                Text("Engels").tag("en")
+            }
+            .pickerStyle(.segmented)
+            if !wSendError.isEmpty {
+                Text(wSendError).font(.subheadline).foregroundStyle(Color.warn)
+            }
+            Button {
+                Task { await sendWelcomePreview() }
+            } label: {
+                HStack {
+                    if wSending { ProgressView().tint(.white) }
+                    Text("Voorbeeld sturen")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bingr)
+            .disabled(wSending)
+        }
+        .card()
+    }
+
+    private var welcomeViewCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(title: "Welkomstmail: voorbeeld bekijken", subtitle: "De welkomstmail zoals nieuwe leden hem krijgen (met de voorbeeldnaam).")
+            Picker("Taal", selection: $wViewLang) {
+                Text("NL").tag("nl")
+                Text("EN").tag("en")
+            }
+            .pickerStyle(.segmented)
+            Button {
+                Task { await renderWelcome() }
+            } label: {
+                HStack {
+                    if wRendering { ProgressView().tint(.white) }
+                    Text("Voorbeeld tonen")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bingrGhost)
+            .disabled(wRendering)
+        }
+        .card()
+    }
+
     // MARK: geschiedenis
 
     private var historyCard: some View {
@@ -276,6 +380,34 @@ struct NewsletterView: View {
         defer { rendering = false }
         do {
             let r = try await session.call("newsletter_render", ["lang": viewLang])
+            guard let html = r["html"].string, !html.isEmpty else { session.show(APIError.text("server_error"), bad: true); return }
+            rendered = RenderedMail(subject: r["subject"].string ?? "", html: html)
+        } catch {
+            session.report(error)
+        }
+    }
+}
+
+extension NewsletterView {
+    fileprivate func sendWelcomePreview() async {
+        wSendError = ""
+        let address = wTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailCheck.looksValid(address) else { wSendError = APIError.text("bad_email"); return }
+        wSending = true
+        defer { wSending = false }
+        do {
+            _ = try await session.call("welcome_preview", ["to": address, "lang": wSendLang])
+            session.show("Voorbeeld van de welkomstmail (\(wSendLang.uppercased())) verstuurd.")
+        } catch let e as APIError {
+            if e.code != "auth" { wSendError = e.errorDescription ?? "" }
+        } catch {}
+    }
+
+    fileprivate func renderWelcome() async {
+        wRendering = true
+        defer { wRendering = false }
+        do {
+            let r = try await session.call("welcome_render", ["lang": wViewLang])
             guard let html = r["html"].string, !html.isEmpty else { session.show(APIError.text("server_error"), bad: true); return }
             rendered = RenderedMail(subject: r["subject"].string ?? "", html: html)
         } catch {

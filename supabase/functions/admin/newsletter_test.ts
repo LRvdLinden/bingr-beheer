@@ -2,6 +2,7 @@
 // Alleen voorbeeldadressen op example.com/example.org (gereserveerd, geen persoonsgegevens).
 import {
   cleanEmail, cleanEnabled, cleanLang, EMAIL_MAX, editionView, errCode, HTML_MAX, newsletterCall, renderView, statusView,
+  welcomeView,
 } from "./newsletter.ts";
 
 const ok = (c: unknown, m: string) => { if (!c) throw new Error(m); };
@@ -49,6 +50,34 @@ Deno.test("nieuwsbrief: status zonder adressen", () => {
   ok(statusView({ recipients: { nl: 2, en: 3 } }).recipients.total === 5, "totaal opgeteld");
   ok(statusView({ enabled: "true" }).enabled === false, "alleen true is aan");
   ok(statusView({ editions: Array.from({ length: 80 }, () => ({})) }).editions.length === 50, "max. 50 edities");
+  ok(v.welcome === null && empty.welcome === null, "zonder welkomstgegevens: null");
+});
+
+Deno.test("welkomstmail: aantallen in de status, zonder adressen", () => {
+  const v = statusView({ welcome: { sent_7d: 12, pending: 3, emails: ["x@example.com"] } });
+  ok(v.welcome?.sent_7d === 12 && v.welcome?.pending === 3, "aantallen");
+  ok(!JSON.stringify(v.welcome).includes("@"), "geen adressen");
+  const w = welcomeView({ sent_7d: -1, pending: 2.9 });
+  ok(w?.sent_7d === 0 && w?.pending === 2, "opgeschoond");
+  ok(welcomeView(null) === null && welcomeView([]) === null && welcomeView("x") === null, "geen object");
+  ok(welcomeView({})?.sent_7d === 0, "leeg object = 0");
+});
+
+Deno.test("welkomstmail: doorgeven aan newsletter (welcome_preview / welcome_render)", async () => {
+  const seen: string[] = [];
+  const capture = async (_url: string, init: RequestInit) => {
+    seen.push(String(init.body));
+    return new Response(JSON.stringify({ subject: "[Voorbeeld] Welkom bij Bingr: zo begin je", html: "<p>Hoi Alex,</p>" }), { status: 200 });
+  };
+  const r = await newsletterCall("https://x.example.com", "g", "welcome_render", { lang: "en" }, capture);
+  const v = renderView(r.out);
+  ok(v?.subject.startsWith("[Voorbeeld]") && v.html.includes("Hoi Alex"), "render doorgegeven");
+  ok(JSON.parse(seen[0]).action === "welcome_render" && JSON.parse(seen[0]).lang === "en", "actie en taal");
+  await newsletterCall("https://x.example.com", "g", "welcome_preview", { to: "test@example.com", lang: "nl", action: "status" }, capture);
+  const b = JSON.parse(seen[1]);
+  ok(b.action === "welcome_preview" && b.to === "test@example.com", "actie niet te overschrijven, adres alleen in de aanvraag");
+  const rl = await newsletterCall("https://x.example.com", "g", "welcome_preview", {}, resp(429, { error: "rate_limited", retry_after: 3600 }));
+  ok(rl.status === 429 && rl.out.retry_after === 3600, "gedeelde limiet van newsletter");
 });
 
 Deno.test("nieuwsbrief: editie", () => {

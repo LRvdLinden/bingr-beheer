@@ -14,7 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "15"
+    CURRENT_PROJECT_VERSION: "16"
     # Team van Léon van der Linden (zelfde als de Bingr-apps); automatisch ondertekenen
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic

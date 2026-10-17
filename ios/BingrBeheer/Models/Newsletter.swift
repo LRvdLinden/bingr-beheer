@@ -30,6 +30,13 @@ struct NewsletterStatus: Equatable {
     let recipientsEn: Int
     let recipientsTotal: Int
     let editions: [Edition]
+    /// Welkomstmail: verstuurd in de laatste 7 dagen en wachtend; nil = (nog) geen gegevens van de functie.
+    let welcome: Welcome?
+
+    struct Welcome: Equatable {
+        let sent7d: Int
+        let pending: Int
+    }
 
     init(_ j: JSON) {
         enabled = j["enabled"].bool ?? false
@@ -39,6 +46,11 @@ struct NewsletterStatus: Equatable {
         recipientsEn = max(0, j["recipients"]["en"].int ?? 0)
         recipientsTotal = max(0, j["recipients"]["total"].int ?? (recipientsNl + recipientsEn))
         editions = j["editions"].array.enumerated().map { Edition($0.element, index: $0.offset) }
+        if j["welcome"].object != nil {
+            welcome = Welcome(sent7d: max(0, j["welcome"]["sent_7d"].int ?? 0), pending: max(0, j["welcome"]["pending"].int ?? 0))
+        } else {
+            welcome = nil
+        }
     }
 
     /// Afzender van de nieuwsbrief (zoals in het web-dashboard).

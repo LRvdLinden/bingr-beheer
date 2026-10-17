@@ -206,6 +206,28 @@
           <div id="nlView" class="nl-view hidden"></div>
         </div>
       </div>
+      <div class="panel ps-panel">
+        <h2>Welkomstmail</h2>
+        <p class="sub">Gaat automatisch naar nieuwe leden zodra ze hun e-mailadres hebben bevestigd (binnen 5 minuten, één keer per account): welkom, de eerste stappen (eigen bron toevoegen, kijken in de browser, tv koppelen, de apps, hulp) en de nieuwsbrief met een uitschrijflink. Staat los van de schakelaar hierboven; de alinea over de nieuwsbrief staat er alleen in als de nieuwsbrief aan staat en het lid ingeschreven is. Ook als iemand alle berichten heeft uitgezet (het is de bevestiging van het account). Leden van vóór de invoering krijgen hem niet.</p>
+        <div id="wlFacts" class="ps-grid wl-facts" aria-live="polite"><p class="empty">Laden…</p></div>
+      </div>
+      <div class="grid2">
+        <form id="wlPreviewForm" class="panel" novalidate>
+          <h2>Welkomstmail: voorbeeld sturen</h2>
+          <p class="sub">Stuurt de welkomstmail (met de voorbeeldnaam <b>Alex</b>) alleen naar dit adres. Het adres wordt niet bewaard en niet gelogd. Telt mee voor dezelfde limiet als het voorbeeld van de nieuwsbrief.</p>
+          <label>E-mailadres<input id="wlTo" type="email" inputmode="email" maxlength="254" autocomplete="email" spellcheck="false" required></label>
+          <div class="nl-lang"><span class="sub">Taal</span><div id="wlSendLang" class="seg" role="group" aria-label="Taal van de voorbeeldmail"><button type="button" data-lang="nl" class="on" aria-pressed="true">NL</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div></div>
+          <div id="wlSendErr" class="err" role="alert"></div>
+          <button id="wlSend" class="btn" type="submit">Voorbeeld sturen</button>
+        </form>
+        <div class="panel">
+          <div class="row-head"><h2>Welkomstmail: voorbeeld bekijken</h2><div id="wlViewLang" class="seg" role="group" aria-label="Taal van de weergave"><button type="button" data-lang="nl" class="on" aria-pressed="true">NL</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div></div>
+          <p class="sub">De welkomstmail zoals nieuwe leden hem krijgen (met de voorbeeldnaam).</p>
+          <div class="form-btns"><button id="wlShow" class="btn ghost small" type="button">Voorbeeld tonen</button></div>
+          <p id="wlSubject" class="nl-subject hidden"></p>
+          <div id="wlView" class="nl-view hidden"></div>
+        </div>
+      </div>
       <div class="panel">
         <h2>Geschiedenis</h2>
         <p class="sub">Verstuurde edities met het aantal ontvangers. <b>Verstuurd</b> = aangenomen door de mailserver; of de mail in de inbox kwam, meldt die niet.</p>

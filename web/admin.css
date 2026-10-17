@@ -698,6 +698,7 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .nl-subject{margin-top:16px;font-size:14px;overflow-wrap:anywhere}
 .nl-view{margin-top:12px;border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:720px;background:#fff}
 .nl-nums{grid-template-columns:repeat(3,auto)}
+.wl-facts{grid-template-columns:repeat(2,minmax(0,1fr));max-width:520px}
 @media (max-width:760px){.nl-nums{grid-template-columns:repeat(3,1fr)}}
 .w-of{font-size:.5em;font-weight:700;color:var(--sec);letter-spacing:0}
 .nl-user{margin-top:0;font-size:14px}
