@@ -313,7 +313,7 @@ struct MailPreview: UIViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url else { return .allow }
             if ["https", "mailto"].contains(url.scheme?.lowercased() ?? "") {
-                UIApplication.shared.open(url)
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }
             return .cancel
         }
