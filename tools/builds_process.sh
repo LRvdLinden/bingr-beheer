@@ -135,10 +135,25 @@ builds_pending(){
 # aangeleverde pakketten op de branches inbox-<platform>: eerst in deze repo (overgang en Beheer-app), dan in de inbox-repo
 builds_inbox(){
   builds_inbox_from origin
-  if inbox_ready; then builds_inbox_from inbox
+  if inbox_ready; then builds_inbox_main; builds_inbox_from inbox
   else echo "::warning::Secret BINGR_INBOX_READ_TOKEN ontbreekt: inbox-repo overgeslagen."; fi
   [ -n "${INBOX_GIT:-}" ] && rm -rf "$INBOX_GIT"
   INBOX_GIT=""; INBOX_AUTH=""
+}
+
+# De standaardbranch van een repo kan niet weg. Is de eerste aangeleverde inbox-branch de standaardbranch geworden, dan
+# blijft die staan. Daarom een lege branch main in de inbox-repo (alleen een README); de eigenaar zet die één keer als
+# standaardbranch (Settings -> Default branch). Bestaat main al, dan niets.
+builds_inbox_main(){
+  local t c
+  inbox_git ls-remote --exit-code inbox refs/heads/main >/dev/null 2>&1 && return 0
+  t=$(printf 'Inbox voor versleutelde Bingr-buildpakketten (zie bingr-beheer). Niet aanpassen.\n' | inbox_git hash-object -w --stdin) || return 0
+  t=$(printf '100644 blob %s\tREADME.md\n' "$t" | inbox_git mktree) || return 0
+  c=$(GIT_AUTHOR_NAME=github-actions GIT_AUTHOR_EMAIL=actions@github.com GIT_COMMITTER_NAME=github-actions \
+      GIT_COMMITTER_EMAIL=actions@github.com inbox_git commit-tree "$t" -m "Inbox") || return 0
+  if inbox_git push -q inbox "$c:refs/heads/main" 2>/dev/null; then
+    echo "::warning::Branch main in de inbox-repo aangemaakt. Zet hem in bingr-inbox als standaardbranch (Settings -> Default branch), anders kan de eerste inbox-branch niet weg."
+  fi
 }
 
 builds_inbox_from(){
