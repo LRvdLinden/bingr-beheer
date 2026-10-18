@@ -4,7 +4,8 @@
     python3 tools/make_presskit.py --version 1.7 --out /tmp/Bingr-PressKit.zip [--date 2026-10-18]
 
 Inhoud volgens presskit/presskit.json: per map een bron in deze repo (Brand uit presskit/brand, Apple uit appstore/en,
-Promo als die er is). README.txt wordt hier gemaakt (versie, datum, inhoud, gebruiksvoorwaarden). Verborgen bestanden
+Promo als die er is, Android en AndroidTV uit appstore/android); per map optioneel include (namen op het eerste niveau)
+en exclude (mappen/bestanden die op elk niveau wegblijven, bv. raw). README.txt wordt hier gemaakt (versie, datum, inhoud, gebruiksvoorwaarden). Verborgen bestanden
 (.DS_Store e.d.) gaan niet mee. Vaste tijdstempels en volgorde, zodat dezelfde inhoud dezelfde zip geeft.
 Schrijft alleen naar --out; drukt een JSON-regel {file, size, sha256, files} af.
 """
@@ -20,9 +21,11 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def walk(src, include=None):
-    """Bestanden onder src als (relatief pad, volledig pad), gesorteerd; include = alleen deze namen op het eerste niveau."""
+def walk(src, include=None, exclude=None):
+    """Bestanden onder src als (relatief pad, volledig pad), gesorteerd; include = alleen deze namen op het eerste niveau,
+    exclude = mappen of bestanden met deze naam overslaan (op elk niveau, bv. "raw")."""
     out = []
+    skip = set(exclude or [])
     names = sorted(os.listdir(src))
     for n in names:
         if n.startswith(".") or (include is not None and n not in include):
@@ -30,9 +33,9 @@ def walk(src, include=None):
         p = os.path.join(src, n)
         if os.path.isdir(p):
             for d, dirs, files in os.walk(p):
-                dirs[:] = sorted(x for x in dirs if not x.startswith("."))
+                dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in skip)
                 for fn in sorted(files):
-                    if not fn.startswith("."):
+                    if not fn.startswith(".") and fn not in skip:
                         full = os.path.join(d, fn)
                         out.append((os.path.relpath(full, src).replace(os.sep, "/"), full))
         elif os.path.isfile(p):
@@ -40,7 +43,9 @@ def walk(src, include=None):
     return out
 
 
-def readme(cfg, version, date, entries, has_credits):
+def readme(cfg, version, date, entries, credit_files):
+    has_credits = bool(credit_files)
+    where = " and ".join(credit_files)
     by_top = {}
     for rel, _ in entries:
         top = rel.split("/", 1)[0]
@@ -49,10 +54,10 @@ def readme(cfg, version, date, entries, has_credits):
     for d in cfg["dirs"]:
         if d["to"] in by_top:
             lines.append(f"  {d['to'] + '/':<12}{str(by_top[d['to']]) + ' files':>10}   {d.get('label') or ''}".rstrip())
-    credits_en = ("Film and series images that appear in the screenshots: credit them as listed in CREDITS.txt."
+    credits_en = (f"Film and series images that appear in the screenshots: credit them as listed in {where}."
                   if has_credits else
                   "The screenshots use a demo library with made-up titles and self-drawn artwork.")
-    credits_nl = ("Film- en seriebeelden in de screenshots: naamsvermelding volgens CREDITS.txt."
+    credits_nl = (f"Film- en seriebeelden in de screenshots: naamsvermelding volgens {where}."
                   if has_credits else
                   "De screenshots gebruiken een demobibliotheek met verzonnen titels en zelfgemaakte afbeeldingen.")
     return f"""Bingr - press kit
@@ -68,7 +73,7 @@ provide, sell or host any channels, movies or series.
 
 CONTENTS
   README.txt              this file
-{"  CREDITS.txt             credits for the film and series images in the screenshots" + chr(10) if has_credits else ""}{chr(10).join(lines)}
+{"  CREDITS.txt             credits for the film and series images in the screenshots" + chr(10) if "CREDITS.txt" in credit_files else ""}{chr(10).join(lines)}
   Planned: {", ".join(x + "/" for x in cfg.get("planned", []))}
 
 TERMS OF USE FOR PRESS
@@ -116,26 +121,26 @@ def main():
             if d.get("optional"):
                 continue
             sys.exit(f"bron ontbreekt: {d['from']}")
-        files = walk(src, d.get("include"))
+        files = walk(src, d.get("include"), d.get("exclude"))
         if d.get("include") and not d.get("optional"):
             have = {r.split("/", 1)[0] for r, _ in files}
             missing = [x for x in d["include"] if x not in have]
             if missing:
                 sys.exit(f"ontbreekt in {d['from']}: {', '.join(missing)}")
         entries += [(f"{d['to']}/{r}", p) for r, p in files]
-    has_credits = False
     for f in cfg.get("files", []):
         p = os.path.join(ROOT, f["from"])
         if os.path.isfile(p):
             entries.append((f["to"], p))
-            has_credits = has_credits or f["to"] == "CREDITS.txt"
         elif not f.get("optional"):
             sys.exit(f"bron ontbreekt: {f['from']}")
     if not any(r.startswith("Apple/") for r, _ in entries):
         sys.exit("geen Apple-bestanden")
     entries.sort(key=lambda e: (e[0].count("/") > 0, e[0]))
+    # naamsvermelding: CREDITS.txt in de hoofdmap en/of per platform (bv. Android/CREDITS.txt)
+    credit_files = [r for r, _ in entries if r == "CREDITS.txt" or (r.count("/") == 1 and r.endswith("/CREDITS.txt"))]
 
-    text = readme(cfg, a.version, date, entries, has_credits)
+    text = readme(cfg, a.version, date, entries, credit_files)
     stamp = (1980, 1, 1, 0, 0, 0)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with zipfile.ZipFile(a.out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:

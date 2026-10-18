@@ -1,5 +1,5 @@
 {
-  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is. Later erbij: Android/, AndroidTV/, SamsungTV/ (zelfde vorm, bv. bron appstore/android/...).",
+  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is; 'include' = alleen deze namen op het eerste niveau; 'exclude' = mappen of bestanden die op elk niveau wegblijven (bv. raw). Later erbij: SamsungTV/ (zelfde vorm, bv. bron appstore/samsungtv/...).",
   "name": "Bingr-PressKit",
   "files": [
     { "to": "CREDITS.txt", "from": "appstore/en/CREDITS.txt", "optional": true }
@@ -11,7 +11,13 @@
       "include": ["iPhone-6.9in", "iPhone-6.3in", "iPad-13in", "AppleTV", "Mac", "AppIcon-1024.png"],
       "label": "App Store screenshots for iPhone 6.9\" and 6.3\", iPad 13\", Apple TV and Mac (marketing images 01-08 and raw/), AppIcon-1024.png, AppleTV/TopShelf/"
     },
+    {
+      "to": "Android", "from": "appstore/android",
+      "include": ["Phone", "Tablet-7in", "Tablet-10in", "AndroidTV", "icon-512.png", "feature-graphic-1024x500.png", "tv-banner-1280x720.png", "CREDITS.txt"],
+      "exclude": ["raw"],
+      "label": "Google Play images: phone, 7\" and 10\" tablet (marketing images 01-08), Android TV (plain 1920 x 1080, styled in marketing/), icon-512.png, feature graphic, TV banner, CREDITS.txt"
+    },
     { "to": "Promo", "from": "appstore/en/Promo", "optional": true, "label": "App Store header and search promos" }
   ],
-  "planned": ["Android", "AndroidTV", "SamsungTV"]
+  "planned": ["SamsungTV"]
 }
