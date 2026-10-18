@@ -19,6 +19,8 @@ struct DashData {
     /// Nieuwsbrief (newsletter_status): abonnees en of hij aan staat
     var newsletter: NewsletterStatus?
     var newsletterError: String?
+    /// Verhoogd bij elke keer vernieuwen: de Insights-grafieken laden dan opnieuw (eigen actie insights per widget)
+    var insightsRevision = 0
 
     /// Platforms die in de gegevens voorkomen (keuzelijst bij Apparaten per platform en App-versies).
     var knownPlatforms: [String] {
@@ -42,10 +44,7 @@ enum DashText {
         let o = w.options
         switch w.type {
         case .metric: return o.metricValue.label
-        case .dailyChart:
-            if o.seriesValue == "new_users" { return "Nieuwe gebruikers per dag" }
-            if o.seriesValue == "active_users" || stats?.signinsFromAudit == false { return "Actieve accounts per dag" }
-            return "Inloggen per dag"
+        case .insights: return (InsMetric(rawValue: o.insight ?? "") ?? .accounts).name
         case .platforms: return o.source == "live" ? "Nu actieve apparaten" : "Actieve apparaten per platform"
         case .versions: return "App-versies in gebruik"
         case .plans: return "Abonnementen"
@@ -84,10 +83,10 @@ enum DashText {
 
 /// Grootte van een kind in `DashGridLayout`.
 struct DashSpanKey: LayoutValueKey {
-    static let defaultValue: DashSize = .s
+    static let defaultValue = DashSpan(columns: 1, rows: 1)
 }
 
-/// Raster met vaste rijhoogte: S = 1×1, M = 2×1, L = 2×2. Plaatst elke widget op de eerste vrije plek (zoals
+/// Raster met vaste rijhoogte: S = 1×1, M = 2×1, L = 2×2 (Insights-grafieken M = 2×2, L = 2×3). Plaatst elke widget op de eerste vrije plek (zoals
 /// `grid-auto-flow: row dense` op het web), zodat er geen gaten vallen. (LazyVGrid kent geen kolom- en rij-spans.)
 struct DashGridLayout: Layout {
     var columns: Int
@@ -101,7 +100,7 @@ struct DashGridLayout: Layout {
         let height: Int
     }
 
-    private func pack(_ sizes: [DashSize]) -> (cells: [Cell], rows: Int) {
+    private func pack(_ sizes: [DashSpan]) -> (cells: [Cell], rows: Int) {
         let cols = max(1, columns)
         var grid: [[Bool]] = []
         var cells: [Cell] = []
@@ -112,7 +111,7 @@ struct DashGridLayout: Layout {
             return true
         }
         for size in sizes {
-            let w = min(size.columns, cols), h = size.rows
+            let w = min(size.columns, cols), h = max(1, size.rows)
             var row = 0
             var placed = false
             while !placed {
@@ -158,6 +157,8 @@ struct DashWidgetCard: View {
     let support: SupportCounts?
     let editing: Bool
     let open: (DashTarget) -> Void
+    /// Opties van de widget wijzigen zonder de wijzigmodus (Insights: periode en series aan/uit)
+    var update: (DashOptions) -> Void = { _ in }
 
     private var o: DashOptions { widget.options }
     private var title: String { DashText.title(widget, stats: data.stats) }
@@ -227,7 +228,7 @@ struct DashWidgetCard: View {
 
     private var needsStats: Bool {
         switch widget.type {
-        case .support, .status, .announcements, .pushSubscribers: return false
+        case .support, .status, .announcements, .pushSubscribers, .insights: return false
         case .platforms: return o.source != "live"
         default: return true
         }
@@ -239,7 +240,8 @@ struct DashWidgetCard: View {
         } else {
             switch widget.type {
             case .metric: metricView
-            case .dailyChart: dailyView
+            case .insights:
+                InsightsWidgetView(widget: widget, title: title, revision: data.insightsRevision, editing: editing, update: update)
             case .platforms, .versions: barsView
             case .plans: plansView
             case .support: supportView
@@ -308,40 +310,6 @@ struct DashWidgetCard: View {
             tile(title, Fmt.num(v), hint, valueColor: color)
         } else {
             tile(title, "—", "niet beschikbaar")
-        }
-    }
-
-    // Per dag
-    @ViewBuilder private var dailyView: some View {
-        let s = data.stats
-        let days = Array((s?.days ?? []).suffix(o.daysValue))
-        let values: [Int] = days.map { d in
-            switch o.seriesValue {
-            case "signins": return d.signins
-            case "active_users": return d.activeUsers
-            default: return d.newUsers
-            }
-        }
-        let total = values.reduce(0, +)
-        let today = values.last ?? 0
-        let unit = o.seriesValue == "new_users" ? "nieuwe gebruikers"
-            : (o.seriesValue == "signins" && s?.signinsFromAudit == true) ? "inlogs" : "actieve accounts"
-        if o.display == "number" || widget.size == .s {
-            let avg = days.isEmpty ? 0 : Double(total) / Double(days.count)
-            tile(title, Fmt.num(total),
-                 "\(o.daysValue) dagen · gem. \(avg.formatted(.number.precision(.fractionLength(0...1)).locale(Fmt.nl))) per dag · vandaag \(Fmt.num(today))")
-        } else {
-            let sub = "Laatste \(o.daysValue) dagen" + (o.seriesValue == "signins"
-                ? (s?.signinsFromAudit == true ? ", uit het inloglogboek" : ", accounts met app-activiteit") : "")
-            VStack(alignment: .leading, spacing: 8) {
-                head(sub, trailing: widget.size == .m ? Fmt.num(total) : nil)
-                if widget.size == .l {
-                    Text("\(Fmt.num(total)) in \(o.daysValue) dagen · vandaag \(Fmt.num(today))")
-                        .font(.caption).foregroundStyle(Color.textSecondary)
-                }
-                DailyBarChart(points: zip(days, values).map { .init(day: $0.day, value: $1) }, unit: unit,
-                              height: widget.size == .l ? 190 : 80)
-            }
         }
     }
 

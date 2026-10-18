@@ -19,6 +19,10 @@
 //   max. 20 per 10 min per IP (one-click vanaf mailservers: 200 per 10 min). Inzage van persoonsgegevens (user_detail,
 //   users met zoekterm, support_get), geblokkeerde inlogpogingen en mislukte acties (met foutcode) staan in admin_audit.
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
+//   insights            {token, metric: accounts|signins|streams|push|support, period: hour|day|week|month|year|24h|7d|30d,
+//                       offset?: 0, -1, …, events?: bool} -> {step, edges:[…], now_index, has_prev, has_next, series:[{key, label,
+//                       agg, available, values:[n|null], prev_values, summary}], events?:[{kind, name, from, to}]}
+//                       (alleen aantallen per tijdvak, plus storingen/onderhoud van de statuspagina; insights.ts)
 //   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
 //                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade;
@@ -132,6 +136,7 @@ import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
+import { build as buildInsights, parseQuery as parseInsights, plan as planInsights } from "./insights.ts";
 import {
   buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, releaseKey, releaseKeys, releaseOf,
   releasePushView, signBuildToken,
@@ -683,6 +688,23 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const { data, error } = await admin.rpc("bingr_admin_stats");
       if (error) throw new Error(error.message);
       return json({ ...data, smtp: smtpConfigured() });
+    }
+    case "insights": {
+      // grafieken van het overzicht (zoals Homey Insights): aantallen per tijdvak, nooit gegevens per persoon (insights.ts)
+      const q = parseInsights(body);
+      if ("error" in q) return json({ error: q.error }, 400);
+      const now = Date.now(), p = planInsights(q, now);
+      const iso = (t: number) => new Date(t).toISOString();
+      // events: true = storingen en onderhoud (statuspagina) als banden op de tijdas
+      const [{ data, error }, ev] = await Promise.all([
+        admin.rpc("bingr_admin_insights", { p_metric: p.metric, p_edges: p.edges.map(iso), p_daily: p.daily }),
+        body.events === true ? admin.rpc("bingr_admin_insights_events", { p_from: iso(p.cur[0]), p_to: iso(p.cur[p.cur.length - 1]) }) : null,
+      ]);
+      // schema nog niet bijgewerkt (workflow Backend in iptv-ios-appletv)
+      if (error?.code === "PGRST202") return json({ error: "insights_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      if (ev?.error) console.error("admin", "insights events", ev.error.message);
+      return json(buildInsights(p, data, now, ev ? (ev.error ? [] : ev.data) : undefined));
     }
     case "users": {
       const size = Math.min(Math.max(Number(body.page_size ?? 25) || 25, 1), 50);

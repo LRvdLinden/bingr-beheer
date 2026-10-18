@@ -28,7 +28,7 @@ struct OverviewView: View {
                     DashGridLayout(columns: sizeClass == .regular ? 4 : 2) {
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, w in
                             widgetView(w, index: index, count: visible.count)
-                                .layoutValue(key: DashSpanKey.self, value: w.size)
+                                .layoutValue(key: DashSpanKey.self, value: w.span)
                         }
                     }
                 }
@@ -76,7 +76,8 @@ struct OverviewView: View {
     // MARK: widgets
 
     @ViewBuilder private func widgetView(_ w: DashWidget, index: Int, count: Int) -> some View {
-        let card = DashWidgetCard(widget: w, data: data, support: session.supportCounts, editing: editing, open: open)
+        let card = DashWidgetCard(widget: w, data: data, support: session.supportCounts, editing: editing, open: open,
+                                  update: { options in update(w.id) { $0.options = options.normalized(for: $0.type) } })
         if editing {
             card
                 .opacity(0.85)
@@ -240,6 +241,9 @@ struct OverviewView: View {
         if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(rh) || Self.isAuth(rp) || Self.isAuth(rn) { return }
 
         var d = data
+        // Insights-grafieken halen hun eigen gegevens op (actie insights); bij vernieuwen opnieuw
+        InsightsCache.clear()
+        d.insightsRevision += 1
         switch rs {
         case .success(let j)?:
             d.stats = Stats(j)

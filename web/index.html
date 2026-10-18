@@ -29,6 +29,7 @@
     <div class="brand"><span class="logo">BINGR</span><span class="tag">Beheer</span></div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Overzicht</button>
+      <button role="tab" data-tab="insights">Insights</button>
       <button role="tab" data-tab="users">Gebruikers</button>
       <button role="tab" data-tab="support">Support<span id="supBadge" class="tab-badge hidden" aria-label="ongelezen"></span></button>
       <button role="tab" data-tab="messages">Pushmeldingen</button>
@@ -47,6 +48,7 @@
         <div class="menu-head"><img src="app-icon.png" alt="" width="40" height="40"><div><b>BingrBeheer</b><span id="menuSession" class="sub"></span></div></div>
         <div class="menu-sep" role="separator"></div>
       <button class="menu-it" type="button" role="menuitem" data-go="overview"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Overzicht</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="insights"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="M4 15l4.5-5 4 3L20 5"/><path d="M4 15v5M8.5 10v10M12.5 13v7M20 5v15" opacity=".35"/></svg><span>Insights</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="users"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/></svg><span>Gebruikers</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="support"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg><span>Support</span><span id="menuSupBadge" class="tab-badge hidden"></span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="messages"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Pushmeldingen</span></button>
@@ -77,6 +79,31 @@
       <p id="dashLive" class="sr" aria-live="polite"></p>
     </section>
 
+    <section id="tab-insights" class="tab hidden">
+      <div class="row-head"><h1>Insights</h1>
+        <div class="head-btns"><button id="insCsv" class="btn ghost small" type="button" disabled>Download CSV</button>
+          <button id="insRefresh" class="btn ghost small" type="button">Vernieuwen</button></div></div>
+      <div class="ins-page">
+        <aside class="panel ins-src" aria-labelledby="insSrcTitle">
+          <h2 id="insSrcTitle">Bronnen</h2>
+          <p class="sub">Vink aan wat je wilt vergelijken; alle grafieken volgen dezelfde periode.</p>
+          <div id="insSources" class="ins-src-list" role="group" aria-label="Bronnen"></div>
+          <label class="switch ins-src-ev"><input id="insEvents" type="checkbox" checked><span class="track"></span><span>Storingen en onderhoud tonen</span></label>
+        </aside>
+        <div class="ins-main">
+          <div class="panel ins-bar">
+            <div class="ins-head"><div class="w-ht"><h2 id="insRange">&nbsp;</h2><p class="sub" id="insRes">&nbsp;</p></div>
+              <div class="ins-nav" role="group" aria-label="Periode bladeren">
+                <button id="insPrev" type="button" class="ins-ic" aria-label="Vorige periode" title="Vorige periode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <button id="insNow" type="button" class="ins-now" aria-label="Terug naar nu" disabled>Nu</button>
+                <button id="insNext" type="button" class="ins-ic" aria-label="Volgende periode" title="Volgende periode" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+            <div id="insPeriods" class="ins-periods" role="radiogroup" aria-label="Periode"></div>
+          </div>
+          <div id="insCharts" class="ins-charts"></div>
+          <p id="insLive" class="sr" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
     <section id="tab-users" class="tab hidden">
       <div class="row-head"><h1>Gebruikers</h1><span id="userCount" class="sub"></span></div>
       <div class="sup-bar">

@@ -106,9 +106,9 @@ struct TabLayout: View {
         }
         .sheet(item: $sheet) { s in
             NavigationStack {
-                if s == .downloads || s == .newsletter {
+                if s == .downloads || s == .newsletter || s == .insights {
                     Group {
-                        if s == .downloads { DownloadsView() } else { NewsletterView() }
+                        if s == .downloads { DownloadsView() } else if s == .insights { InsightsView() } else { NewsletterView() }
                     }
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button("Klaar") { sheet = nil } }
@@ -130,7 +130,7 @@ struct SplitLayout: View {
         NavigationSplitView(columnVisibility: $visibility) {
             List(selection: Binding<AppSection?>(get: { session.section }, set: { if let s = $0 { session.section = s } })) {
                 Section {
-                    ForEach([AppSection.overview, .users, .support, .messages, .newsletter, .status]) { s in
+                    ForEach([AppSection.overview, .insights, .users, .support, .messages, .newsletter, .status]) { s in
                         Label(s.title, systemImage: s.icon)
                             .badge(s == .support ? (session.supportCounts?.unread ?? 0) : 0)
                             .tag(s)
@@ -165,6 +165,7 @@ struct SectionScreen: View {
     @State private var showSettings = false
     @State private var showDownloads = false
     @State private var showNewsletter = false
+    @State private var showInsights = false
     @State private var confirmLogout = false
     @State private var confirmLogoutAll = false
 
@@ -198,6 +199,14 @@ struct SectionScreen: View {
                     }
             }
         }
+        .sheet(isPresented: $showInsights) {
+            NavigationStack {
+                InsightsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Klaar") { showInsights = false } }
+                    }
+            }
+        }
         .confirmationDialog("Uitloggen?", isPresented: $confirmLogout, titleVisibility: .visible) {
             Button("Uitloggen", role: .destructive) { session.logout() }
         }
@@ -216,6 +225,7 @@ struct SectionScreen: View {
         Group {
             switch section {
             case .overview: OverviewView()
+            case .insights: InsightsView()
             case .users: UsersView()
             case .support: SupportView()
             case .messages: MessagesView()
@@ -233,6 +243,7 @@ struct SectionScreen: View {
                         if compact && s == .settings { showSettings = true }
                         else if compact && s == .downloads { showDownloads = true }
                         else if compact && s == .newsletter { showNewsletter = true }
+                        else if compact && s == .insights { showInsights = true }
                         else { session.section = s }
                     },
                     logout: { confirmLogout = true },
@@ -262,7 +273,7 @@ struct AppMenuButton: View {
     var body: some View {
         Menu {
             Section {
-                ForEach([AppSection.overview, .users, .support, .messages, .newsletter, .status]) { s in
+                ForEach([AppSection.overview, .insights, .users, .support, .messages, .newsletter, .status]) { s in
                     Button { select(s) } label: {
                         Label(title(s), systemImage: !compact && s == session.section ? "checkmark" : s.icon)
                     }

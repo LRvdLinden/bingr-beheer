@@ -60,21 +60,25 @@ struct DashWidgetSettingsView: View {
                     ForEach(DashMetric.allCases) { m in Text(m.label).tag(m.rawValue) }
                 }
             }
-        case .dailyChart:
-            Section("Gegevens") {
-                Picker("Gegevens", selection: value(\.series, "new_users")) {
-                    Text("Nieuwe gebruikers").tag("new_users")
-                    Text("Inlogs").tag("signins")
-                    Text("Accounts met app-activiteit").tag("active_users")
+        case .insights:
+            Section {
+                Picker("Gegevens", selection: value(\.insight, InsMetric.accounts.rawValue)) {
+                    ForEach(InsMetric.allCases) { m in Text("\(m.name): \(m.detail)").tag(m.rawValue) }
                 }
-                Picker("Periode", selection: value(\.days, 30)) {
-                    ForEach(DashOptions.daysValues, id: \.self) { d in Text("Laatste \(d) dagen").tag(d) }
+                Picker("Periode", selection: value(\.period, InsPeriod.d30.rawValue)) {
+                    ForEach(InsPeriod.allCases) { p in Text(p.long).tag(p.rawValue) }
                 }
-                Picker("Weergave", selection: value(\.display, "chart")) {
-                    Text("Grafiek").tag("chart")
+                Picker("Weergave", selection: value(\.display, "auto")) {
+                    Text("Automatisch").tag("auto")
+                    Text("Lijn").tag("line")
+                    Text("Staven").tag("bar")
                     Text("Getal").tag("number")
                 }
-                .pickerStyle(.segmented)
+                Toggle("Storingen en onderhoud op de tijdas", isOn: value(\.events, true))
+            } header: {
+                Text("Gegevens")
+            } footer: {
+                Text("Automatisch: staven voor pushmeldingen en tickets per dag of week, anders een lijn. De periode kies je ook op de widget zelf.")
             }
         case .platforms:
             Section("Gegevens") {

@@ -15,9 +15,16 @@ enum DashSize: String, Codable, CaseIterable, Identifiable {
     var rows: Int { self == .l ? 2 : 1 }
 }
 
+/// Plaats in het raster (kolommen × rijen). Insights-grafieken zijn hoger: M = 2×2, L = 2×3 (zoals op het web).
+struct DashSpan: Equatable {
+    var columns: Int
+    var rows: Int
+}
+
 enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     case metric
-    case dailyChart = "daily_chart"
+    /// Grafiek zoals Homey Insights (actie insights). Vervangt "Per dag" (daily_chart): die wordt bij het lezen omgezet.
+    case insights
     /// `announcements` (type-id blijft voor bewaarde indelingen) toont sinds build 14 de pushgeschiedenis (push_history).
     case platforms, versions, plans, support, status, announcements
     case pushSubscribers = "push_subscribers"
@@ -29,7 +36,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .metric: return "Kengetal"
-        case .dailyChart: return "Per dag"
+        case .insights: return "Grafiek (Insights)"
         case .platforms: return "Apparaten per platform"
         case .versions: return "App-versies"
         case .plans: return "Abonnementen"
@@ -44,7 +51,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .metric: return "Eén getal: gebruikers, actief, apparaten, kijkers, abonnementen, geblokkeerd…"
-        case .dailyChart: return "Nieuwe gebruikers, inlogs of actieve accounts per dag, als grafiek of als getal"
+        case .insights: return "Accounts, inlogs, streams, pushmeldingen of supporttickets door de tijd: kies uur, dag, week, maand of jaar en blader terug"
         case .platforms: return "Actieve apparaten per platform (30 dagen of nu)"
         case .versions: return "App-versies in gebruik per platform"
         case .plans: return "Gratis, Lifetime en accounts met eigen limieten"
@@ -59,7 +66,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .metric: return "number"
-        case .dailyChart: return "chart.bar.xaxis"
+        case .insights: return "chart.xyaxis.line"
         case .platforms: return "iphone.and.arrow.forward"
         case .versions: return "app.badge"
         case .plans: return "star"
@@ -74,7 +81,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     var sizes: [DashSize] {
         switch self {
         case .metric, .newsletter: return [.s, .m]
-        case .dailyChart, .plans, .support, .status, .pushSubscribers: return [.s, .m, .l]
+        case .insights, .plans, .support, .status, .pushSubscribers: return [.s, .m, .l]
         case .platforms, .versions, .announcements: return [.m, .l]
         }
     }
@@ -142,11 +149,17 @@ struct DashOptions: Codable, Equatable {
     var pushPlatforms: [String]?
     var showNew: Bool?
     var showLangs: Bool?
+    // insights: metric, periode, storingen tonen, verborgen series (legenda)
+    var insight: String?
+    var period: String?
+    var events: Bool?
+    var off: [String]?
 
     enum CodingKeys: String, CodingKey {
         case metric, series, days, display, source, platforms, plans, statuses, count
         case onlyActive = "only_active", showIncidents = "show_incidents", showNotices = "show_notices"
         case pushPlatforms = "push_platforms", showNew = "show_new", showLangs = "show_langs"
+        case insight, period, events, off
     }
 
     init() {}
@@ -168,6 +181,10 @@ struct DashOptions: Codable, Equatable {
         pushPlatforms = try? c.decodeIfPresent([String].self, forKey: .pushPlatforms)
         showNew = try? c.decodeIfPresent(Bool.self, forKey: .showNew)
         showLangs = try? c.decodeIfPresent(Bool.self, forKey: .showLangs)
+        insight = try? c.decodeIfPresent(String.self, forKey: .insight)
+        period = try? c.decodeIfPresent(String.self, forKey: .period)
+        events = try? c.decodeIfPresent(Bool.self, forKey: .events)
+        off = try? c.decodeIfPresent([String].self, forKey: .off)
     }
 
     static let seriesValues = ["new_users", "signins", "active_users"]
@@ -200,10 +217,13 @@ struct DashOptions: Codable, Equatable {
         switch type {
         case .metric:
             o.metric = Self.pick(metric, DashMetric.allCases.map(\.rawValue), DashMetric.usersTotal.rawValue)
-        case .dailyChart:
-            o.series = Self.pick(series, Self.seriesValues, "new_users")
-            o.days = Self.pick(days, Self.daysValues, 30)
-            o.display = Self.pick(display, ["chart", "number"], "chart")
+        case .insights:
+            let m = InsMetric(rawValue: insight ?? "") ?? .accounts
+            o.insight = m.rawValue
+            o.period = Self.pick(period, InsPeriod.allCases.map(\.rawValue), InsPeriod.d30.rawValue)
+            o.display = Self.pick(display, ["auto", "line", "bar", "number"], "auto")
+            o.events = events ?? true
+            o.off = m.series.filter { (off ?? []).contains($0) }
         case .platforms:
             o.source = Self.pick(source, ["30d", "live"], "30d")
             o.platforms = Self.list(platforms)
@@ -228,6 +248,16 @@ struct DashOptions: Codable, Equatable {
         return o
     }
 
+    /// "Per dag" (daily_chart, tot build 16) als Insights-grafiek met dezelfde gegevens en periode (zoals migrateWidget in admin.js).
+    static func fromDailyChart(_ old: DashOptions) -> DashOptions {
+        var o = DashOptions()
+        o.insight = old.series == "signins" ? "signins" : "accounts"
+        o.period = old.days == 7 ? "7d" : "30d"
+        o.display = old.display == "number" ? "number" : "auto"
+        o.off = old.series == "active_users" ? ["new_users"] : old.series == "signins" ? [] : ["active_users"]
+        return o
+    }
+
     // gemak: waarden na normalized(for:)
     var metricValue: DashMetric { DashMetric(rawValue: metric ?? "") ?? .usersTotal }
     var seriesValue: String { series ?? "new_users" }
@@ -245,6 +275,12 @@ struct DashWidget: Codable, Equatable, Identifiable {
     var hidden: Bool
     var options: DashOptions
 
+    var span: DashSpan {
+        let s = DashSpan(columns: size.columns, rows: size.rows)
+        guard type == .insights, options.display != "number" else { return s }
+        return size == .m ? DashSpan(columns: 2, rows: 2) : size == .l ? DashSpan(columns: 2, rows: 3) : s
+    }
+
     enum CodingKeys: String, CodingKey { case id, type, size, hidden, options }
 
     init(id: String, type: DashWidgetType, size: DashSize? = nil, hidden: Bool = false, options: DashOptions = DashOptions()) {
@@ -258,12 +294,23 @@ struct DashWidget: Codable, Equatable, Identifiable {
     /// Onbekend type = fout (de widget valt weg); de rest valt terug op standaardwaarden.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try c.decode(DashWidgetType.self, forKey: .type)
+        let raw = try c.decode(String.self, forKey: .type)
+        var options = (try? c.decodeIfPresent(DashOptions.self, forKey: .options)) ?? DashOptions()
+        let type: DashWidgetType
+        if raw == "daily_chart" {
+            type = .insights
+            options = DashOptions.fromDailyChart(options)
+        } else {
+            guard let t = DashWidgetType(rawValue: raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "onbekend type")
+            }
+            type = t
+        }
         self.init(id: (try? c.decode(String.self, forKey: .id)) ?? "",
                   type: type,
                   size: try? c.decodeIfPresent(DashSize.self, forKey: .size),
                   hidden: (try? c.decodeIfPresent(Bool.self, forKey: .hidden)) ?? false,
-                  options: (try? c.decodeIfPresent(DashOptions.self, forKey: .options)) ?? DashOptions())
+                  options: options)
     }
 }
 
@@ -326,10 +373,11 @@ struct DashLayout: Codable, Equatable {
             o.metric = m.rawValue
             return DashWidget(id: id, type: .metric, size: .s, options: o)
         }
-        func chart(_ id: String, _ series: String) -> DashWidget {
+        func chart(_ id: String, _ m: InsMetric, _ p: InsPeriod) -> DashWidget {
             var o = DashOptions()
-            o.series = series
-            return DashWidget(id: id, type: .dailyChart, size: .l, options: o)
+            o.insight = m.rawValue
+            o.period = p.rawValue
+            return DashWidget(id: id, type: .insights, size: .l, options: o)
         }
         return DashLayout(widgets: [
             metric("users", .usersTotal), metric("new_7d", .usersNew7d), metric("active_today", .activeToday),
@@ -337,7 +385,7 @@ struct DashLayout: Codable, Equatable {
             DashWidget(id: "support", type: .support, size: .s), metric("blocked", .blocked),
             metric("plan_free", .planFree), metric("plan_lifetime", .planLifetime),
             DashWidget(id: "status", type: .status, size: .m),
-            chart("chart_new", "new_users"), chart("chart_signins", "signins"),
+            chart("chart_new", .accounts, .d30), chart("chart_streams", .streams, .d7), chart("chart_push", .push, .d30),
             DashWidget(id: "platforms", type: .platforms, size: .l), DashWidget(id: "versions", type: .versions, size: .l),
         ])
     }

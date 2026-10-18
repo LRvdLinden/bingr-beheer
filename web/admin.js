@@ -199,7 +199,7 @@
     appMenu.querySelectorAll("[data-go]").forEach((b) => (b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -211,7 +211,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "users", "support", "messages", "newsletter", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "users", "support", "messages", "newsletter", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -238,6 +238,15 @@
     opted_out: { label: "Geen berichtenmail", v: (s) => s.opted_out, h: () => "afgemeld" },
   };
   const SUP_KEYS = ["new", "open", "pending", "resolved", "closed"];
+  // Insights: metrics en series zoals in supabase/functions/admin/insights.ts (volgorde = kleur, vast per metric)
+  const INS_METRICS = {
+    accounts: { name: "Accounts", series: ["new_users", "active_users"] },
+    signins: { name: "Inlogs", series: ["signins"] },
+    streams: { name: "Streams", series: ["live", "movie", "episode"] },
+    push: { name: "Pushmeldingen", series: ["sent", "failed"] },
+    support: { name: "Supporttickets", series: ["new", "closed"] },
+  };
+  const INS_PERIODS = ["hour", "day", "week", "month", "year", "24h", "7d", "30d"];
   // platforms met systeem-push (push_devices); namen zoals in de tab Pushmeldingen
   const PUSH_PFS = ["ios", "ipados", "macos", "android", "web"];
   const PUSH_PF_NAME = { ios: "iPhone", ipados: "iPad", macos: "Mac", android: "Android", web: "Web" };
@@ -245,8 +254,9 @@
   const WTYPES = {
     metric: { name: "Kengetal", desc: "Eén getal: gebruikers, actief, apparaten, kijkers, abonnementen, geblokkeerd…", sizes: ["s", "m"], size: "s",
       opts: { metric: ["enum", Object.keys(METRICS), "users_total"] } },
-    daily_chart: { name: "Per dag", desc: "Nieuwe gebruikers, inlogs of actieve accounts per dag, als grafiek of als getal", sizes: ["s", "m", "l"], size: "l",
-      opts: { series: ["enum", ["new_users", "signins", "active_users"], "new_users"], days: ["enum", [7, 14, 30], 30], display: ["enum", ["chart", "number"], "chart"] } },
+    // grafiek zoals Homey Insights (actie insights); vervangt "Per dag" (daily_chart wordt bij het laden omgezet, zie normWidget)
+    insights: { name: "Grafiek (Insights)", desc: "Accounts, inlogs, streams, pushmeldingen of supporttickets door de tijd: kies uur, dag, week, maand of jaar en blader terug", sizes: ["s", "m", "l"], size: "l",
+      opts: { insight: ["enum", Object.keys(INS_METRICS), "accounts"], period: ["enum", INS_PERIODS, "30d"], display: ["enum", ["auto", "line", "bar", "number"], "auto"], events: ["bool", null, true], off: ["hidden", null, []] } },
     platforms: { name: "Apparaten per platform", desc: "Actieve apparaten per platform (30 dagen of nu)", sizes: ["m", "l"], size: "l",
       opts: { source: ["enum", ["30d", "live"], "30d"], platforms: ["list", null, []] } },
     versions: { name: "App-versies", desc: "App-versies in gebruik per platform", sizes: ["m", "l"], size: "l",
@@ -269,7 +279,9 @@
     metric: ["Getal", Object.fromEntries(Object.entries(METRICS).map(([k, m]) => [k, m.label]))],
     series: ["Gegevens", { new_users: "Nieuwe gebruikers", signins: "Inlogs (of actieve accounts als het inloglogboek leeg is)", active_users: "Accounts met app-activiteit" }],
     days: ["Periode", { 7: "Laatste 7 dagen", 14: "Laatste 14 dagen", 30: "Laatste 30 dagen" }],
-    display: ["Weergave", { chart: "Grafiek", number: "Getal", list: "Lijst per status" }],
+    display: ["Weergave", { chart: "Grafiek", number: "Getal", list: "Lijst per status", auto: "Automatisch (staven voor aantallen per dag)", line: "Lijn", bar: "Staven" }],
+    insight: ["Gegevens", { accounts: "Accounts: nieuw en actief", signins: "Inlogs", streams: "Streams: live tv, films en series", push: "Pushmeldingen: verstuurd en mislukt", support: "Supporttickets: nieuw en gesloten" }],
+    period: ["Periode", { hour: "Uur (per 5 minuten)", day: "Dag (per uur)", week: "Week (per dag)", month: "Maand (per dag)", year: "Jaar (per maand)", "24h": "Laatste 24 uur", "7d": "Laatste 7 dagen", "30d": "Laatste 30 dagen" }],
     source: ["Periode", { "30d": "Gezien in de laatste 30 dagen", live: "Nu actief (laatste 15 minuten)" }],
     platforms: ["Platforms", null],
     plans: ["Abonnementen", { free: "Gratis", lifetime: "Lifetime", custom: "Eigen limieten" }],
@@ -280,6 +292,7 @@
     show_incidents: ["Storingen tonen"],
     show_notices: ["Meldingen tonen (lopend en gepland)"],
     show_langs: ["Nederlands en Engels apart tonen"],
+    events: ["Storingen en onderhoud op de tijdas tonen"],
   };
   // standaardindeling: lijkt op het vroegere vaste overzicht
   const DASH_DEFAULT = [
@@ -289,7 +302,8 @@
     ["support", "support", "s", {}], ["blocked", "metric", "s", { metric: "blocked" }],
     ["plan_free", "metric", "s", { metric: "plan_free" }], ["plan_lifetime", "metric", "s", { metric: "plan_lifetime" }],
     ["status", "status", "m", {}],
-    ["chart_new", "daily_chart", "l", { series: "new_users" }], ["chart_signins", "daily_chart", "l", { series: "signins" }],
+    ["chart_new", "insights", "l", { insight: "accounts", period: "30d" }], ["chart_streams", "insights", "l", { insight: "streams", period: "7d" }],
+    ["chart_push", "insights", "l", { insight: "push", period: "30d" }],
     ["platforms", "platforms", "l", {}], ["versions", "versions", "l", {}],
   ];
   const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -300,12 +314,23 @@
       if (kind === "enum") o[k] = vals.includes(v) ? v : def;
       else if (kind === "bool") o[k] = typeof v === "boolean" ? v : def;
       else if (kind === "set") { const f = Array.isArray(v) ? vals.filter((x) => v.includes(x)) : []; o[k] = f.length ? f : def.slice(); }
+      else if (kind === "hidden") o[k] = Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string" && /^[a-z_]{1,40}$/.test(x)))].slice(0, 10) : def.slice();
       else o[k] = Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string" && x && x.length <= 40))].slice(0, 30) : def.slice();
     }
     return o;
   }
   function newId(type, seen) { let i = 1; while (seen.has(`${type}_${i}`)) i++; return `${type}_${i}`; }
+  // "Per dag" (daily_chart, tot BingrBeheer build 16) wordt een Insights-grafiek met dezelfde gegevens en periode
+  function migrateWidget(w) {
+    if (!isObj(w) || w.type !== "daily_chart") return w;
+    const o = isObj(w.options) ? w.options : {};
+    return { ...w, type: "insights", options: {
+      insight: o.series === "signins" ? "signins" : "accounts", period: o.days === 7 ? "7d" : "30d",
+      display: o.display === "number" ? "number" : "auto",
+      off: o.series === "active_users" ? ["new_users"] : o.series === "signins" ? [] : ["active_users"] } };
+  }
   function normWidget(w, seen) {
+    w = migrateWidget(w);
     if (!isObj(w) || !Object.prototype.hasOwnProperty.call(WTYPES, w.type)) return null;
     const t = WTYPES[w.type];
     const id = typeof w.id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(w.id) && !seen.has(w.id) ? w.id : newId(w.type, seen);
@@ -340,7 +365,7 @@
     };
   };
 
-  $("refresh").onclick = () => { loadStats(); loadSupportCounts(); };
+  $("refresh").onclick = () => { insCache.clear(); loadStats(); loadSupportCounts(); };
   $("dashEdit").onclick = () => setDashEdit(!dashEdit);
   $("dashDone").onclick = () => setDashEdit(false);
   $("dashAdd").onclick = () => openGallery();
@@ -391,10 +416,10 @@
   }
 
   function wTitle(w) {
-    const o = w.options, s = dd.stats || {};
+    const o = w.options;
     switch (w.type) {
       case "metric": return METRICS[o.metric].label;
-      case "daily_chart": return o.series === "new_users" ? "Nieuwe gebruikers per dag" : o.series === "active_users" || s.signins_source === "activity" ? "Actieve accounts per dag" : "Inloggen per dag";
+      case "insights": return INS_METRICS[o.insight].name;
       case "platforms": return o.source === "live" ? "Nu actieve apparaten" : "Actieve apparaten per platform";
       case "versions": return "App-versies in gebruik";
       case "plans": return "Abonnementen";
@@ -459,7 +484,7 @@
     const fail = (msg) => `${head()}<p class="empty">${esc(msg)}</p>`;
     const wait = () => `${head()}<p class="empty">Laden…</p>`;
     let onGo = null;
-    const needStats = !["support", "status", "announcements", "push_subscribers"].includes(w.type) && !(w.type === "platforms" && o.source === "live");
+    const needStats = !["support", "status", "announcements", "push_subscribers", "insights"].includes(w.type) && !(w.type === "platforms" && o.source === "live");
     if (needStats && !s) { body.innerHTML = dd.statsErr ? fail(dd.statsErr) : wait(); return; }
     switch (w.type) {
       case "metric": {
@@ -468,24 +493,7 @@
         if (m.filter && v != null) onGo = go(() => goUsers(m.filter));
         break;
       }
-      case "daily_chart": {
-        const days = (s.days || []).slice(-o.days), key = o.series === "active_users" ? "active_users" : o.series;
-        const unit = o.series === "new_users" ? "nieuwe gebruikers" : o.series === "signins" && s.signins_source === "audit" ? "inlogs" : "actieve accounts";
-        const tot = days.reduce((a, d) => a + (Number(d[key]) || 0), 0), today = days.length ? Number(days[days.length - 1][key]) || 0 : 0;
-        const sub = `Laatste ${o.days} dagen${o.series === "signins" ? (s.signins_source === "audit" ? ", uit het inloglogboek" : ", accounts met app-activiteit (inloglogboek leeg)") : ""}`;
-        if (o.display === "number" || w.size === "s") {
-          const avg = days.length ? tot / days.length : 0;
-          body.innerHTML = tile(title, nf.format(tot), `${o.days} dagen · gem. ${avg.toLocaleString("nl-NL", { maximumFractionDigits: 1 })} per dag · vandaag ${nf.format(today)}`);
-        } else {
-          body.innerHTML = w.size === "l"
-            ? `${head(sub)}<div class="w-sum"><b>${nf.format(tot)}</b> <span class="sub">in ${o.days} dagen · vandaag ${nf.format(today)}</span></div><div class="chart"></div>`
-            : `${head(null, null, `<div class="w-sum w-sum-r"><b>${nf.format(tot)}</b> <span class="sub">in ${o.days} d</span></div>`)}<div class="chart"></div>`;
-          const c = body.querySelector(".chart"), data = days.map((d) => ({ x: d.day, y: Number(d[key]) || 0 })), H = w.size === "l" ? 190 : 84;
-          const draw = () => barChart(c, data, unit, H);
-          dashCharts.push(draw); draw();
-        }
-        break;
-      }
+      case "insights": fillInsights(w, el, body); return;
       case "platforms": case "versions": {
         const live = w.type === "platforms" && o.source === "live";
         if (live && !dd.status) { body.innerHTML = dd.statusErr ? fail(dd.statusErr) : wait(); return; }
@@ -724,7 +732,7 @@
       <form id="woForm" class="wo-form" novalidate>
         <fieldset class="wo-size"><legend>Grootte</legend><div class="seg" role="radiogroup" aria-label="Grootte">${t.sizes.map((z) =>
           `<button type="button" role="radio" data-size="${z}" class="${z === w.size ? "on" : ""}" aria-checked="${z === w.size}">${SIZE_NAME[z]} <span class="sub">${SIZE_DIM[z]}</span></button>`).join("")}</div></fieldset>
-        ${Object.entries(t.opts).map(([k, spec]) => field(k, spec)).join("")}
+        ${Object.entries(t.opts).filter(([, spec]) => spec[0] !== "hidden").map(([k, spec]) => field(k, spec)).join("")}
         <div id="woErr" class="err" role="alert"></div>
         <div class="form-btns"><button class="btn" type="submit">Opslaan</button><button id="woDefault" class="btn ghost" type="button">Standaard voor deze widget</button></div>
       </form>`;
@@ -738,7 +746,7 @@
     };
     $("woForm").onsubmit = (e) => {
       e.preventDefault();
-      const raw = {};
+      const raw = { ...(w.options.off ? { off: w.options.off } : {}) };
       $("woForm").querySelectorAll("select[data-o]").forEach((s) => { const spec = t.opts[s.dataset.o]; raw[s.dataset.o] = spec[1].find((v) => String(v) === s.value); });
       $("woForm").querySelectorAll("input[type=checkbox][data-o]").forEach((c) => { raw[c.dataset.o] = c.checked; });
       for (const fs of $("woForm").querySelectorAll("fieldset[data-o]")) {
@@ -754,54 +762,481 @@
     segBtns.find((b) => b.classList.contains("on"))?.focus();
   }
 
+  // ---- overzicht: grafieken zoals Homey Insights (actie insights) ----
+  // Periodekiezer (uur … jaar, laatste 24 uur / 7 / 30 dagen), bladeren met ‹ › en Nu, crosshair met tooltip (muis, vinger,
+  // pijltjestoetsen), series aan/uit (de samenvattingsknoppen zijn de legenda), samenvatting met verandering t.o.v. de vorige
+  // periode. Alleen aantallen per tijdvak uit de functie admin; tijden in Nederlandse tijd. Zelf getekend als SVG (geen CDN).
+  const INS_TZ = "Europe/Amsterdam";
+  const INS_PERIOD_TAB = { hour: "Uur", day: "Dag", week: "Week", month: "Maand", year: "Jaar", "24h": "24 uur", "7d": "7 dagen", "30d": "30 dagen" };
+  const INS_PREV = { hour: "vorig uur", day: "gisteren", week: "vorige week", month: "vorige maand", year: "vorig jaar", "24h": "24 uur ervoor", "7d": "7 dagen ervoor", "30d": "30 dagen ervoor" };
+  // series waarvoor minder beter is (pijl omlaag = goed)
+  const INS_DOWN_GOOD = new Set(["failed"]);
+  const insCache = new Map(), insOffset = new Map(), insSeq = new Map();
+  const insFmt = (o) => new Intl.DateTimeFormat("nl-NL", { timeZone: INS_TZ, ...o });
+  const F = {
+    time: insFmt({ hour: "2-digit", minute: "2-digit" }), hour: insFmt({ hour: "2-digit" }),
+    wd: insFmt({ weekday: "short" }), wdDay: insFmt({ weekday: "short", day: "numeric" }), dayMon: insFmt({ day: "numeric", month: "short" }),
+    mon: insFmt({ month: "short" }), monYear: insFmt({ month: "long", year: "numeric" }), year: insFmt({ year: "numeric" }),
+    long: insFmt({ weekday: "long", day: "numeric", month: "long" }), longY: insFmt({ weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+    dayMonY: insFmt({ day: "numeric", month: "short", year: "numeric" }), dayNum: insFmt({ day: "numeric" }),
+  };
+  const compact = (v) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}M` : Math.abs(v) >= 1e4 ? `${(v / 1e3).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}K` : v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }));
+  const n1 = (v) => (v == null ? "—" : v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }));
+
+  /** Tekst van de periode boven de grafiek, bv. "Deze week · 12–18 okt" of "Oktober 2026". */
+  function insRangeText(d) {
+    const a = new Date(d.from), b = new Date(Date.parse(d.to) - 1), cur = d.offset === 0;
+    const span = () => (F.year.format(a) === F.year.format(b) ? `${F.dayMon.format(a)} – ${F.dayMonY.format(b)}` : `${F.dayMonY.format(a)} – ${F.dayMonY.format(b)}`);
+    switch (d.period) {
+      case "hour": return `${cur ? "Dit uur · " : ""}${F.dayMon.format(a)}, ${F.time.format(a)}–${F.time.format(new Date(d.to))}`;
+      case "day": return cur ? `Vandaag · ${F.long.format(a)}` : d.offset === -1 ? `Gisteren · ${F.long.format(a)}` : F.longY.format(a);
+      case "week": return `${cur ? "Deze week · " : d.offset === -1 ? "Vorige week · " : ""}${span()}`;
+      case "month": { const t = F.monYear.format(a); return (cur ? "Deze maand · " : "") + t.charAt(0).toUpperCase() + t.slice(1); }
+      case "year": return `${cur ? "Dit jaar · " : ""}${F.year.format(a)}`;
+      case "24h": return cur ? "Laatste 24 uur" : `${F.dayMon.format(a)} ${F.time.format(a)} – ${F.dayMon.format(new Date(d.to))} ${F.time.format(new Date(d.to))}`;
+      default: return `${cur ? `Laatste ${d.period === "7d" ? 7 : 30} dagen · ` : ""}${span()}`;
+    }
+  }
+  /** Tijd van één tijdvak in de tooltip. */
+  function insBucketText(d, i) {
+    const a = new Date(d.edges[i]), b = new Date(d.edges[i + 1]);
+    if (d.step === "5min") return `${F.time.format(a)}–${F.time.format(b)}`;
+    if (d.step === "hour") return `${F.long.format(a)}, ${F.time.format(a)}–${F.time.format(b)}`;
+    if (d.step === "day") return F.longY.format(a);
+    const e = new Date(Date.parse(d.edges[i + 1]) - 1);
+    return `Week ${isoWeek(a)} · ${F.dayMon.format(a)} – ${F.dayMon.format(e)}`;
+  }
+  // ISO-weeknummer van een moment (op de lokale datum in Nederland)
+  const ymdFmt = insFmt({ year: "numeric", month: "numeric", day: "numeric" });
+  function isoWeek(t) {
+    const parts = ymdFmt.formatToParts(t), g = (k) => Number(parts.find((p) => p.type === k).value);
+    const date = new Date(Date.UTC(g("year"), g("month") - 1, g("day")));
+    date.setUTCDate(date.getUTCDate() + 3 - ((date.getUTCDay() + 6) % 7)); // donderdag van die week
+    return 1 + Math.floor((date - Date.UTC(date.getUTCFullYear(), 0, 1)) / (7 * 864e5));
+  }
+  /** As-labels: welk tijdvak een label krijgt en welke tekst (uren, weekdagen, dagen of maanden, naar de periode). */
+  function insTicks(d, width) {
+    const n = d.edges.length - 1, room = Math.max(2, Math.floor(width / 58));
+    const at = (i) => new Date(d.edges[i]);
+    if (d.step === "week") {
+      // maandnamen bij de week waarin de maand begint
+      const mon = (i) => F.mon.format(at(i)).replace(".", ""), k = 12 <= room ? 1 : 6 <= room ? 2 : 3;
+      const starts = [...Array(n).keys()].filter((i) => i === 0 || mon(i) !== mon(i - 1));
+      return starts.filter((_, j) => j % k === 0).map((i) => [i, mon(i)]);
+    }
+    if (d.step === "day") {
+      if (n <= 7) return [...Array(n).keys()].map((i) => [i, room >= 7 ? F.wdDay.format(at(i)) : F.wd.format(at(i))]);
+      const k = [1, 2, 5, 7, 10].find((x) => Math.ceil(n / x) <= room) || 10;
+      // vanaf het eind tellen (vandaag heeft altijd een label bij de laatste N dagen), bij een maand vanaf de 1e
+      const from = d.period === "month" ? 0 : (n - 1) % k;
+      return [...Array(n).keys()].filter((i) => i >= from && (i - from) % k === 0).map((i) => [i, F.dayMon.format(at(i)).replace(".", "")]);
+    }
+    if (d.step === "hour") {
+      const hourOf = (i) => Number(F.hour.format(at(i)));
+      if (n > 48) { // week per uur: één label per dag (om middernacht)
+        const mids = [...Array(n).keys()].filter((i) => hourOf(i) === 0), k = mids.length <= room ? 1 : 2;
+        return mids.filter((_, j) => j % k === 0).map((i) => [i, room >= 7 ? F.wdDay.format(at(i)) : F.wd.format(at(i))]);
+      }
+      const k = [1, 2, 3, 4, 6, 12].find((x) => Math.ceil(n / x) <= room) || 12;
+      return [...Array(n).keys()].filter((i) => hourOf(i) % k === 0).map((i) => [i, hourOf(i) === 0 && d.period === "24h" ? F.dayMon.format(at(i)).replace(".", "") : F.time.format(at(i))]);
+    }
+    const k = [1, 2, 3, 6].find((x) => Math.ceil(n / x) <= room) || 6;
+    return [...Array(n).keys()].filter((i) => i % k === 0).map((i) => [i, F.time.format(at(i))]);
+  }
+  const insKey = (w, off) => `${w.options.insight}|${w.options.period}|${off}|${w.options.events ? 1 : 0}`;
+  function insDisplay(w, d) {
+    const o = w.options.display;
+    if (o === "line" || o === "bar") return o;
+    // automatisch: staven voor aantallen per dag of maand van gebeurtenissen (pushmeldingen, tickets), anders een lijn
+    return (d.step === "day" || d.step === "week") && (w.options.insight === "push" || w.options.insight === "support") ? "bar" : "line";
+  }
+
+  // inhoud van een Insights-widget: kop met bladeren, periodes, samenvatting/legenda en de grafiek
+  function fillInsights(w, el, body) {
+    const o = w.options, title = esc(wTitle(w)), off = insOffset.get(w.id) || 0;
+    const cached = insCache.get(insKey(w, off));
+    if (o.display === "number" || w.size === "s") {
+      el.classList.add("tile");
+      body.innerHTML = `<div class="kpi-in"><div class="l">${title}</div><div class="v ins-skel-v">${cached ? "" : '<span class="skel skel-num"></span>'}</div><div class="h"></div></div>`;
+    } else {
+      const nav = dashEdit ? "" : `<div class="ins-nav" role="group" aria-label="Periode bladeren">
+          <button type="button" class="ins-ic" data-nav="-1" aria-label="Vorige periode" title="Vorige periode">${ICO.up}</button>
+          <button type="button" class="ins-now" data-nav="now" aria-label="Terug naar nu" ${off === 0 ? "disabled" : ""}>Nu</button>
+          <button type="button" class="ins-ic" data-nav="1" aria-label="Volgende periode" title="Volgende periode" ${off === 0 ? "disabled" : ""}>${ICO.down}</button></div>`;
+      body.innerHTML = `<div class="ins-head"><div class="w-ht"><h2>${title}</h2><p class="sub ins-range">&nbsp;</p></div>${nav}</div>
+        <div class="ins-periods" role="radiogroup" aria-label="Periode van ${title}">${INS_PERIODS.map((p, i) =>
+          `${i === 5 ? '<span class="ins-sep" aria-hidden="true"></span>' : ""}<button type="button" role="radio" data-p="${p}" aria-checked="${p === o.period}" class="${p === o.period ? "on" : ""}" ${dashEdit ? "disabled" : ""}>${INS_PERIOD_TAB[p]}</button>`).join("")}</div>
+        <div class="ins-series"></div><div class="ins-chart chart"></div>`;
+      body.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => {
+        if (b.dataset.p === o.period) return;
+        o.period = b.dataset.p; insOffset.delete(w.id); saveLayout();
+        fillInsights(w, el, body); body.querySelector(`[data-p="${o.period}"]`)?.focus();
+        announce(`${wTitle(w)}: ${OPT_LABEL.period[1][o.period]}`);
+      }));
+      body.querySelectorAll("[data-nav]").forEach((b) => (b.onclick = () => {
+        const v = b.dataset.nav, cur = insOffset.get(w.id) || 0, next = v === "now" ? 0 : Math.min(0, cur + Number(v));
+        if (next === cur) return;
+        insOffset.set(w.id, next); fillInsights(w, el, body);
+        const f = body.querySelector(`[data-nav="${v}"]`); (f && !f.disabled ? f : body.querySelector('[data-nav="-1"]'))?.focus();
+      }));
+    }
+    if (cached) { renderInsights(w, el, body, cached); return; }
+    if (!(o.display === "number" || w.size === "s")) insSkeleton(body);
+    loadInsights(w, el, body, off);
+  }
+  function insSkeleton(body) {
+    const s = body.querySelector(".ins-series"), c = body.querySelector(".ins-chart");
+    if (s && !s.childElementCount) s.innerHTML = '<span class="skel skel-chip"></span><span class="skel skel-chip"></span>';
+    if (c && !c.childElementCount) c.innerHTML = '<div class="skel skel-chart" aria-hidden="true"></div><p class="sr">Laden…</p>';
+    else c?.classList.add("stale");
+  }
+  async function loadInsights(w, el, body, off) {
+    const seq = (insSeq.get(w.id) || 0) + 1; insSeq.set(w.id, seq);
+    const key = insKey(w, off);
+    try {
+      const d = await call("insights", { metric: w.options.insight, period: w.options.period, offset: off, events: !!w.options.events });
+      insCache.set(key, d);
+      if (insSeq.get(w.id) !== seq || !el.isConnected) return;
+      renderInsights(w, el, body, d);
+    } catch (e) {
+      if (e.code === "auth" || insSeq.get(w.id) !== seq || !el.isConnected) return;
+      const msg = e.code === "insights_not_configured" ? "Grafieken nog niet ingericht: draai de workflow Backend in iptv-ios-appletv." : errText(e);
+      const c = body.querySelector(".ins-chart") || body.querySelector(".kpi-in .h");
+      if (c) { c.classList.remove("stale"); c.innerHTML = `<p class="empty">${esc(msg)}</p>`; }
+      const v = body.querySelector(".ins-skel-v"); if (v) v.textContent = "—";
+      const sr = body.querySelector(".ins-series"); if (sr) sr.innerHTML = "";
+    }
+  }
+  function insDelta(s, key, period, short = false) {
+    const c = s.summary?.change_pct;
+    if (c == null) return short ? "" : `<span class="ins-delta flat">geen vergelijking</span>`;
+    const up = c > 0, good = c === 0 ? null : up !== INS_DOWN_GOOD.has(key);
+    const arrow = c === 0 ? "→" : up ? "▲" : "▼";
+    return `<span class="ins-delta ${good === null ? "flat" : good ? "good" : "bad"}" title="Ten opzichte van dezelfde tijd ${esc(INS_PREV[period])}">${arrow} ${c > 0 ? "+" : ""}${n1(c)}%${short ? "" : ` <span class="ins-vs">t.o.v. ${esc(INS_PREV[period])}</span>`}</span>`;
+  }
+  function renderInsights(w, el, body, d) {
+    const o = w.options, keys = INS_METRICS[o.insight].series;
+    const color = (k) => keys.indexOf(k) + 1;
+    const off = new Set(o.off || []);
+    const avail = d.series.filter((s) => s.available);
+    const shown = avail.filter((s) => !off.has(s.key) || avail.length === 1);
+    const mainVal = (s) => (s.summary ? (s.agg === "avg" ? s.summary.avg : s.summary.total) : null);
+    if (o.display === "number" || w.size === "s") {
+      const s = shown[0] || avail[0];
+      const v = body.querySelector(".kpi-in .v"), h = body.querySelector(".kpi-in .h");
+      v.classList.remove("ins-skel-v");
+      v.textContent = s && mainVal(s) != null ? n1(mainVal(s)) : "—";
+      h.innerHTML = s ? `${esc(s.label)}${s.agg === "avg" ? " (gem. per dag)" : ""} · ${esc(insRangeText(d).split(" · ")[0])} ${insDelta(s, s.key, d.period, true)}` : "Geen gegevens in deze periode";
+      return;
+    }
+    body.querySelector(".ins-range").textContent = insRangeText(d);
+    const prev = body.querySelector('[data-nav="-1"]'); if (prev) prev.disabled = !d.has_prev;
+    const draw = insBody(body, d, {
+      keys, off: o.off || [], big: w.size === "l", kind: insDisplay(w, d), gid: `ins-${w.id}`,
+      setOff: (arr) => { o.off = arr; saveLayout(); renderInsights(w, el, body, d); },
+    });
+    dashCharts.push(draw);
+  }
+
+  // samenvatting/legenda (.ins-series) en grafiek (.ins-chart) in `body`; geeft de tekenfunctie terug (voor resize).
+  // cfg: {keys, off, big, kind, gid, setOff(arr), hooks, onCtl(ctl)}
+  function insBody(body, d, cfg) {
+    const { keys } = cfg, color = (k) => keys.indexOf(k) + 1, off = new Set(cfg.off);
+    const avail = d.series.filter((s) => s.available);
+    const shown = avail.filter((s) => !off.has(s.key) || avail.length === 1);
+    const mainVal = (s) => (s.summary ? (s.agg === "avg" ? s.summary.avg : s.summary.total) : null);
+    // samenvatting per serie; met meer dan één serie zijn het ook de legendaknoppen (aan/uit)
+    const multi = avail.length > 1, big = cfg.big && d.series.length < 3;
+    const sw = body.querySelector(".ins-series");
+    sw.innerHTML = d.series.map((s) => {
+      const on = s.available && (!off.has(s.key) || !multi), v = mainVal(s), sm = s.summary;
+      const inner = `<span class="ins-key c${color(s.key)}" aria-hidden="true"></span><span class="ins-l">${esc(s.label)}${s.agg === "avg" ? " <small>gem./dag</small>" : ""}</span>
+        <span class="ins-v">${!s.available ? '<span class="ins-na">alleen per dag</span>' : v == null ? "—" : esc(n1(v))}</span>
+        ${s.available && sm ? `<span class="ins-d">${insDelta(s, s.key, d.period, !big)}</span>${cfg.big ? `<span class="ins-mm">min ${esc(n1(sm.min))} · max ${esc(n1(sm.max))} · gem. ${esc(n1(sm.avg))}${d.now_index != null && sm.last != null ? ` · nu ${esc(n1(sm.last))}` : ""}</span>` : ""}` : ""}`;
+      return multi
+        ? `<button type="button" class="ins-s${on ? " on" : ""}" data-s="${esc(s.key)}" aria-pressed="${on}" ${s.available ? "" : "disabled"} title="${on ? "Verbergen" : "Tonen"} in de grafiek">${inner}</button>`
+        : `<div class="ins-s on">${inner}</div>`;
+    }).join("");
+    sw.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => {
+      const k = b.dataset.s, cur = new Set(cfg.off);
+      if (cur.has(k)) cur.delete(k);
+      else { if (avail.filter((s) => !cur.has(s.key)).length <= 1) { toast("Minstens één serie blijft zichtbaar."); return; } cur.add(k); }
+      cfg.setOff(keys.filter((x) => cur.has(x)));
+      body.querySelector(`[data-s="${k}"]`)?.focus();
+    }));
+    const c = body.querySelector(".ins-chart");
+    c.classList.remove("stale");
+    const draw = () => { const ctl = insChart(c, d, shown, cfg.kind, color, cfg.gid, cfg.hooks); cfg.onCtl?.(ctl); };
+    draw();
+    return draw;
+  }
+
+  // ---- tab Insights: bronnen aanvinken, één gedeelde periode, grafieken onder elkaar met gedeelde crosshair, CSV ----
+  const INSP_KEY = KEY + ".insights";
+  const insp = (() => {
+    const def = { sources: ["accounts", "streams"], period: "7d", events: true, off: {} };
+    try {
+      const r = JSON.parse(localStorage.getItem(INSP_KEY) || "null");
+      if (!isObj(r)) return def;
+      const src = Array.isArray(r.sources) ? Object.keys(INS_METRICS).filter((k) => r.sources.includes(k)) : def.sources;
+      const off = {};
+      if (isObj(r.off)) for (const k of Object.keys(INS_METRICS)) if (Array.isArray(r.off[k])) off[k] = INS_METRICS[k].series.filter((x) => r.off[k].includes(x));
+      return { sources: src, period: INS_PERIODS.includes(r.period) ? r.period : def.period, events: r.events !== false, off };
+    } catch { return def; }
+  })();
+  let inspOffset = 0, inspSeq = 0, inspData = {}, inspCtl = {};
+  const inspSave = () => { try { localStorage.setItem(INSP_KEY, JSON.stringify(insp)); } catch { /* privé-venster */ } };
+  const RES_TEXT = { "5min": "per 5 minuten", hour: "per uur", day: "per dag", week: "per week" };
+
+  function renderInsSources() {
+    $("insSources").innerHTML = Object.entries(INS_METRICS).map(([k, m]) => `<label class="ins-src-it"><input type="checkbox" value="${k}" ${insp.sources.includes(k) ? "checked" : ""}>
+      <span class="ins-src-box" aria-hidden="true"></span><span><b>${esc(m.name)}</b><span class="sub">${esc(OPT_LABEL.insight[1][k].split(": ")[1] || "")}</span></span></label>`).join("");
+    $("insSources").querySelectorAll("input").forEach((c) => (c.onchange = () => {
+      const on = [...$("insSources").querySelectorAll("input:checked")].map((x) => x.value);
+      insp.sources = on; inspSave(); loadInsightsPage();
+    }));
+    $("insPeriods").innerHTML = INS_PERIODS.map((p, i) => `${i === 5 ? '<span class="ins-sep" aria-hidden="true"></span>' : ""}<button type="button" role="radio" data-p="${p}" aria-checked="${p === insp.period}" class="${p === insp.period ? "on" : ""}">${INS_PERIOD_TAB[p]}</button>`).join("");
+    $("insPeriods").querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => {
+      if (b.dataset.p === insp.period) return;
+      insp.period = b.dataset.p; inspOffset = 0; inspSave(); renderInsSources(); loadInsightsPage();
+      $("insPeriods").querySelector(`[data-p="${insp.period}"]`)?.focus();
+    }));
+    $("insEvents").checked = insp.events;
+  }
+  $("insEvents").onchange = () => { insp.events = $("insEvents").checked; inspSave(); loadInsightsPage(); };
+  $("insPrev").onclick = () => { inspOffset--; loadInsightsPage(); };
+  $("insNext").onclick = () => { inspOffset = Math.min(0, inspOffset + 1); loadInsightsPage(); if ($("insNext").disabled) $("insPrev").focus(); };
+  $("insNow").onclick = () => { inspOffset = 0; loadInsightsPage(); $("insPrev").focus(); };
+  $("insRefresh").onclick = () => { insCache.clear(); loadInsightsPage(); };
+  $("insCsv").onclick = () => insDownloadCsv();
+
+  function loadInsightsPage() {
+    if (!$("insSources").childElementCount) renderInsSources();
+    const seq = ++inspSeq, host = $("insCharts");
+    $("insNow").disabled = inspOffset === 0; $("insNext").disabled = inspOffset === 0;
+    if (!insp.sources.length) {
+      host.innerHTML = '<div class="panel ins-none"><h2>Geen bronnen gekozen</h2><p class="sub">Vink links één of meer bronnen aan om ze hier te vergelijken.</p></div>';
+      $("insCsv").disabled = true; $("insRange").textContent = INS_PERIOD_TAB[insp.period]; $("insRes").innerHTML = "&nbsp;";
+      return;
+    }
+    // kaarten in vaste volgorde; bestaande kaarten blijven staan (vervaagd) tot de nieuwe gegevens er zijn
+    const want = insp.sources;
+    host.querySelectorAll(".ins-card").forEach((c) => { if (!want.includes(c.dataset.m)) c.remove(); });
+    host.querySelector(".ins-none")?.remove();
+    for (const k of want) {
+      let card = host.querySelector(`.ins-card[data-m="${k}"]`);
+      if (!card) {
+        card = document.createElement("article");
+        card.className = "panel ins-card"; card.dataset.m = k;
+        card.innerHTML = `<div class="ins-card-h"><h2>${esc(INS_METRICS[k].name)}</h2><span class="sub ins-card-res"></span></div><div class="ins-series"></div><div class="ins-chart chart"></div>`;
+        insSkeleton(card);
+      } else card.querySelector(".ins-chart").classList.add("stale");
+      host.appendChild(card); // volgorde
+    }
+    $("insCsv").disabled = true;
+    const q = (k) => {
+      const key = `${k}|${insp.period}|${inspOffset}|${insp.events ? 1 : 0}`;
+      return insCache.has(key) ? Promise.resolve(insCache.get(key))
+        : call("insights", { metric: k, period: insp.period, offset: inspOffset, events: insp.events }).then((d) => { insCache.set(key, d); return d; });
+    };
+    Promise.allSettled(want.map(q)).then((rs) => {
+      if (seq !== inspSeq) return;
+      if (rs.some((r) => r.status === "rejected" && r.reason?.code === "auth")) return;
+      inspData = {}; inspCtl = {};
+      const first = rs.find((r) => r.status === "fulfilled")?.value;
+      if (first) {
+        $("insRange").textContent = insRangeText(first);
+        $("insPrev").disabled = !first.has_prev;
+      }
+      $("insRes").textContent = [...new Set(rs.filter((r) => r.status === "fulfilled").map((r) => RES_TEXT[r.value.step]))].join(" · ").replace(/^./, (c) => c.toUpperCase()) || " ";
+      want.forEach((k, i) => {
+        const card = host.querySelector(`.ins-card[data-m="${k}"]`); if (!card) return;
+        const r = rs[i];
+        if (r.status === "rejected") {
+          const msg = r.reason?.code === "insights_not_configured" ? "Grafieken nog niet ingericht: draai de workflow Backend in iptv-ios-appletv." : errText(r.reason);
+          card.querySelector(".ins-series").innerHTML = "";
+          const c = card.querySelector(".ins-chart"); c.classList.remove("stale"); c.innerHTML = `<p class="empty">${esc(msg)}</p>`;
+          return;
+        }
+        const d = r.value; inspData[k] = d;
+        card.querySelector(".ins-card-res").textContent = RES_TEXT[d.step];
+        const kind = (d.step === "day" || d.step === "week") && (k === "push" || k === "support") ? "bar" : "line";
+        const paint = () => insBody(card, d, {
+          keys: INS_METRICS[k].series, off: insp.off[k] || [], big: true, kind, gid: `insp-${k}`,
+          setOff: (arr) => { insp.off[k] = arr; inspSave(); paint(); },
+          // gedeelde crosshair: hover op één grafiek toont hetzelfde tijdstip op alle grafieken
+          hooks: { onShow: (t) => Object.entries(inspCtl).forEach(([m, c]) => { if (m !== k) c.showTime(t); }), onHide: () => Object.entries(inspCtl).forEach(([m, c]) => { if (m !== k) c.hide(); }) },
+          onCtl: (ctl) => { inspCtl[k] = ctl; },
+        });
+        const draw = paint();
+        inspDraws.set(k, draw);
+      });
+      $("insCsv").disabled = !Object.keys(inspData).length;
+      $("insLive").textContent = `${$("insRange").textContent}: ${Object.keys(inspData).length} grafieken`;
+    });
+  }
+  const inspDraws = new Map();
+  window.addEventListener("resize", () => { clearTimeout(inspResize); inspResize = setTimeout(() => { if (!$("tab-insights").classList.contains("hidden")) inspDraws.forEach((f) => f()); }, 150); });
+  let inspResize;
+
+  // CSV van de zichtbare reeksen: alleen tijdvak en aantallen (geen persoonsgegevens); ; als scheidingsteken (Excel NL)
+  function insDownloadCsv() {
+    const ks = insp.sources.filter((k) => inspData[k]);
+    if (!ks.length) return;
+    const cols = [];
+    for (const k of ks) for (const s of inspData[k].series) if (s.available && !(insp.off[k] || []).includes(s.key)) cols.push([k, s]);
+    // één regel per tijdvak (begin + einde); bronnen met een andere resolutie (per uur / per dag) krijgen eigen regels
+    const spans = [...new Set(ks.flatMap((k) => inspData[k].edges.slice(0, -1).map((t, i) => `${t}|${inspData[k].edges[i + 1]}`)))].sort();
+    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [["begin", "einde", ...cols.map(([k, s]) => `${INS_METRICS[k].name} - ${s.label}`)].map(q).join(";")];
+    for (const sp of spans) {
+      const [a, b] = sp.split("|");
+      const row = cols.map(([k, s]) => { const d = inspData[k], i = d.edges.indexOf(a); return i < 0 || d.edges[i + 1] !== b || s.values[i] == null ? "" : String(s.values[i]).replace(".", ","); });
+      if (row.every((v) => v === "")) continue;
+      lines.push([q(a), q(b), ...row].join(";"));
+    }
+    const blob = new Blob(["\ufeff" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a"), first = inspData[ks[0]];
+    a.href = URL.createObjectURL(blob);
+    a.download = `bingr-insights-${insp.period}-${first.from.slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast("CSV gedownload (alleen aantallen per tijdvak).");
+  }
+
+  // monotone kubische curve (Fritsch–Carlson, zoals d3.curveMonotoneX) door punten [x, y]
+  function monoPath(pts) {
+    const n = pts.length;
+    if (n < 2) return n ? `M${pts[0][0]},${pts[0][1]}` : "";
+    const dx = [], m = [], t = [];
+    for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; m[i] = (pts[i + 1][1] - pts[i][1]) / dx[i]; }
+    t[0] = m[0]; t[n - 1] = m[n - 2];
+    for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (3 * (dx[i - 1] + dx[i])) / ((2 * dx[i] + dx[i - 1]) / m[i - 1] + (dx[i] + 2 * dx[i - 1]) / m[i]);
+    let p = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+    for (let i = 0; i < n - 1; i++) {
+      const h = dx[i] / 3;
+      p += `C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + h * t[i]).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - h * t[i + 1]).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
+    }
+    return p;
+  }
+  // hooks: {onShow(tijd), onHide()} voor een gedeelde crosshair (tab Insights); geeft {showTime(tijd), hide()} terug
+  function insChart(el, d, shown, kind, color, gid, hooks = {}) {
+    const n = d.edges.length - 1, none = { showTime() {}, hide() {} };
+    const total = shown.reduce((a, s) => a + (s.summary ? s.summary.total : 0), 0);
+    if (!shown.length || total === 0) {
+      el.innerHTML = `<div class="ins-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 15l3-4 3 2 4-6"/></svg><p>Geen gegevens in deze periode</p>${d.has_prev ? '<p class="sub">Blader met ‹ naar een eerdere periode.</p>' : ""}</div>`;
+      return none;
+    }
+    const W = Math.max(260, Math.round(el.clientWidth || 560)), H = Math.max(120, Math.round(el.clientHeight || 200));
+    const yw = 34, L = yw, R = 6, T = 10, B = 24, iw = W - L - R, ih = H - T - B, bw = iw / n;
+    const max = Math.max(1, ...shown.flatMap((s) => s.values.filter((v) => v != null)));
+    const step = niceStep(max), top = Math.ceil(max / step) * step;
+    const y = (v) => T + ih - (v / top) * ih, cx = (i) => L + (i + 0.5) * bw;
+    let svg = `<defs>${shown.map((s) => `<linearGradient id="${gid}-g${color(s.key)}" class="ins-grad c${color(s.key)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient>`).join("")}</defs>`;
+    svg += '<g class="ins-grid">';
+    for (let v = 0; v <= top + 1e-9; v += step) svg += `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"${v === 0 ? ' class="base"' : ""}/><text x="${L - 8}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end">${compact(v)}</text>`;
+    svg += "</g><g class=\"ins-x\">";
+    for (const [i, t] of insTicks(d, iw)) svg += `<text x="${(kind === "bar" ? cx(i) : cx(i)).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(t)}</text>`;
+    svg += "</g>";
+    // storingen en onderhoud (statuspagina) als banden op de tijdas, geen lijn; tijd -> x binnen het tijdvak
+    const E = d.edges.map((t) => Date.parse(t));
+    const tx = (t) => {
+      if (t <= E[0]) return L; if (t >= E[n]) return L + iw;
+      let i = 0; while (i < n - 1 && t >= E[i + 1]) i++;
+      return L + (i + (t - E[i]) / (E[i + 1] - E[i])) * bw;
+    };
+    const evs = (d.events || []).map((e) => ({ ...e, a: Date.parse(e.from), b: e.to ? Date.parse(e.to) : Math.min(Date.now(), E[n]) }));
+    if (evs.length) {
+      svg += '<g class="ins-evs">';
+      for (const e of evs) {
+        const x1 = tx(e.a), x2 = Math.max(x1 + 2, tx(e.b));
+        svg += `<rect class="ins-ev ${e.kind}" x="${x1.toFixed(1)}" y="${T}" width="${(x2 - x1).toFixed(1)}" height="${ih}"/><rect class="ins-evm ${e.kind}" x="${x1.toFixed(1)}" y="${T - 4}" width="${(x2 - x1).toFixed(1)}" height="3" rx="1.5"/>`;
+      }
+      svg += "</g>";
+    }
+    if (d.now_index != null && d.now_index < n - 1) svg += `<line class="ins-nowline" x1="${(L + (d.now_index + 1) * bw).toFixed(1)}" x2="${(L + (d.now_index + 1) * bw).toFixed(1)}" y1="${T}" y2="${T + ih}"/>`;
+    if (kind === "bar") {
+      const k = shown.length, gw = Math.min(bw * 0.78, k * 24 + (k - 1) * 2), bwi = Math.max(1, (gw - (k - 1) * 2) / k);
+      svg += '<g class="ins-bars">';
+      for (let i = 0; i < n; i++) {
+        shown.forEach((s, j) => {
+          const v = s.values[i]; if (v == null || v <= 0) return;
+          const x = cx(i) - gw / 2 + j * (bwi + 2), h = Math.max(2, (v / top) * ih), r = Math.min(4, bwi / 2, h);
+          svg += `<path data-i="${i}" class="ins-bar c${color(s.key)}" d="M${x.toFixed(1)},${T + ih} V${(T + ih - h + r).toFixed(1)} Q${x.toFixed(1)},${(T + ih - h).toFixed(1)} ${(x + r).toFixed(1)},${(T + ih - h).toFixed(1)} H${(x + bwi - r).toFixed(1)} Q${(x + bwi).toFixed(1)},${(T + ih - h).toFixed(1)} ${(x + bwi).toFixed(1)},${(T + ih - h + r).toFixed(1)} V${T + ih} Z"/>`;
+        });
+      }
+      svg += "</g>";
+    } else {
+      // per serie: stukken zonder lege tijdvakken (toekomst, niet bewaard); vlak met kleurverloop + lijn van 2px
+      for (const s of shown) {
+        const segs = []; let cur = [];
+        s.values.forEach((v, i) => { if (v == null) { if (cur.length) segs.push(cur); cur = []; } else cur.push([cx(i), y(v)]); });
+        if (cur.length) segs.push(cur);
+        for (const sg of segs) {
+          const line = monoPath(sg);
+          svg += `<path class="ins-area" fill="url(#${gid}-g${color(s.key)})" d="${line}L${sg[sg.length - 1][0].toFixed(1)},${T + ih}L${sg[0][0].toFixed(1)},${T + ih}Z"/>`;
+          svg += `<path class="ins-line c${color(s.key)}" d="${line}"/>`;
+          if (sg.length === 1) svg += `<circle class="ins-dot c${color(s.key)}" cx="${sg[0][0]}" cy="${sg[0][1]}" r="3"/>`;
+        }
+      }
+    }
+    svg += `<g class="ins-cross hidden"><line class="ins-crossline" y1="${T}" y2="${T + ih}"/>${kind === "bar" ? "" : shown.map((s) => `<circle class="ins-pt c${color(s.key)}" r="4.5" data-k="${esc(s.key)}"/>`).join("")}</g>`;
+    svg += `<rect class="ins-hit" x="${L}" y="${T}" width="${iw}" height="${ih}" tabindex="0" role="slider" aria-label="Waarden per tijdvak (pijltjestoetsen)" aria-valuemin="0" aria-valuemax="${n - 1}" aria-valuenow="0"/>`;
+    // tabel voor schermlezers (zelfde waarden als de grafiek)
+    const table = `<div class="sr"><table><caption>${esc(insRangeText(d))}</caption><thead><tr><th>Tijd</th>${shown.map((s) => `<th>${esc(s.label)}</th>`).join("")}</tr></thead><tbody>${
+      [...Array(n).keys()].filter((i) => shown.some((s) => s.values[i] != null)).map((i) => `<tr><td>${esc(insBucketText(d, i))}</td>${shown.map((s) => `<td>${s.values[i] == null ? "—" : nf.format(s.values[i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">${svg}</svg><div class="tip ins-tip hidden" role="status"></div>${table}`;
+    const root = el.querySelector("svg"), hit = root.querySelector(".ins-hit"), cross = root.querySelector(".ins-cross"), tip = el.querySelector(".ins-tip");
+    const xl = cross.querySelector("line");
+    let shownI = -1, hideTimer;
+    const show = (i, sync = false) => {
+      i = Math.max(0, Math.min(n - 1, i)); if (i === shownI) return; shownI = i;
+      if (!sync) hooks.onShow?.((E[i] + E[i + 1]) / 2);
+      const x = cx(i);
+      xl.setAttribute("x1", x); xl.setAttribute("x2", x); cross.classList.remove("hidden");
+      cross.querySelectorAll(".ins-pt").forEach((p) => {
+        const v = shown.find((s) => s.key === p.dataset.k)?.values[i];
+        p.classList.toggle("hidden", v == null);
+        if (v != null) { p.setAttribute("cx", x); p.setAttribute("cy", y(v)); }
+      });
+      root.querySelectorAll(".ins-bar").forEach((b) => b.classList.toggle("dim", Number(b.dataset.i) !== i));
+      const here = evs.filter((e) => e.a < E[i + 1] && e.b > E[i]);
+      tip.innerHTML = `<div class="ins-tt">${esc(insBucketText(d, i))}</div>${shown.map((s) => `<div class="ins-tr"><span class="ins-tk c${color(s.key)}"></span><b>${s.values[i] == null ? "—" : esc(nf.format(s.values[i]))}</b><span>${esc(s.label)}</span></div>`).join("")}${
+        here.slice(0, 3).map((e) => `<div class="ins-te ${e.kind}"><span class="ins-ek" aria-hidden="true"></span>${e.kind === "maintenance" ? "Onderhoud" : "Storing"}: ${esc(e.name || "onbekend")}</div>`).join("")}`;
+      tip.classList.remove("hidden");
+      const sx = root.getBoundingClientRect().width / W || 1, tw = tip.offsetWidth, cw = el.clientWidth;
+      const px = x * sx, left = Math.max(0, Math.min(cw - tw, px + 14 > cw - tw ? px - tw - 14 : px + 14));
+      tip.style.left = `${left}px`; tip.style.top = `${T * sx}px`;
+      hit.setAttribute("aria-valuenow", String(i)); hit.setAttribute("aria-valuetext", tip.textContent);
+    };
+    const hide = (sync = false) => { if (!sync && shownI >= 0) hooks.onHide?.(); shownI = -1; cross.classList.add("hidden"); tip.classList.add("hidden"); root.querySelectorAll(".ins-bar.dim").forEach((b) => b.classList.remove("dim")); };
+    const idx = (e) => { const r = root.getBoundingClientRect(); return Math.floor(((e.clientX - r.left) * (W / r.width) - L) / bw); };
+    hit.addEventListener("pointermove", (e) => { clearTimeout(hideTimer); show(idx(e)); });
+    hit.addEventListener("pointerdown", (e) => { clearTimeout(hideTimer); show(idx(e)); });
+    hit.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hide(); });
+    hit.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 2500); } });
+    hit.addEventListener("pointercancel", () => hide());
+    hit.addEventListener("blur", () => hide());
+    hit.addEventListener("keydown", (e) => {
+      const last = d.now_index ?? n - 1;
+      const k = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+      if (k) { e.preventDefault(); show(shownI < 0 ? last : shownI + k); }
+      else if (e.key === "Home") { e.preventDefault(); show(0); } else if (e.key === "End") { e.preventDefault(); show(last); }
+      else if (e.key === "Escape") hide();
+    });
+    return {
+      showTime(t) { const i = E.findIndex((x, j) => j < n && t >= x && t < E[j + 1]); if (i < 0) hide(true); else show(i, true); },
+      hide() { hide(true); },
+    };
+  }
+
   let resizeTimer;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (!$("tab-overview").classList.contains("hidden")) dashCharts.forEach((f) => f()); }, 150); });
-  // Staafdiagram (één reeks) met hover-tooltip; inline SVG.
-  function barChart(el, data, unit, H = 190) {
-    if (!data.length) { el.innerHTML = '<p class="empty">Nog geen gegevens.</p>'; return; }
-    const W = Math.max(240, Math.round(el.clientWidth || 560)), L = 28, R = 4, T = 8, B = 22;
-    const every = data.length <= 7 ? 1 : data.length <= 14 ? 2 : 7;
-    const max = Math.max(1, ...data.map((d) => d.y));
-    const step = niceStep(max);
-    const top = Math.ceil(max / step) * step;
-    const iw = W - L - R, ih = H - T - B, bw = iw / data.length, gap = Math.min(2, bw * 0.25);
-    const y = (v) => T + ih - (v / top) * ih;
-    let g = '<g class="grid axis">';
-    for (let v = 0; v <= top; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${v}</text>`;
-    g += "</g>";
-    let bars = "", ticks = '<g class="axis">';
-    data.forEach((d, i) => {
-      const x = L + i * bw + gap / 2, w = Math.max(1, bw - gap), h = Math.max(d.y ? 2 : 1.5, (d.y / top) * ih);
-      const r = Math.min(4, w / 2, h);
-      // afgeronde bovenkant, platte voet op de basislijn
-      const path = `M${x},${T + ih} V${T + ih - h + r} Q${x},${T + ih - h} ${x + r},${T + ih - h} H${x + w - r} Q${x + w},${T + ih - h} ${x + w},${T + ih - h + r} V${T + ih} Z`;
-      bars += `<g data-i="${i}"><path class="bar ${d.y ? "" : "zero"}" d="${path}" fill="${d.y ? "var(--red)" : "#ffffff1f"}"/><rect class="hit" x="${L + i * bw}" y="${T}" width="${bw}" height="${ih}"/></g>`;
-      if ((data.length - 1 - i) % every === 0) ticks += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle">${shortDay(d.x)}</text>`;
-    });
-    ticks += "</g>";
-    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(unit)} per dag">${g}${bars}${ticks}</svg><div class="tip hidden"></div>`;
-    const svg = el.querySelector("svg"), tip = el.querySelector(".tip");
-    svg.querySelectorAll("g[data-i]").forEach((gr) => {
-      const i = Number(gr.dataset.i), d = data[i];
-      const show = () => {
-        svg.querySelectorAll(".bar").forEach((b) => b.setAttribute("fill", b.classList.contains("zero") ? "#ffffff1f" : "var(--red)"));
-        const b = gr.querySelector(".bar"); if (d.y) b.setAttribute("fill", "var(--red-hi)");
-        const sx = svg.getBoundingClientRect().width / W;
-        tip.innerHTML = `<b>${nf.format(d.y)}</b> ${esc(unit)}<br><span class="sub">${esc(longDay(d.x))}</span>`;
-        tip.style.left = `${(L + (i + 0.5) * bw) * sx}px`; tip.style.top = `${y(d.y) * sx}px`;
-        tip.classList.remove("hidden");
-      };
-      gr.addEventListener("mouseenter", show); gr.addEventListener("touchstart", show, { passive: true });
-    });
-    svg.addEventListener("mouseleave", () => { tip.classList.add("hidden"); svg.querySelectorAll(".bar").forEach((b) => b.setAttribute("fill", b.classList.contains("zero") ? "#ffffff1f" : "var(--red)")); });
-  }
   function niceStep(max) {
     const raw = max / 4, p = Math.pow(10, Math.floor(Math.log10(raw)));
     for (const m of [1, 2, 5, 10]) if (m * p >= raw) return Math.max(1, m * p);
     return Math.max(1, 10 * p);
   }
-  const shortDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
-  const longDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
   function hbars(el, rows, limit = 14) {
     if (!rows.length) { el.innerHTML = '<p class="empty">Nog geen gegevens.</p>'; return; }
     const max = Math.max(...rows.map((r) => r.n), 1);
