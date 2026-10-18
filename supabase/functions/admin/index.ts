@@ -29,6 +29,11 @@
 //                       items[].plan = {plan, max_streams?, max_devices?, source?}; items[].first_name / last_name uit
 //                       user_metadata, of null. q zoekt op het begin van e-mailadres, voornaam, achternaam of "voornaam achternaam")
 //   user_detail         {token, id}       -> {…, first_name, last_name, devices:[…], banned_until, block (actief of null), blocks:[…] (laatste 20)}
+//   (servers) user_detail: servers = [{host, name?, active, deleted: false}] | null: alleen niet-verwijderde Xtream-bronnen uit
+//                       account_sources (in het geheugen ontsleuteld met BINGR_SOURCES_KEY), alleen schema + host + poort
+//                       (geen gebruikersnaam, wachtwoord, token, pad of query), de naam van de klant en of het mainSourceID is.
+//                       M3U en andere soorten niet. null = onbekend (sleutel ontbreekt of ontsleutelen mislukt). Nooit gelogd,
+//                       niets extra in admin_audit (servers.ts / servers_test.ts).
 //   (nieuwsbrief) users: items[].newsletter = true|false|null; user_detail: newsletter = {subscribed, email_opt_out,
 //                       newsletter_opt_out} | null (null = onbekend, bv. kolom newsletter_opt_out nog niet aangemaakt)
 //   user_newsletter_set {token, id, subscribed: bool} -> {ok, newsletter}  (account_email_prefs.newsletter_opt_out; heeft de
@@ -138,6 +143,7 @@ import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
+import { serversFromRow } from "./servers.ts";
 import { build as buildInsights, parseQuery as parseInsights, plan as planInsights } from "./insights.ts";
 import {
   buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, PRESSKIT_PUBLIC_URL, PRESSKIT_STATS,
@@ -472,6 +478,14 @@ async function newsletterPrefs(ids: string[]): Promise<Record<string, boolean> |
   return prefMap(ids, data);
 }
 
+// Servers (alleen adres van Xtream-bronnen) van een account, uit account_sources (schema in iptv-ios-appletv). Leesfout of
+// ontsleutelen mislukt = null (onbekend). Bewust geen log: alleen een korte code bij een databasefout, nooit inhoud of adressen.
+async function accountServers(id: string) {
+  const { data, error } = await admin.from("account_sources").select("data").eq("user_id", id).maybeSingle();
+  if (error) { console.error("admin", "servers", error.code ?? "db"); return null; }
+  return await serversFromRow(data?.data ?? null, env("BINGR_SOURCES_KEY"));
+}
+
 // Stand van de releasemeldingen voor de builds in Downloads (push_messages, schema in iptv-ios-appletv): per
 // "platform:build" wanneer en de aantallen. Fout = leeg (de tab werkt dan gewoon, zonder stand).
 async function releasePushes(manifest: Manifest, keys = releaseKeys(manifest)) {
@@ -755,7 +769,8 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (!data) return json({ error: "not_found" }, 404);
       // build 97: inzage van een account in het logboek (wie, geen inhoud)
       await audit("user_view", ip, String(body.id).toLowerCase());
-      return json({ ...data, email: maskEmail(data.email), newsletter: await newsletterPref(String(body.id).toLowerCase()) });
+      const uid = String(body.id).toLowerCase();
+      return json({ ...data, email: maskEmail(data.email), newsletter: await newsletterPref(uid), servers: await accountServers(uid) });
     }
     case "user_email": {
       // het volledige e-mailadres (oog naast het gemaskeerde adres); in het logboek alleen dat het bekeken is

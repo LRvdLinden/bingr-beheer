@@ -107,6 +107,8 @@ struct UserDetailView: View {
                     }
                     .card()
 
+                    serversCard(u)
+
                     VStack(alignment: .leading, spacing: 10) {
                         Button {
                             confirmReset = true
@@ -494,6 +496,61 @@ struct UserDetailView: View {
             session.show("Reset-mail verstuurd.")
         } catch {
             session.report(error)
+        }
+    }
+}
+
+extension UserDetailView {
+    /// Servers van het account: alleen het adres van Xtream-bronnen (met kopieerknop), de naam en "actief".
+    @ViewBuilder
+    func serversCard(_ u: UserDetail) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let servers = u.servers {
+                Text("Servers (\(servers.count))").font(.headline)
+                if servers.isEmpty { EmptyText(text: "Geen Xtream-servers.") }
+                ForEach(servers) { s in
+                    ServerRow(server: s) {
+                        UIPasteboard.general.string = s.host
+                        session.show("Adres gekopieerd.")
+                    }
+                    if s.id != servers.last?.id { Divider().overlay(Color.line) }
+                }
+                Text("Alleen het serveradres van Xtream-bronnen; geen gebruikersnaam, wachtwoord of afspeellijsten.")
+                    .font(.caption).foregroundStyle(Color.textDim)
+            } else {
+                Text("Servers").font(.headline)
+                EmptyText(text: "Servers konden niet worden gelezen.")
+            }
+        }
+        .card()
+    }
+}
+
+struct ServerRow: View {
+    let server: UserDetail.Server
+    var onCopy: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "server.rack")
+                .font(.title3)
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.surface3))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(server.name ?? "Zonder naam").font(.subheadline.weight(.semibold))
+                    if server.active { Chip(text: "actief", tone: .good) }
+                }
+                Text(verbatim: server.host)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Color.textSecondary)
+                    .textSelection(.enabled)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onCopy) { Image(systemName: "doc.on.doc") }
+                .buttonStyle(.bingrGhost)
+                .accessibilityLabel("Adres \(server.host) kopiëren")
         }
     }
 }

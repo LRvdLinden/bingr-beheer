@@ -78,6 +78,16 @@ struct UserDetail {
     /// Nieuwsbrief van dit account (`newsletter`); nil = onbekend (kolom nog niet aangemaakt).
     var newsletter: NewsletterPref?
     let devices: [Device]
+    /// Xtream-server van het account (`servers`): alleen het adres (schema + host + poort), de naam van de klant en of het de
+    /// actieve bron is. Nooit inloggegevens; M3U en andere soorten staan er niet in.
+    struct Server: Identifiable {
+        let id = UUID()
+        let host: String
+        let name: String?
+        let active: Bool
+    }
+    /// nil = onbekend (de functie kon de servers niet lezen).
+    let servers: [Server]?
     /// Actieve blokkade en de geschiedenis (nieuwste eerst, max. 20).
     let block: AccountBlock?
     let blocks: [AccountBlock]
@@ -100,6 +110,14 @@ struct UserDetail {
         newsletter = NewsletterPref(j["newsletter"])
         block = j["block"].object != nil ? AccountBlock(j["block"]) : nil
         blocks = j["blocks"].array.map(AccountBlock.init)
+        if case .array(let list) = j["servers"] {
+            servers = list.compactMap { s in
+                guard let host = s["host"].text, s["deleted"].bool != true else { return nil }
+                return Server(host: host, name: s["name"].text, active: s["active"].bool ?? false)
+            }
+        } else {
+            servers = nil
+        }
         devices = j["devices"].array.map {
             Device(name: $0["name"].text, platform: $0["platform"].text, appVersion: $0["app_version"].text,
                    osVersion: $0["os_version"].text, createdAt: $0["created_at"].date, lastSeenAt: $0["last_seen_at"].date)

@@ -856,3 +856,10 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
   .ins-bar h2{font-size:17px;white-space:normal}
 }
 @media (max-width:600px){.ins-vs,.ins-mm{display:none}}
+
+/* servers van een account (alleen het adres van Xtream-bronnen) */
+.srv-list .dev:last-child{border-bottom:0}
+.srv-b{min-width:0;flex:1}
+.srv-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.srv-host{font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--s2);border:1px solid #ffffff14;border-radius:6px;padding:2px 7px;overflow-wrap:anywhere;user-select:all}
+.chip.on{background:#3fcf6a1a;border-color:#3fcf6a40;color:#8be3a5}

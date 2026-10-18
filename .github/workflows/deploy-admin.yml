@@ -33,9 +33,9 @@ jobs:
         with:
           deno-version: v2.x
       # build 97: blokkerend (geen continue-on-error meer): faalt een test, dan wordt de functie niet bijgewerkt
-      - name: Unittests (mails, blokkeren, downloads, widgets, namen, pushmeldingen, push van de Beheer-app, nieuwsbrief)
+      - name: Unittests (mails, blokkeren, downloads, widgets, namen, pushmeldingen, push van de Beheer-app, nieuwsbrief, insights, servers)
         run: |
-          deno test supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts supabase/functions/admin/names_test.ts supabase/functions/admin/push_test.ts supabase/functions/admin/admin_push_test.ts supabase/functions/admin/newsletter_test.ts supabase/functions/admin/insights_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
+          deno test supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts supabase/functions/admin/names_test.ts supabase/functions/admin/push_test.ts supabase/functions/admin/admin_push_test.ts supabase/functions/admin/newsletter_test.ts supabase/functions/admin/insights_test.ts supabase/functions/admin/servers_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
           grep -E "FAILED|error|=>" admin-test.log | head -30 | while IFS= read -r l; do echo "::error::${l:0:300}"; done
           exit 1
       - name: Controleren

@@ -1362,6 +1362,7 @@
         <div class="nm">${esc(d.name || pname(d.platform))}</div>
         <div class="meta">${esc(pname(d.platform))}${d.app_version ? " · Bingr " + esc(d.app_version) : ""}${d.os_version ? " · " + esc(d.os_version) : ""}</div>
         <div class="meta">Laatst gezien ${esc(ago(d.last_seen_at))} · gekoppeld ${esc(fmtDate(d.created_at))}</div></div></div>`).join("") || '<p class="empty">Geen apparaten.</p>'}
+      ${serversSection(u.servers)}
       <div class="actions">
         <button id="resetBtn" class="btn ghost">Stuur wachtwoord-reset</button>
         ${b ? "" : '<button id="blockOpen" class="btn ghost" aria-expanded="false" aria-controls="blockForm">Blokkeren…</button>'}
@@ -1399,6 +1400,7 @@
     wireEmailEye(u);
     wireName(u);
     wireNewsletter(u);
+    wireServers();
     $("resetBtn").onclick = async () => {
       if (!confirm(`Een wachtwoord-reset-mail sturen naar ${u.email}?`)) return;
       $("resetBtn").disabled = true;
@@ -1418,6 +1420,31 @@
     } else wireBlockForm(u);
     wirePlan(u);
     wireDelete(u);
+  }
+  // servers van dit account (user_detail.servers): alleen het adres van Xtream-bronnen (schema + host + poort), de naam die de
+  // klant gaf en of het de actieve bron is. Nooit inloggegevens; M3U en andere soorten staan er niet in. null = onbekend.
+  const SERVER_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>';
+  function serversSection(list) {
+    if (list == null) return '<h3>Servers</h3><p class="empty">Servers konden niet worden gelezen.</p>';
+    const rows = list.map((s, i) => `<div class="dev srv"><div class="ic">${SERVER_IC}</div><div class="srv-b">
+        <div class="nm">${esc(s.name || "Zonder naam")}${s.active ? ' <span class="chip on">actief</span>' : ""}</div>
+        <div class="srv-row"><code class="srv-host">${esc(s.host)}</code>
+          <button class="btn small ghost" type="button" data-srv="${i}" aria-label="Adres ${esc(s.host)} kopiëren">Kopiëren</button></div></div></div>`).join("");
+    return `<h3>Servers (${list.length})</h3><div id="uServers" class="srv-list">${rows || '<p class="empty">Geen Xtream-servers.</p>'}</div>
+      <p class="sub">Alleen het serveradres van Xtream-bronnen; geen gebruikersnaam, wachtwoord of afspeellijsten.</p>`;
+  }
+  function wireServers() {
+    const box = $("uServers");
+    if (!box) return;
+    box.querySelectorAll("button[data-srv]").forEach((b) => (b.onclick = async () => {
+      const host = b.closest(".srv").querySelector(".srv-host").textContent;
+      try { await navigator.clipboard.writeText(host); toast("Adres gekopieerd."); }
+      catch {
+        const r = document.createRange(); r.selectNodeContents(b.closest(".srv").querySelector(".srv-host"));
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        toast("Selecteer het adres en kopieer het.", true);
+      }
+    }));
   }
   // nieuwsbrief van dit account (user_detail.newsletter, actie user_newsletter_set). Heeft de klant alle mail uitgezet
   // (email_opt_out), dan alleen de stand: dat zet alleen de klant zelf terug. null = onbekend (kolom nog niet aangemaakt).
