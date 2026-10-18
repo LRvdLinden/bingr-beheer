@@ -108,6 +108,8 @@ struct BuildsOverview {
     let platforms: [BuildPlatform]
     /// verstuurde releasemeldingen per "platform:build"
     var pushes: [String: ReleasePushState]
+    /// PressKit (los van de buildplatforms; nil als er nog geen presskit op de server staat)
+    let presskit: PresskitOverview?
 
     init(_ j: JSON) {
         ready = j["ready"].bool ?? false
@@ -119,11 +121,12 @@ struct BuildsOverview {
             return BuildPlatform(key: def.key, latest: BuildInfo(e), history: e["history"].array.compactMap { BuildInfo($0) })
         }
         pushes = (j["release_push"].object ?? [:]).mapValues { ReleasePushState($0) }
+        presskit = PresskitOverview(platform: p["presskit"], info: j["presskit"])
     }
 
     /// Tekst voor de lege of niet-ingerichte toestand (nil als er builds zijn).
     var emptyText: String? {
-        if ready && platforms.contains(where: { $0.latest != nil }) { return nil }
+        if ready && (platforms.contains(where: { $0.latest != nil }) || presskit != nil) { return nil }
         switch reason {
         case "not_configured": return "Downloads nog niet ingericht: draai de workflow Builds."
         case "unreachable": return "De server met de builds is niet bereikbaar. Probeer het later opnieuw."
@@ -147,5 +150,49 @@ struct BuildLink: Identifiable {
         expiresAt = j["expires_at"].date
         file = j["file"].text ?? u.lastPathComponent
         size = j["size"].int
+    }
+}
+
+/// PressKit in Downloads (actie `builds` → `platforms.presskit` en `presskit`): de nieuwste Bingr-PressKit.zip (workflow
+/// PressKit), de openbare link (bingr.online/presskit) en de downloadteller (alleen aantallen, uit builds/presskit-stats.json).
+struct PresskitOverview {
+    struct Day: Identifiable, Hashable {
+        let date: Date
+        let count: Int
+        var id: Date { date }
+    }
+
+    let build: BuildInfo
+    let publicURL: URL
+    /// nil = nog geen teller op de server
+    let total: Int?
+    let versionTotal: Int
+    let last7: Int
+    let last30: Int
+    let days: [Day]
+
+    init?(platform p: JSON, info j: JSON) {
+        guard let b = BuildInfo(p) else { return nil }
+        build = b
+        publicURL = j["public_url"].text.flatMap { URL(string: $0) }.flatMap { $0.scheme == "https" ? $0 : nil }
+            ?? URL(string: "https://bingr.online/presskit")!
+        let s = j["stats"]
+        if s.object != nil {
+            total = s["total"].int ?? 0
+            versionTotal = s["version_total"].int ?? 0
+            last7 = s["last_7d"].int ?? 0
+            last30 = s["last_30d"].int ?? 0
+            let f = DateFormatter()
+            f.calendar = Calendar(identifier: .gregorian)
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = Fmt.amsterdam
+            f.dateFormat = "yyyy-MM-dd"
+            days = s["days"].array.compactMap { d in
+                guard let t = d["date"].text, let date = f.date(from: t) else { return nil }
+                return Day(date: date, count: max(0, d["n"].int ?? 0))
+            }
+        } else {
+            total = nil; versionTotal = 0; last7 = 0; last30 = 0; days = []
+        }
     }
 }

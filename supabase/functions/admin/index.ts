@@ -105,10 +105,12 @@
 //                       een token van 60 s; de buildpakketten staan niet op GitHub)
 //                       release_push: {"apple:114": {sent_at, devices, queued, sent, failed, invalid, done}, …} (verstuurde
 //                       releasemeldingen per build; leeg = nog niet verstuurd)
+//                       presskit: {public_url, stats: {total, version, version_total, last_7d, last_30d, days:[{date, n}]} | null}
+//                       als platforms.presskit er is (workflow PressKit; teller builds/presskit-stats.json via dl.php, alleen aantallen)
 //   build_push          {token, platform: "apple"|"android", file? (standaard de nieuwste)} -> {ok, duplicate, devices, build,
 //                       missing_channels, push} (releasemelding van die build via push: release met PUSH_ADMIN_SECRET; één
 //                       keer per build; niet automatisch, want de stores keuren pas later goed; in admin_audit platform en build)
-//   build_link          {token, platform: "android"|"tizen"|"apple"|"beheer", file? (standaard de nieuwste; anders alleen
+//   build_link          {token, platform: "android"|"tizen"|"apple"|"beheer"|"presskit", file? (standaard de nieuwste; anders alleen
 //                       een bestand uit het manifest)} -> {url, expires_at, file, size}  (https://beheer.bingr.online/dl.php?t=…,
 //                       10 minuten geldig; in admin_audit als build_link met platform en build, nooit de link of het token)
 //                       Tokens: HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY (gezet door de workflow Builds, dezelfde
@@ -138,8 +140,8 @@ import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } fro
 import { cleanName } from "./names.ts";
 import { build as buildInsights, parseQuery as parseInsights, plan as planInsights } from "./insights.ts";
 import {
-  buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, releaseKey, releaseKeys, releaseOf,
-  releasePushView, signBuildToken,
+  buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, PRESSKIT_PUBLIC_URL, PRESSKIT_STATS,
+  presskitStatsView, releaseKey, releaseKeys, releaseOf, releasePushView, signBuildToken,
 } from "./builds.ts";
 import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
 import { auditDetail, cleanPushInput, cleanTarget, historyView, pageInput, progressView, PUSH_PLATFORMS, type PushTarget } from "./push.ts";
@@ -221,6 +223,22 @@ async function fetchManifest(): Promise<{ ok: true; manifest: Manifest } | { ok:
   if (!manifest) return fail("unreachable", "geen manifest");
   if (!Object.keys(manifest.platforms).length) return { ok: false, reason: "no_builds" };
   return { ok: true, manifest };
+}
+
+// Downloadteller van de presskit (builds/presskit-stats.json via dl.php met een token van 60 s). Fout of nog geen teller = null.
+async function fetchPresskitStats(): Promise<unknown> {
+  const key = buildsKey();
+  if (key.length < MIN_KEY) return null;
+  const { token } = await signBuildToken(key, PRESSKIT_STATS, 60);
+  try {
+    const res = await fetch(buildUrl(token), { redirect: "error", signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
+    if (!res.ok) { await res.body?.cancel().catch(() => {}); return null; }
+    const text = await res.text();
+    return text.length > 200_000 ? null : JSON.parse(text);
+  } catch (e) {
+    console.error("admin", "builds", "presskit-stats", e instanceof Error ? e.name : "fetch");
+    return null;
+  }
 }
 
 // Het dashboard staat op https://beheer.bingr.online (http://localhost om te testen). De site bingr.online mag alleen
@@ -1181,7 +1199,10 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // tab Downloads: het manifest (alle velden), nooit de sleutel of een token
       const r = await fetchManifest();
       if (!r.ok) return json({ ready: false, platforms: null, reason: r.reason });
-      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated, release_push: await releasePushes(r.manifest) });
+      const pk = r.manifest.platforms.presskit;
+      const [release_push, pkRaw] = await Promise.all([releasePushes(r.manifest), pk ? fetchPresskitStats() : Promise.resolve(null)]);
+      const presskit = pk ? { public_url: PRESSKIT_PUBLIC_URL, stats: presskitStatsView(pkRaw, pk.version) } : null;
+      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated, release_push, presskit });
     }
     case "build_push": {
       // knop "Pushmelding versturen" bij een build van apple of android: releasemelding via de functie push (actie
@@ -1226,7 +1247,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const { token, exp } = await signBuildToken(buildsKey(), `${platform}/${b.file}`, 600);
       // logboek: welk platform en welke build, nooit de link of het token
       await audit("build_link", ip, null, {
-        platform, build: typeof b.build === "number" ? b.build : (String(b.build ?? "").slice(0, 20) || null),
+        platform, build: typeof b.build === "number" ? b.build : (String(b.build ?? b.version ?? "").slice(0, 20) || null),
         latest: b.file === r.manifest.platforms[platform]?.file,
       });
       return json({ url: buildUrl(token), expires_at: new Date(exp * 1000).toISOString(), file: b.file, size: typeof b.size === "number" ? b.size : null });

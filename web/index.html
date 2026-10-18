@@ -27,22 +27,11 @@
 <div id="app" class="hidden">
   <header class="top">
     <div class="brand"><span class="logo">BINGR</span><span class="tag">Beheer</span></div>
-    <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="overview" aria-selected="true">Overzicht</button>
-      <button role="tab" data-tab="insights">Insights</button>
-      <button role="tab" data-tab="users">Gebruikers</button>
-      <button role="tab" data-tab="support">Support<span id="supBadge" class="tab-badge hidden" aria-label="ongelezen"></span></button>
-      <button role="tab" data-tab="messages">Pushmeldingen</button>
-      <button role="tab" data-tab="newsletter">Nieuwsbrief</button>
-      <button role="tab" data-tab="status">Status</button>
-      <button role="tab" data-tab="downloads">Downloads</button>
-      <button role="tab" data-tab="settings">Instellingen</button>
-    </nav>
-    <!-- menu rechtsboven, zoals het profielmenu van de webspeler op bingr.online: app-icoon met pijltje, paneel met items -->
+    <!-- alleen het hamburgermenu (op elke breedte): alle onderdelen, Overal uitloggen en Uitloggen; badge = ongelezen in Support -->
     <div class="umenu">
       <button id="menuBtn" class="menu-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="appMenu" aria-label="Menu">
-        <span class="menu-av"><img src="app-icon.png" alt="" width="32" height="32"><span id="menuDot" class="menu-dot hidden"></span></span>
-        <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        <svg class="burger" viewBox="0 0 24 24" aria-hidden="true"><path class="l1" d="M4 7h16"/><path class="l2" d="M4 12h16"/><path class="l3" d="M4 17h16"/></svg>
+        <span id="menuDot" class="menu-badge hidden" aria-hidden="true"></span>
       </button>
       <div id="appMenu" class="menu hidden" role="menu" aria-labelledby="menuBtn">
         <div class="menu-head"><img src="app-icon.png" alt="" width="40" height="40"><div><b>BingrBeheer</b><span id="menuSession" class="sub"></span></div></div>
@@ -282,7 +271,7 @@
     <section id="tab-downloads" class="tab hidden">
       <div class="row-head"><div><h1>Downloads</h1><p id="dlUpdated" class="sub"></p></div>
         <button id="dlRefresh" class="btn ghost small">Vernieuwen</button></div>
-      <p class="sub bld-intro">Buildpakketten van Bingr en BingrBeheer. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.</p>
+      <p class="sub bld-intro">Buildpakketten van Bingr en BingrBeheer, en de PressKit. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.</p>
       <div id="dlList" class="bld-grid"></div>
     </section>
     <section id="tab-settings" class="tab hidden">

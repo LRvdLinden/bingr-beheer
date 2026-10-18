@@ -75,14 +75,8 @@ label input,label textarea{margin-top:6px}
 .login-card .tag{font-size:17px}
 .login-card .btn{width:100%;margin-top:14px;padding:14px 20px;font-size:17px}
 
-/* kop + tabs (zoals de nav van bingr.online) */
-.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:32px;height:72px;padding:0 max(var(--g),calc((100% - var(--max)) / 2 + var(--g)));background:#000000e6;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 1px 0 var(--line)}
-.tabs{display:flex;gap:6px;flex:1;align-self:stretch}
-.tabs button{position:relative;background:none;border:0;color:#cfcfcf;padding:0 12px;cursor:pointer;font-size:15px;font-weight:500;transition:color .15s}
-.tabs button:hover{color:#fff}
-.tabs button[aria-selected=true]{color:#fff;font-weight:700}
-.tabs button[aria-selected=true]::after{content:"";position:absolute;left:12px;right:12px;bottom:14px;height:3px;border-radius:3px;background:var(--red)}
-.tabs button:focus-visible{outline-offset:-6px}
+/* kop: logo links, hamburgermenu rechts (op elke breedte) */
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;height:72px;padding:0 max(var(--g),calc((100% - var(--max)) / 2 + var(--g)));background:#000000e6;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 1px 0 var(--line)}
 
 main{max-width:var(--max);margin:0 auto;padding:36px var(--g) 64px}
 h1{font-size:clamp(28px,3.6vw,40px);font-weight:800;letter-spacing:-.025em;line-height:1.1}
@@ -374,12 +368,8 @@ legend .sub{font-weight:400}
 @media (max-width:1000px){.kpis{grid-template-columns:repeat(4,1fr)}}
 @media (max-width:760px){
   :root{--g:16px}
-  .top{flex-wrap:wrap;height:auto;gap:0 16px;padding:14px var(--g) 0}
+  .top{height:60px;padding:0 var(--g)}
   .top .logo{font-size:24px}
-  .tabs{order:3;flex-basis:100%;overflow-x:auto;scrollbar-width:none;margin:8px calc(var(--g) * -1) 0;padding:0 calc(var(--g) - 12px);height:46px}
-  .tabs::-webkit-scrollbar{display:none}
-  .tabs button{flex:none}
-  .tabs button[aria-selected=true]::after{bottom:8px}
   .umenu{margin-left:auto}
   .menu{width:min(280px,calc(100vw - 2 * var(--g)))}
   main{padding:24px var(--g) 48px}
@@ -536,7 +526,23 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .bld-card .form-btns{flex-wrap:wrap;align-items:center}
 .bld-push-hint{margin-top:8px;font-size:13px}
 .chip.bld-push-sent{background:#46d36924;color:var(--ok);border-color:#46d36940}
-@media (max-width:760px){.bld-grid{grid-template-columns:1fr}.bld-intro{margin-top:-16px}}
+/* kaart PressKit (Downloads): gegevens links, downloads met mini-grafiek (30 dagen) rechts */
+.pk-card{grid-column:1/-1}
+.pk-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.pk-cols .dl{margin:20px 0 0}
+.pk-stats{margin-top:20px;background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:16px 18px}
+.pk-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.pk-nums b{display:block;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.pk-nums span{display:block;margin-top:4px;font-size:12.5px;color:var(--sec)}
+.pk-spark{display:flex;align-items:flex-end;gap:3px;height:64px;margin-top:18px;border-bottom:1px solid var(--line)}
+.pk-spark i{flex:1;min-width:0;background:var(--red);border-radius:2px 2px 0 0;opacity:.85}
+.pk-spark i:hover{opacity:1}
+.pk-axis{display:flex;justify-content:space-between;margin-top:6px;font-size:12px}
+.pk-link{display:block;margin-top:18px}
+.pk-link-row{display:flex;align-items:stretch;gap:8px;margin-top:6px}
+.pk-link-row .btn{margin:0;flex:none}
+.pk-link-row input{flex:1;min-width:0;margin:0;padding:9px 12px;font-size:14px}
+@media (max-width:760px){.bld-grid{grid-template-columns:1fr}.bld-intro{margin-top:-16px}.pk-cols{grid-template-columns:1fr;gap:0}.pk-nums{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* ---- overzicht: instelbaar widget-dashboard (S = 1×1, M = 2×1, L = 2×2; telefoon: één kolom) ---- */
 .dash{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:150px;grid-auto-flow:row dense;gap:16px}
@@ -652,13 +658,17 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 
 /* menu rechtsboven (zoals het profielmenu van de webspeler: .prof-btn, .menu, .menu-it, .menu-sep in bingr-website/web/css/web.css) */
 .umenu{position:relative;display:flex;align-items:center}
-.menu-btn{display:flex;align-items:center;gap:6px;background:none;border:0;cursor:pointer;padding:4px;border-radius:8px;color:#fff}
-.menu-av{position:relative;display:block;width:32px;height:32px}
-.menu-av img,.menu-head img{display:block;width:100%;height:100%;border-radius:7px;box-shadow:0 0 0 1px #ffffff40}
-.menu-dot{position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #000}
-.menu-btn .caret{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
-.menu-btn:hover .caret,.menu-btn[aria-expanded=true] .caret{transform:rotate(180deg)}
-.menu{position:absolute;top:calc(100% + 10px);right:0;z-index:30;min-width:250px;background:#141414f7;border:1px solid #ffffff26;border-radius:8px;padding:8px 0;box-shadow:0 20px 50px #000c;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.menu-btn{position:relative;display:grid;place-items:center;width:44px;height:44px;background:none;border:1px solid transparent;cursor:pointer;padding:0;border-radius:10px;color:#fff;transition:background .15s,border-color .15s}
+.menu-btn:hover,.menu-btn[aria-expanded=true]{background:#ffffff14;border-color:#ffffff26}
+.menu-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.burger{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;overflow:visible}
+.burger path{transition:transform .2s,opacity .2s;transform-origin:12px 12px}
+.menu-btn[aria-expanded=true] .l1{transform:translateY(5px) rotate(45deg)}
+.menu-btn[aria-expanded=true] .l2{opacity:0}
+.menu-btn[aria-expanded=true] .l3{transform:translateY(-5px) rotate(-45deg)}
+.menu-badge{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px #000;pointer-events:none}
+.menu-head img{display:block;border-radius:7px;box-shadow:0 0 0 1px #ffffff40}
+.menu{position:absolute;top:calc(100% + 10px);right:0;z-index:30;min-width:260px;max-height:calc(100vh - 90px);overflow-y:auto;background:#141414;border:1px solid #ffffff26;border-radius:8px;padding:8px 0;box-shadow:0 20px 50px #000c;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .menu-head{display:flex;align-items:center;gap:12px;padding:6px 16px 8px}
 .menu-head img{width:40px;height:40px;border-radius:9px;flex:none}
 .menu-head b{display:block;font-size:15px;line-height:1.2}
@@ -666,7 +676,7 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .menu-it{display:flex;align-items:center;gap:12px;width:100%;padding:10px 16px;border:0;background:none;cursor:pointer;font-size:14.5px;text-align:left;color:#ddd;text-decoration:none}
 .menu-it:hover,.menu-it:focus-visible{background:#ffffff14;color:#fff;outline:none;text-decoration:underline}
 .menu-it .ic{width:20px;height:20px;flex:none;fill:none;stroke:var(--sec);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.menu-it[aria-current=page]{color:#fff;font-weight:700}
+.menu-it[aria-current=page]{color:#fff;font-weight:700;background:#ffffff0d;box-shadow:inset 3px 0 0 var(--red)}
 .menu-it[aria-current=page] .ic{stroke:var(--red)}
 .menu-it .tab-badge{margin-left:auto}
 .menu-it.danger,.menu-it.danger .ic{color:#ff8080;stroke:#ff8080}

@@ -135,8 +135,9 @@
   }
   function logout(msg) { setSession(null); mem = null; closeMenu(false); closeDrawer(); showLogin(msg); }
 
-  // ---- menu rechtsboven (zoals het profielmenu van de webspeler): app-icoon met pijltje, paneel met de onderdelen,
-  // Overal uitloggen en Uitloggen. Toetsenbord: Enter/Spatie/pijl omlaag opent, pijlen/Home/End lopen, Escape en Tab sluiten.
+  // ---- hamburgermenu rechtsboven (de enige navigatie, op elke breedte): paneel met de onderdelen, Overal uitloggen en
+  // Uitloggen; badge op het icoon = ongelezen in Support. Toetsenbord: Enter/Spatie/pijl omlaag opent, pijlen/Home/End
+  // lopen, Escape en Tab sluiten (focus terug op de knop).
   const menuBtn = $("menuBtn"), appMenu = $("appMenu");
   const menuItems = () => [...appMenu.querySelectorAll(".menu-it")];
   const menuOpen = () => !appMenu.classList.contains("hidden");
@@ -195,13 +196,17 @@
   // ---- tabs ----
   const loaded = {};
   function showTab(name) {
-    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
-    appMenu.querySelectorAll("[data-go]").forEach((b) => (b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+    // huidige pagina: gemarkeerd in het menu (aria-current) en in de titel van het tabblad; de kop staat in de inhoud
+    let label = "";
+    appMenu.querySelectorAll("[data-go]").forEach((b) => {
+      if (b.dataset.go === name) { b.setAttribute("aria-current", "page"); label = b.querySelector("span")?.textContent || ""; }
+      else b.removeAttribute("aria-current");
+    });
+    document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
     if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
-  document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
   function start() {
     $("login").classList.add("hidden"); $("app").classList.remove("hidden");
@@ -1696,6 +1701,40 @@
         <span class="sub">${esc([h.version, dlDate(h), fmtSize(h.size)].filter((x) => x && x !== "—").join(" · "))}</span></span><span class="bld-hist-btns">${dlPushInfo(p, h, true)}${dlButton(p, h, true)}</span></li>`).join("")}</ul></div>` : ""}
     </div>`;
   }
+  // PressKit (workflow PressKit): openbare download via bingr.online/presskit; teller uit builds/presskit-stats.json (alleen aantallen)
+  function pkCard(b, pk) {
+    if (!b) return "";
+    const st = pk?.stats || null, url = pk?.public_url || "https://bingr.online/presskit";
+    const days = st?.days || [], max = Math.max(1, ...days.map((d) => d.n));
+    const num = (v) => (st ? nf.format(v ?? 0) : "—");
+    const dayLabel = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("nl-NL", { day: "numeric", month: "short", timeZone: "Europe/Amsterdam" });
+    return `<div class="panel bld-card pk-card">
+      <div class="bld-head"><div><h2>PressKit</h2><p class="sub">Persmap voor bingr.online: logo, app-iconen en App Store-screenshots (Bingr-PressKit.zip)</p></div><span class="chip">versie ${esc(b.version || "—")}</span></div>
+      <div class="pk-cols">
+        <dl class="dl">
+          <dt>Versie</dt><dd>${esc(b.version || "—")}</dd>
+          <dt>Datum</dt><dd>${esc(dlDate(b))}</dd>
+          <dt>Grootte</dt><dd>${esc(fmtSize(b.size))}</dd>
+          <dt>Bestand</dt><dd class="brk">${esc(b.file)}</dd>
+          ${b.sha256 ? `<dt>SHA-256</dt><dd class="brk bld-hash">${esc(b.sha256)}</dd>` : ""}
+        </dl>
+        <div class="pk-stats">
+          <div class="pk-nums">
+            <div><b>${num(st?.total)}</b><span>Downloads totaal</span></div>
+            <div><b>${num(st?.version_total)}</b><span>Deze versie</span></div>
+            <div><b>${num(st?.last_7d)}</b><span>Laatste 7 dagen</span></div>
+            <div><b>${num(st?.last_30d)}</b><span>Laatste 30 dagen</span></div>
+          </div>
+          ${st ? `<div class="pk-spark" role="img" aria-label="${esc(`Downloads per dag, laatste 30 dagen: ${nf.format(st.last_30d)} in totaal`)}">${days.map((d) => `<i data-h="${(d.n / max * 100).toFixed(1)}" title="${esc(`${dayLabel(d.date)}: ${d.n}`)}"></i>`).join("")}</div>
+            <div class="pk-axis sub"><span>${esc(dayLabel(days[0]?.date || ""))}</span><span>vandaag</span></div>`
+            : `<p class="sub">Nog geen tellingen (teller nog niet op de server).</p>`}
+        </div>
+      </div>
+      <label class="pk-link"><span class="sub">Openbare link (zonder inloggen; telt als download)</span>
+        <span class="pk-link-row"><input id="pkUrl" type="text" readonly value="${esc(url)}"><button id="pkCopy" class="btn small ghost" type="button">Kopiëren</button></span></label>
+      <div class="form-btns">${dlButton("presskit", b, false)}</div>
+    </div>`;
+  }
   $("dlRefresh").onclick = () => loadDownloads();
   async function loadDownloads() {
     const el = $("dlList");
@@ -1709,7 +1748,14 @@
     }
     if (r.updated) $("dlUpdated").textContent = `Bijgewerkt ${fmtDateTime(r.updated)}`;
     dlPush = r.release_push && typeof r.release_push === "object" ? r.release_push : {};
-    el.innerHTML = DL_PLATFORMS.map((x) => dlCard(x, r.platforms[x[0]])).join("");
+    el.innerHTML = DL_PLATFORMS.map((x) => dlCard(x, r.platforms[x[0]])).join("") + pkCard(r.platforms.presskit, r.presskit);
+    el.querySelectorAll(".pk-spark i[data-h]").forEach((i) => { i.style.height = `${Math.max(2, Number(i.dataset.h))}%`; });
+    const pkCopy = $("pkCopy");
+    if (pkCopy) pkCopy.onclick = async () => {
+      const inp = $("pkUrl");
+      try { await navigator.clipboard.writeText(inp.value); toast("Link gekopieerd."); }
+      catch { inp.select(); toast("Selecteer de link en kopieer hem.", true); }
+    };
     el.querySelectorAll("button[data-dl-p]").forEach((b) => (b.onclick = () => download(b)));
     el.querySelectorAll("button[data-push-p]").forEach((b) => (b.onclick = () => releasePush(b)));
   }
@@ -1766,13 +1812,13 @@
   function applySupportCounts(c) {
     if (!c) return;
     supCounts = c;
-    const b = $("supBadge"), u = c.unread || 0;
-    b.textContent = u > 99 ? "99+" : String(u); b.classList.toggle("hidden", !u);
-    // zelfde teller in het menu, en een stip op het app-icoon
+    const u = c.unread || 0, txt = u > 99 ? "99+" : String(u);
+    // teller bij Support in het menu en als badge op het hamburgericoon (voor de screenreader in het label van de knop)
     const mb = $("menuSupBadge");
-    mb.textContent = b.textContent; mb.classList.toggle("hidden", !u);
+    mb.textContent = txt; mb.classList.toggle("hidden", !u);
     mb.setAttribute("aria-label", `${u} ongelezen`);
-    $("menuDot").classList.toggle("hidden", !u);
+    const dot = $("menuDot");
+    dot.textContent = txt; dot.classList.toggle("hidden", !u);
     menuBtn.setAttribute("aria-label", u ? `Menu, ${u} ongelezen in Support` : "Menu");
     dashSupportChanged();
     renderSupFilters();

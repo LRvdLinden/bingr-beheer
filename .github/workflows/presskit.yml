@@ -1,0 +1,144 @@
+name: PressKit
+
+# Maakt Bingr-PressKit.zip (tools/make_presskit.py, inhoud volgens presskit/presskit.json: Brand uit presskit/brand, Apple
+# uit appstore/en, Promo als die er is) met versie 1.<run-nummer> en zet hem via FTPS in de afgesloten map builds/presskit/
+# op de server van beheer.bingr.online. builds/manifest.json krijgt platform "presskit" {version, file, path, size, sha256,
+# date, uploaded_at, history (1 vorige)}; oudere zips gaan weg. De openbare download (bingr.online/presskit ->
+# dl.php?app=presskit) telt in builds/presskit-stats.json; die teller maakt deze workflow één keer aan en overschrijft hem nooit.
+# Geen zip in de repo. Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, optioneel FTP_USERNAME_ALT en FTP_DIR (zoals Dashboard).
+# Het log is openbaar: alleen versie, grootte en gelukt/mislukt; geen mappen of serverantwoorden.
+
+on:
+  push:
+    branches: [main]
+    paths: ['appstore/**', 'presskit/**', 'tools/make_presskit.py', '.github/workflows/presskit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# zelfde groep als Builds: die werkt ook builds/manifest.json bij
+concurrency:
+  group: builds
+  cancel-in-progress: false
+
+jobs:
+  presskit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_USERNAME_ALT: ${{ secrets.FTP_USERNAME_ALT }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_DIR: ${{ secrets.FTP_DIR }}
+      PK_VERSION: 1.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Zip maken
+        id: zip
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pk/Bingr-PressKit-$PK_VERSION.zip"
+          python3 tools/make_presskit.py --version "$PK_VERSION" --out "$out" > "$RUNNER_TEMP/pk-meta.json"
+          echo "zip=$out" >> $GITHUB_OUTPUT
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(f"::notice::PressKit {m[\"version\"]}: {m[\"files\"]} bestanden, {m[\"size\"]/1e6:.1f} MB")' "$RUNNER_TEMP/pk-meta.json"
+          missing=""
+          for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do [ -n "${!k:-}" ] || missing="$missing $k"; done
+          if [ -n "$missing" ]; then echo "::warning::Secrets ontbreken:$missing — presskit niet op de server gezet."; echo "skip=1" >> $GITHUB_OUTPUT; fi
+
+      - name: lftp installeren
+        if: steps.zip.outputs.skip != '1'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Naar de server
+        if: steps.zip.outputs.skip != '1'
+        env:
+          ZIP: ${{ steps.zip.outputs.zip }}
+        run: |
+          set -euo pipefail
+          source tools/ftps.sh
+          source tools/builds_process.sh
+          ftps_connect
+          BW=$(mktemp -d)
+          # het manifest moet er al zijn (workflow Builds); nooit een leeg manifest over het bestaande heen zetten
+          srv_get manifest.json "$BW/manifest.json" || { echo "::error::builds/manifest.json niet gevonden: draai eerst de workflow Builds."; exit 1; }
+          name=$(basename "$ZIP")
+          srv_put "$ZIP" "presskit/$name" 644 || { echo "::error::Uploaden van de presskit mislukt."; exit 1; }
+          # manifest bijwerken (opnieuw ophalen vlak voor het schrijven); oudere zips dan de vorige weghalen
+          srv_get manifest.json "$BW/manifest.json" || { echo "::error::Manifest niet op te halen."; exit 1; }
+          del=$(python3 - "$BW/manifest.json" "$RUNNER_TEMP/pk-meta.json" <<'PY'
+          import datetime, json, sys
+          mp, metap = sys.argv[1:3]
+          m = json.load(open(mp)); m.setdefault("platforms", {})
+          meta = json.load(open(metap))
+          now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+          e = {"version": meta["version"], "file": meta["file"], "path": f"presskit/{meta['file']}", "size": meta["size"],
+               "sha256": meta["sha256"], "date": meta["date"], "uploaded_at": now}
+          cur = m["platforms"].get("presskit")
+          hist = []
+          if cur:
+              hist = cur.pop("history", [])
+              if cur.get("file") != e["file"]: hist.insert(0, cur)
+          hist = [x for x in hist if x.get("file") != e["file"]]
+          keep, drop = hist[:1], hist[1:]
+          e["history"] = keep
+          m["platforms"]["presskit"] = e
+          m["updated"] = now
+          json.dump(m, open(mp, "w"), indent=1)
+          print("\n".join(x["path"] for x in drop if str(x.get("path", "")).startswith("presskit/")))
+          PY
+          )
+          srv_put "$BW/manifest.json" manifest.json 600 || { echo "::error::Manifest niet op de server gezet."; exit 1; }
+          for x in $del; do srv_rm "$x"; done
+          # downloadteller: één keer aanmaken, nooit overschrijven
+          if ! srv_get presskit-stats.json "$BW/stats.json"; then
+            echo '{"total":0,"by_version":{},"by_day":{}}' > "$BW/stats.json"
+            srv_put "$BW/stats.json" presskit-stats.json 600 || { echo "::error::Teller niet op de server gezet."; exit 1; }
+            echo "::notice::Downloadteller aangemaakt."
+          fi
+          rm -rf "$BW"
+          echo "::notice::PressKit $PK_VERSION op de server gezet."
+
+      - name: Controleren
+        if: steps.zip.outputs.skip != '1'
+        run: |
+          set -uo pipefail
+          url=https://beheer.bingr.online/
+          size=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["size"])' "$RUNNER_TEMP/pk-meta.json")
+          pk_head(){ curl -sI --max-time 30 "${url}dl.php?app=presskit" | tr -d '\r'; }
+          source tools/ftps.sh
+          h=$(pk_head)
+          if ! echo "$h" | head -1 | grep -q ' 200'; then
+            # sommige servers draaien PHP als een andere gebruiker: dan mag het manifest 644 zijn (zoals in Builds)
+            ftps_connect >/dev/null
+            ftps_try "chmod 644 \"$FTPS_TARGET/builds/manifest.json\"" >/dev/null 2>&1
+            h=$(pk_head)
+          fi
+          code=$(echo "$h" | head -1 | awk '{print $2}')
+          len=$(echo "$h" | grep -i '^content-length:' | awk '{print $2}' | tail -1)
+          type=$(echo "$h" | grep -i '^content-type:' | awk '{print $2}' | tail -1)
+          [ "$code" = 200 ] || { echo "::error::dl.php?app=presskit geeft HTTP ${code:-geen antwoord}"; exit 1; }
+          [ "${len:-0}" -gt 0 ] && [ "$len" = "$size" ] || { echo "::error::Content-Length ${len:-?} klopt niet (verwacht $size)"; exit 1; }
+          [ "$type" = "application/zip" ] || { echo "::error::Content-Type ${type:-?}"; exit 1; }
+          echo "::notice::dl.php?app=presskit: HTTP 200, $len bytes."
+          # teller moet schrijfbaar zijn voor PHP; zo niet, ruimere rechten (alleen dit bestand)
+          for mode in 600 660 666; do
+            ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
+            echo "$ping" | grep -q '"stats":true' && { echo "::notice::Downloadteller is schrijfbaar."; break; }
+            [ "$mode" = 600 ] && continue
+            [ -n "${FTPS_USER:-}" ] || ftps_connect >/dev/null
+            ftps_try "chmod $mode \"$FTPS_TARGET/builds/presskit-stats.json\"" >/dev/null 2>&1
+          done
+          echo "$ping" | grep -q '"stats":true' || echo "::warning::Downloadteller (builds/presskit-stats.json) is niet schrijfbaar voor PHP; downloads worden niet geteld."
+          for f in builds/presskit/ builds/presskit-stats.json builds/manifest.json; do
+            c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "${url}$f" || true)
+            [ "$c" = 200 ] && { echo "::error::${url}$f is rechtstreeks bereikbaar"; exit 1; }
+          done
+          echo "::notice::Map builds/ is niet rechtstreeks bereikbaar."
+          c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' https://bingr.online/presskit || true)
+          case "$c" in
+            "302 https://beheer.bingr.online/dl.php?app=presskit") echo "::notice::bingr.online/presskit stuurt door naar de download." ;;
+            *) echo "::warning::bingr.online/presskit stuurt (nog) niet door (workflow Website van bingr-website)." ;;
+          esac

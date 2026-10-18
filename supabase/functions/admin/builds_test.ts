@@ -120,3 +120,39 @@ Deno.test("releasemelding: versie/build, sleutels en stand per build", async () 
   ok(v["android:114"].queued === 3 && !v["android:114"].done && v["android:114"].invalid === 0, "android bezig");
   ok(Object.keys(releasePushView("x")).length === 0, "geen lijst");
 });
+
+Deno.test("presskit: platform en teller in de toegestane paden, manifest houdt presskit", async () => {
+  const { PRESSKIT_STATS, isBuildPlatform } = await import("./builds.ts");
+  ok(isBuildPlatform("presskit"), "platform presskit");
+  ok(isValidBuildPath("presskit/Bingr-PressKit-1.3.zip") && isValidBuildPath(PRESSKIT_STATS), "paden");
+  for (const p of ["presskit-stats.json/x", "presskit/../key.php", "presskit/", "stats.json", "PressKit/x.zip"]) ok(!isValidBuildPath(p), `ongeldig: ${p}`);
+  const t = await signBuildToken(KEY, PRESSKIT_STATS, 60, NOW);
+  ok(JSON.parse(atob(t.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))).f === "presskit-stats.json", "token voor de teller");
+  const m = cleanManifest({ platforms: {
+    presskit: { version: "1.3", file: "Bingr-PressKit-1.3.zip", size: 5, sha256: "ab", uploaded_at: "2026-10-18T08:00:00+00:00", history: [{ version: "1.2", file: "Bingr-PressKit-1.2.zip" }] },
+    android: { file: "Bingr-1.0.0-build105.apk", build: 105 },
+  } })!;
+  ok(Object.keys(m.platforms).sort().join() === "android,presskit", `platforms ${Object.keys(m.platforms)}`);
+  ok(m.platforms.presskit.version === "1.3" && m.platforms.presskit.history[0].file === "Bingr-PressKit-1.2.zip", "presskit-velden");
+  ok(findBuild(m, "presskit")?.file === "Bingr-PressKit-1.3.zip" && findBuild(m, "presskit", "Bingr-PressKit-1.2.zip")?.version === "1.2", "zoeken");
+  const { releaseKeys, isReleasePushPlatform } = await import("./builds.ts");
+  ok(!isReleasePushPlatform("presskit") && releaseKeys(m).length === 0, "geen releasemelding voor de presskit");
+});
+
+Deno.test("presskit: tellerweergave (totaal, deze versie, 7/30 dagen in NL-tijd, 30 dagen per dag)", async () => {
+  const { presskitStatsView, nlDay } = await import("./builds.ts");
+  // 2026-10-17 22:30 UTC = 18 okt 00:30 in Amsterdam (zomertijd)
+  const now = Date.parse("2026-10-17T22:30:00Z");
+  ok(nlDay(now) === "2026-10-18", `NL-dag ${nlDay(now)}`);
+  const v = presskitStatsView({
+    total: 50, by_version: { "1.3": 12, "1.2": 38 },
+    by_day: { "2026-10-18": 2, "2026-10-12": 3, "2026-10-11": 4, "2026-09-19": 5, "2026-09-18": 100, "x": 9, "2026-10-17": -1, "2026-10-16": "7" },
+  }, "1.3", now)!;
+  ok(v.total === 50 && v.version === "1.3" && v.version_total === 12, "totaal en versie");
+  ok(v.last_7d === 5, `7 dagen ${v.last_7d}`); // 12 t/m 18 okt
+  ok(v.last_30d === 14, `30 dagen ${v.last_30d}`); // 19 sep t/m 18 okt
+  ok(v.days.length === 30 && v.days[0].date === "2026-09-19" && v.days[29].date === "2026-10-18" && v.days[29].n === 2, "dagen");
+  const e = presskitStatsView({}, "x/../", now)!;
+  ok(e.total === 0 && e.version === null && e.version_total === 0 && e.last_30d === 0 && e.days.every((d) => d.n === 0), "leeg/ongeldig");
+  ok(presskitStatsView(null, "1.3", now) === null && presskitStatsView([1], "1.3", now) === null, "geen teller");
+});

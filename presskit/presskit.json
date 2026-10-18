@@ -1,0 +1,17 @@
+{
+  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is. Later erbij: Android/, AndroidTV/, SamsungTV/ (zelfde vorm, bv. bron appstore/android/...).",
+  "name": "Bingr-PressKit",
+  "files": [
+    { "to": "CREDITS.txt", "from": "appstore/en/CREDITS.txt", "optional": true }
+  ],
+  "dirs": [
+    { "to": "Brand", "from": "presskit/brand", "label": "logo (SVG and PNG: white, black, on black), app icons 1024 x 1024 (all variants), BRAND.txt (colours, typeface)" },
+    {
+      "to": "Apple", "from": "appstore/en",
+      "include": ["iPhone-6.9in", "iPhone-6.3in", "iPad-13in", "AppleTV", "Mac", "AppIcon-1024.png"],
+      "label": "App Store screenshots for iPhone 6.9\" and 6.3\", iPad 13\", Apple TV and Mac (marketing images 01-08 and raw/), AppIcon-1024.png, AppleTV/TopShelf/"
+    },
+    { "to": "Promo", "from": "appstore/en/Promo", "optional": true, "label": "App Store header and search promos" }
+  ],
+  "planned": ["Android", "AndroidTV", "SamsungTV"]
+}

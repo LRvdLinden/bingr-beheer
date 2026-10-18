@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 /// Downloads: buildpakketten van Bingr en BingrBeheer (acties `builds` / `build_link`, zoals de tab Downloads op het web).
@@ -26,7 +27,7 @@ struct DownloadsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Buildpakketten van Bingr en BingrBeheer. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.")
+                Text("Buildpakketten van Bingr en BingrBeheer, en de PressKit. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.")
                     .font(.subheadline)
                     .foregroundStyle(Color.textDim)
                 if let error, overview == nil {
@@ -43,6 +44,9 @@ struct DownloadsView: View {
                             ForEach(overview.platforms) { p in
                                 card(p)
                             }
+                        }
+                        if let pk = overview.presskit {
+                            presskitCard(pk)
                         }
                     }
                 } else if error == nil {
@@ -140,6 +144,84 @@ struct DownloadsView: View {
             }
         }
         .card()
+    }
+
+    /// Kaart PressKit: versie, datum, grootte, downloads (totaal, deze versie, 7 en 30 dagen, grafiekje), downloaden en de
+    /// openbare link (bingr.online/presskit) om te kopiëren of te delen.
+    @ViewBuilder private func presskitCard(_ pk: PresskitOverview) -> some View {
+        let b = pk.build
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "newspaper")
+                    .font(.title3)
+                    .foregroundStyle(Color.textSecondary)
+                    .frame(width: 28)
+                CardHeader(title: "PressKit", subtitle: "Persmap voor bingr.online: logo, app-iconen en App Store-screenshots (Bingr-PressKit.zip)")
+                Spacer(minLength: 8)
+                Chip(text: "versie \(b.version ?? "—")")
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                InfoRow("Versie", b.version ?? "—")
+                InfoRow(b.uploadedAt == nil ? "Datum" : "Geüpload", b.when ?? "—")
+                InfoRow("Grootte", BuildInfo.sizeText(b.size))
+                InfoRow(label: "Bestand") { Text(verbatim: b.file).textSelection(.enabled) }
+            }
+            if let total = pk.total {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12, alignment: .leading)], alignment: .leading, spacing: 12) {
+                    stat(total, "Downloads totaal")
+                    stat(pk.versionTotal, "Deze versie")
+                    stat(pk.last7, "Laatste 7 dagen")
+                    stat(pk.last30, "Laatste 30 dagen")
+                }
+                if !pk.days.isEmpty {
+                    Chart(pk.days) { d in
+                        BarMark(x: .value("Dag", d.date, unit: .day), y: .value("Downloads", d.count))
+                            .foregroundStyle(Color.bingrRed)
+                    }
+                    .chartYAxis(.hidden)
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: .day, count: 7)) { _ in
+                            AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+                        }
+                    }
+                    .frame(height: 80)
+                    .accessibilityLabel("Downloads per dag, laatste 30 dagen: \(Fmt.num(pk.last30)) in totaal")
+                }
+            } else {
+                Text("Nog geen tellingen (teller nog niet op de server).").font(.caption).foregroundStyle(Color.textDim)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Openbare link (zonder inloggen; telt als download)").font(.caption).foregroundStyle(Color.textDim)
+                HStack(spacing: 8) {
+                    Text(verbatim: pk.publicURL.absoluteString)
+                        .font(.subheadline)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        UIPasteboard.general.url = pk.publicURL
+                        session.show("Link gekopieerd.")
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.bingrGhost)
+                    .accessibilityLabel("Openbare link kopiëren")
+                    ShareLink(item: pk.publicURL) { Image(systemName: "square.and.arrow.up") }
+                        .buttonStyle(.bingrGhost)
+                        .accessibilityLabel("Openbare link delen")
+                }
+            }
+            buttons("presskit", b, primary: true)
+        }
+        .card()
+    }
+
+    private func stat(_ n: Int, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(Fmt.num(n)).font(.title2.weight(.heavy)).monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(Color.textDim)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private func buttons(_ platform: String, _ b: BuildInfo, primary: Bool) -> some View {

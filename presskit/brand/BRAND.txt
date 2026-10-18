@@ -1,0 +1,39 @@
+Bingr - brand guidelines (short)
+================================
+
+LOGO
+  The word BINGR in capitals with a red bar underneath. Always use the supplied files; do not
+  retype, stretch, rotate, recolour or add effects (shadows, outlines, gradients).
+
+  logo/Bingr-logo-white.svg   white with red bar, transparent - for dark backgrounds (preferred)
+  logo/Bingr-logo-white.png   same, PNG with transparency
+  logo/Bingr-logo-on-black.png  white logo on black, ready to use
+  logo/Bingr-logo-black.svg   black with red bar, transparent - only for light backgrounds
+  logo/Bingr-logo-black.png   same, PNG with transparency
+
+  Clear space: keep at least the height of the red bar x 3 free around the logo.
+  Minimum size: 80 px (screen) or 20 mm (print) wide.
+  Preferred: the white logo on black or on a dark, calm image.
+
+APP ICONS
+  app-icons/AppIcon-1024.png        standard app icon (1024 x 1024)
+  app-icons/AppIcon-1024-Dark.png   alternative icons the user can choose in the app
+  app-icons/AppIcon-1024-Light.png
+  app-icons/AppIcon-1024-Blue.png
+  app-icons/AppIcon-1024-Gold.png
+  Use as-is; the rounded corners are added by the operating system (or round them yourself
+  like an iOS icon). Do not add borders or text.
+
+COLOURS
+  Bingr red   #E50914   RGB 229 9 20      accent: the bar in the logo, buttons, highlights
+  Black       #000000   RGB 0 0 0         main background
+  White       #FFFFFF   RGB 255 255 255   text and logo on black
+  (dark grey surfaces in the apps: #141414)
+
+TYPEFACE
+  Inter (free, SIL Open Font License, https://rsms.me/inter/).
+  Logo: Inter Black (900). Headlines: Inter Bold/Black. Body text: Inter Regular/Medium.
+
+NAME
+  Write "Bingr" (only the logo is in capitals). Bingr is a media player for your own IPTV
+  subscription; it does not provide any channels, movies or series.

@@ -7,8 +7,8 @@
 
 /** Adres van het downloadscript (same-origin met het dashboard). */
 export const DL_URL = "https://beheer.bingr.online/dl.php";
-/** Platforms in builds/manifest.json, tevens de mappen in builds/. */
-export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer"] as const;
+/** Platforms in builds/manifest.json, tevens de mappen in builds/. `presskit` = Bingr-PressKit (workflow PressKit). */
+export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer", "presskit"] as const;
 export type BuildPlatform = typeof BUILD_PLATFORMS[number];
 /** dl.php accepteert hoogstens 15 minuten. */
 export const MAX_TTL = 900;
@@ -29,10 +29,15 @@ export function isValidBuildFile(name: unknown): name is string {
 export const isBuildPlatform = (p: unknown): p is BuildPlatform =>
   typeof p === "string" && (BUILD_PLATFORMS as readonly string[]).includes(p);
 
-/** Zelfde regels als dl.php: "manifest.json" of "<apple|android|tizen|beheer>/<bestandsnaam>". */
+/** Downloadteller van de presskit op de server (dl.php ?app=presskit schrijft hem; alleen aantallen). */
+export const PRESSKIT_STATS = "presskit-stats.json";
+/** Openbare link naar de nieuwste presskit (302 naar dl.php?app=presskit, workflow Website van bingr-website). */
+export const PRESSKIT_PUBLIC_URL = "https://bingr.online/presskit";
+
+/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json" of "<apple|android|tizen|beheer|presskit>/<bestandsnaam>". */
 export function isValidBuildPath(path: unknown): path is string {
   if (typeof path !== "string") return false;
-  if (path === "manifest.json") return true;
+  if (path === "manifest.json" || path === PRESSKIT_STATS) return true;
   const i = path.indexOf("/");
   return i > 0 && isBuildPlatform(path.slice(0, i)) && isValidBuildFile(path.slice(i + 1));
 }
@@ -157,4 +162,37 @@ export function releasePushView(rows: unknown): Record<string, {
     };
   }
   return out;
+}
+
+// ---- presskit: downloadteller (builds/presskit-stats.json, bijgehouden door dl.php ?app=presskit) ----
+// {"total": N, "by_version": {"1.3": N}, "by_day": {"2026-10-18": N}} (dagen in NL-tijd, max. 400). Geen persoonsgegevens.
+
+/** Datum (YYYY-MM-DD) in Nederlandse tijd. */
+export function nlDay(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+}
+const dayAdd = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+
+export type PresskitStats = { total: number; version: string | null; version_total: number; last_7d: number; last_30d: number; days: { date: string; n: number }[] };
+
+/**
+ * Samenvatting voor de kaart PressKit in Downloads: totaal, deze versie, laatste 7 en 30 dagen (t/m vandaag, NL-tijd) en
+ * de 30 dagen per dag (oud → nieuw, ook dagen met 0). Rommel telt als 0; null als het geen teller is.
+ */
+export function presskitStatsView(raw: unknown, version: unknown, now = Date.now()): PresskitStats | null {
+  if (!isObj(raw)) return null;
+  const v = typeof version === "string" && /^[0-9][0-9A-Za-z.\-]{0,19}$/.test(version) ? version : null;
+  const byV = isObj(raw.by_version) ? raw.by_version : {};
+  const byD = isObj(raw.by_day) ? raw.by_day : {};
+  const today = nlDay(now);
+  const days: { date: string; n: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = dayAdd(today, -i);
+    days.push({ date: d, n: n0(byD[d]) });
+  }
+  const sum = (xs: { n: number }[]) => xs.reduce((a, x) => a + x.n, 0);
+  return {
+    total: n0(raw.total), version: v, version_total: v ? n0(byV[v]) : 0,
+    last_7d: sum(days.slice(-7)), last_30d: sum(days), days,
+  };
 }
