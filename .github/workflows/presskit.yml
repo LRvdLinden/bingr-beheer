@@ -43,7 +43,7 @@ jobs:
           out="$RUNNER_TEMP/pk/Bingr-PressKit-$PK_VERSION.zip"
           python3 tools/make_presskit.py --version "$PK_VERSION" --out "$out" > "$RUNNER_TEMP/pk-meta.json"
           echo "zip=$out" >> $GITHUB_OUTPUT
-          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(f"::notice::PressKit {m[\"version\"]}: {m[\"files\"]} bestanden, {m[\"size\"]/1e6:.1f} MB")' "$RUNNER_TEMP/pk-meta.json"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print("::notice::PressKit {}: {} bestanden, {:.1f} MB".format(m["version"], m["files"], m["size"] / 1e6))' "$RUNNER_TEMP/pk-meta.json"
           missing=""
           for k in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do [ -n "${!k:-}" ] || missing="$missing $k"; done
           if [ -n "$missing" ]; then echo "::warning::Secrets ontbreken:$missing — presskit niet op de server gezet."; echo "skip=1" >> $GITHUB_OUTPUT; fi
