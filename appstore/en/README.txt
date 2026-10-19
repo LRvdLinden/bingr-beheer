@@ -1,9 +1,13 @@
 Bingr - App Store screenshots (English)
 =========================================
 
-Made with the real Bingr apps in screenshot mode (demo library with made-up titles,
-self-drawn artwork and made-up channels; no real movies, series, posters, channel logos,
-brands or personal data; no prices or purchase buttons).
+Made with the real Bingr apps in screenshot mode. The demo library holds real films that
+are free to use worldwide: Blender open movies (Creative Commons Attribution, (c) Blender
+Foundation | blender.org) and silent films in the public domain in the EU and the US.
+Every image, its author, licence and source is listed in CREDITS.txt; images with CC BY
+material carry a short credit line at the bottom. Channels, TV guide, channel logos and
+profile names are made up (no real channels or brands). No personal data, no prices or
+purchase buttons.
 
 Each folder: numbered marketing screenshots (01-home.png ...) to upload, plus raw/ with
 the plain screenshots. All PNG, RGB without alpha channel, max. 10 per set.
@@ -19,7 +23,15 @@ OPTIONAL
   iPhone-6.9in/   1320 x 2868   iPhone 6.9" display (Dynamic Island, large); with this set
                                 the 6.5" display is not needed
 
+PROMOTIONAL ARTWORK (App Store Connect: product page header and search results)
+  Promo/Header-3840x1646.png    21:9, product page header
+  Promo/Search-3840x2560.png    3:2, search results
+  Promo/Search-1920x1280.png    3:2, search results (smaller)
+  Promo/Universal-5244x2950.png 16:9, for both places: all text and the main image sit inside
+                                the centre 4425 x 2247 (21:9 and 3:2 crops keep everything)
+
 OTHER
+  CREDITS.txt                   film images: title, author, licence and source per image
   AppIcon-1024.png              App Store icon, 1024 x 1024, RGB without alpha
   AppleTV/TopShelf/             existing Top Shelf images of the tvOS app (reference only)
 
