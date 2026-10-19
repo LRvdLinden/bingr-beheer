@@ -33,6 +33,10 @@ struct Stats {
     let planFree: Int?
     let planLifetime: Int?
     let planCustom: Int?
+    /// Aankopen via Stripe (build 133; nil bij een ouder schema): betaald, terugbetaald/chargeback en omzet in centen.
+    let purchasesPaid: Int?
+    let purchasesRefunded: Int?
+    let revenueCents: Int?
     /// "audit": inlogs uit het inloglogboek; anders accounts met app-activiteit
     let signinsFromAudit: Bool
     let days: [Day]
@@ -53,6 +57,9 @@ struct Stats {
         planFree = j["plan_free"].int
         planLifetime = j["plan_lifetime"].int
         planCustom = j["plan_custom"].int
+        purchasesPaid = j["purchases_paid"].int
+        purchasesRefunded = j["purchases_refunded"].int
+        revenueCents = j["revenue_cents"].int
         signinsFromAudit = j["signins_source"].text == "audit"
         days = j["days"].array.compactMap { d in
             guard let day = d["day"].date else { return nil }

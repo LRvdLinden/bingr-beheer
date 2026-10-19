@@ -221,6 +221,8 @@ struct DashWidgetCard: View {
         case .planLifetime: return s.planLifetime
         case .planCustom: return s.planCustom
         case .optedOut: return s.optedOut
+        case .purchases: return s.purchasesPaid
+        case .revenue: return s.revenueCents
         }
     }
 
@@ -302,12 +304,14 @@ struct DashWidgetCard: View {
                 case .watchingNow: return "streams"
                 case .planLifetime: return (s?.planCustom ?? 0) > 0 ? "\(Fmt.num(s?.planCustom)) met eigen limieten" : "accounts"
                 case .optedOut: return "afgemeld"
+                case .purchases: return (s?.purchasesRefunded ?? 0) > 0 ? "\(Fmt.num(s?.purchasesRefunded)) terugbetaald" : "Lifetime gekocht"
+                case .revenue: return "betaald, zonder terugbetalingen"
                 default: return "accounts"
                 }
             }()
             let color: Color = m == .watchingNow ? .ok : m == .planLifetime ? Color(hex: 0xFFD54A)
                 : (m == .blocked && v > 0) ? Color(hex: 0xFF8A8F) : .white
-            tile(title, Fmt.num(v), hint, valueColor: color)
+            tile(title, m == .revenue ? Fmt.euro(v) : Fmt.num(v), hint, valueColor: color)
         } else {
             tile(title, "—", "niet beschikbaar")
         }

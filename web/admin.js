@@ -90,10 +90,16 @@
   const PLAN_SOURCE = { legacy: "cadeau bij de invoering (bestaand account)", admin: "via het beheer", purchase: "gekocht" };
   const planObj = (p) => (p && typeof p === "object" ? p : { plan: "free" });
   const isCustom = (p) => p.max_streams != null || p.max_devices != null;
+  // build 133: bedrag in centen ("€ 4,99") en de laatste aankoop via Stripe (plan.purchased_at/amount/status)
+  const euro = (c) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format((Number(c) || 0) / 100);
+  const PURCHASE_STATUS = { paid: "gekocht", refunded: "terugbetaald", disputed: "chargeback", pending: "betaling onderweg", failed: "mislukt" };
+  const purchaseText = (p) => (p && p.purchased_at ? `${PURCHASE_STATUS[p.status] || "gekocht"} op ${fmtDate(p.purchased_at)}${p.amount != null ? ` voor ${euro(p.amount)}` : ""}` : "");
   function planChip(raw) {
     const p = planObj(raw), life = p.plan === "lifetime";
     const lim = isCustom(p) ? ` · ${p.max_streams ?? PLAN_DEFAULTS[life ? "lifetime" : "free"].streams} str./${p.max_devices ?? PLAN_DEFAULTS[life ? "lifetime" : "free"].devices} app.` : "";
-    return `<span class="chip ${life ? "plan-life" : "plan-free"}" title="${esc(life ? `Lifetime${p.source ? ", " + (PLAN_SOURCE[p.source] || p.source) : ""}` : "Gratis")}${isCustom(p) ? " met eigen limieten" : ""}">${PLAN_NAME[life ? "lifetime" : "free"]}${esc(lim)}</span>`;
+    const src = p.source === "purchase" && p.purchased_at ? purchaseText(p) : p.source ? (PLAN_SOURCE[p.source] || p.source) : "";
+    const extra = !life && p.purchased_at && p.status !== "paid" ? ` (${purchaseText(p)})` : "";
+    return `<span class="chip ${life ? "plan-life" : "plan-free"}" title="${esc(life ? `Lifetime${src ? ", " + src : ""}` : "Gratis" + extra)}${isCustom(p) ? " met eigen limieten" : ""}">${PLAN_NAME[life ? "lifetime" : "free"]}${esc(lim)}${life && p.source === "purchase" ? " €" : ""}</span>`;
   }
   const errText = (e) => ERR[e.code] || ERR.server_error;
 
@@ -241,6 +247,9 @@
     plan_lifetime: { label: "Lifetime", v: (s) => s.plan_lifetime, h: (s) => (s.plan_custom ? `${nf.format(s.plan_custom)} met eigen limieten` : "accounts"), cls: () => "life", filter: "lifetime" },
     plan_custom: { label: "Eigen limieten", v: (s) => s.plan_custom, h: () => "accounts", filter: "custom" },
     opted_out: { label: "Geen berichtenmail", v: (s) => s.opted_out, h: () => "afgemeld" },
+    // build 133: Lifetime-aankopen via Stripe; omzet = som van de betaalde aankopen (terugbetaald telt niet mee)
+    purchases_paid: { label: "Aankopen", v: (s) => s.purchases_paid, h: (s) => (s.purchases_refunded ? `${nf.format(s.purchases_refunded)} terugbetaald` : `${nf.format(s.purchases_7d ?? 0)} in 7 dagen`), cls: () => "life" },
+    revenue_cents: { label: "Omzet", v: (s) => s.revenue_cents, f: (v) => euro(v), h: () => "betaald, zonder terugbetalingen" },
   };
   const SUP_KEYS = ["new", "open", "pending", "resolved", "closed"];
   // Insights: metrics en series zoals in supabase/functions/admin/insights.ts (volgorde = kleur, vast per metric)
@@ -250,6 +259,7 @@
     streams: { name: "Streams", series: ["live", "movie", "episode"] },
     push: { name: "Pushmeldingen", series: ["sent", "failed"] },
     support: { name: "Supporttickets", series: ["new", "closed"] },
+    purchases: { name: "Aankopen", series: ["paid", "refunded"] },
   };
   const INS_PERIODS = ["hour", "day", "week", "month", "year", "24h", "7d", "30d"];
   // platforms met systeem-push (push_devices); namen zoals in de tab Pushmeldingen
@@ -306,6 +316,7 @@
     ["devices", "metric", "s", { metric: "devices" }], ["watching", "metric", "s", { metric: "watching_now" }],
     ["support", "support", "s", {}], ["blocked", "metric", "s", { metric: "blocked" }],
     ["plan_free", "metric", "s", { metric: "plan_free" }], ["plan_lifetime", "metric", "s", { metric: "plan_lifetime" }],
+    ["purchases", "metric", "s", { metric: "purchases_paid" }], ["revenue", "metric", "s", { metric: "revenue_cents" }],
     ["status", "status", "m", {}],
     ["chart_new", "insights", "l", { insight: "accounts", period: "30d" }], ["chart_streams", "insights", "l", { insight: "streams", period: "7d" }],
     ["chart_push", "insights", "l", { insight: "push", period: "30d" }],
@@ -494,7 +505,7 @@
     switch (w.type) {
       case "metric": {
         const m = METRICS[o.metric], v = m.v(s);
-        body.innerHTML = v == null ? tile(title, "—", "niet beschikbaar") : tile(title, nf.format(v), esc(m.h(s)), m.cls ? m.cls(s) : "");
+        body.innerHTML = v == null ? tile(title, "—", "niet beschikbaar") : tile(title, m.f ? m.f(v) : nf.format(v), esc(m.h(s)), m.cls ? m.cls(s) : "");
         if (m.filter && v != null) onGo = go(() => goUsers(m.filter));
         break;
       }
@@ -1516,10 +1527,13 @@
   // ---- abonnement in de lade: Gratis/Lifetime, eigen limieten (leeg = standaard) en een interne notitie
   function planSection(u) {
     const p = planObj(u.plan), life = p.plan === "lifetime";
-    const src = p.source ? (PLAN_SOURCE[p.source] || p.source) : "";
+    const src = p.source === "purchase" && p.purchased_at ? purchaseText(p) : p.source ? (PLAN_SOURCE[p.source] || p.source) : "";
+    // build 133: aankopen via Stripe (datum, bedrag, status); terugbetalen gaat in het Stripe-dashboard
+    const buys = Array.isArray(u.purchases) ? u.purchases.filter((b) => b.status !== "failed") : [];
+    const buyList = buys.length ? `<p class="sub">Aankopen: ${buys.map((b) => esc(`${fmtDate(b.paid_at || b.created_at)} ${euro(b.amount)} (${PURCHASE_STATUS[b.status] || b.status}${b.refunded_at ? " " + fmtDate(b.refunded_at) : ""})`)).join(" · ")}. Terugbetalen in het Stripe-dashboard; het account gaat dan vanzelf naar Gratis.</p>` : "";
     return `<section class="plan-box" aria-labelledby="plTitle">
       <h3 id="plTitle">Abonnement ${planChip(p)}</h3>
-      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 1 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's."}</p>
+      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at && p.source !== "purchase" ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 1 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's."}</p>${buyList}
       <form id="planForm" class="plan-form" novalidate>
         <label>Abonnement<select id="plPlan"><option value="free"${life ? "" : " selected"}>Gratis</option><option value="lifetime"${life ? " selected" : ""}>Lifetime (gratis gegeven)</option></select></label>
         <div class="plan-nums">
@@ -1546,7 +1560,7 @@
       if (ms !== null && !(Number.isInteger(ms) && ms >= 1 && ms <= 50)) { $("plErr").textContent = ERR.bad_max_streams; return; }
       if (md !== null && !(Number.isInteger(md) && md >= 1 && md <= 200)) { $("plErr").textContent = ERR.bad_max_devices; return; }
       const was = planObj(u.plan).plan;
-      if (was === "lifetime" && plan === "free" && !confirm(`${u.email} terugzetten naar Gratis? Statistieken, nu aan het kijken, Trakt en thema's gaan dan op slot.`)) return;
+      if (was === "lifetime" && plan === "free" && !confirm(`${u.email} terugzetten naar Gratis? Statistieken, nu aan het kijken, Trakt en thema's gaan dan op slot.${planObj(u.plan).source === "purchase" ? " Let op: deze Lifetime is gekocht; het geld wordt zo niet terugbetaald (dat gaat in het Stripe-dashboard)." : ""}`)) return;
       $("plSave").disabled = true; $("plErr").textContent = "";
       try {
         await call("plan_set", { id: u.id, plan, max_streams: ms, max_devices: md, note: $("plNote").value.trim() });

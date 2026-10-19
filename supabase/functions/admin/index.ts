@@ -19,7 +19,10 @@
 //   max. 20 per 10 min per IP (one-click vanaf mailservers: 200 per 10 min). Inzage van persoonsgegevens (user_detail,
 //   users met zoekterm, support_get), geblokkeerde inlogpogingen en mislukte acties (met foutcode) staan in admin_audit.
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
-//   insights            {token, metric: accounts|signins|streams|push|support, period: hour|day|week|month|year|24h|7d|30d,
+//                       (build 133: purchases_paid, purchases_refunded, purchases_7d, revenue_cents = som van de betaalde
+//                       Lifetime-aankopen via Stripe; users/user_detail: plan.purchased_at/amount/currency/status van de laatste
+//                       aankoop, user_detail.purchases (zonder Stripe-id's). Schema in iptv-ios-appletv, docs/ACCOUNT.md "Betalen")
+//   insights            {token, metric: accounts|signins|streams|push|support|purchases, period: hour|day|week|month|year|24h|7d|30d,
 //                       offset?: 0, -1, …, events?: bool} -> {step, edges:[…], now_index, has_prev, has_next, series:[{key, label,
 //                       agg, available, values:[n|null], prev_values, summary}], events?:[{kind, name, from, to}]}
 //                       (alleen aantallen per tijdvak, plus storingen/onderhoud van de statuspagina; insights.ts)

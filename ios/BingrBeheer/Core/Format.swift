@@ -8,6 +8,11 @@ enum Fmt {
         (n ?? 0).formatted(.number.locale(nl))
     }
 
+    /// Bedrag in centen als "€ 4,99" (aankopen, build 133).
+    static func euro(_ cents: Int?) -> String {
+        (Double(cents ?? 0) / 100).formatted(.currency(code: "EUR").locale(nl))
+    }
+
     static func date(_ d: Date?) -> String {
         guard let d else { return "—" }
         return d.formatted(.dateTime.day().month(.abbreviated).year().locale(nl))

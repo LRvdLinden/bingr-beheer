@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 // periodes en kleuren als web/admin.js (INS_METRICS, INS_PERIODS, --c1…--c3).
 
 enum InsMetric: String, CaseIterable, Identifiable, Codable {
-    case accounts, signins, streams, push, support
+    case accounts, signins, streams, push, support, purchases
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum InsMetric: String, CaseIterable, Identifiable, Codable {
         case .streams: return "Streams"
         case .push: return "Pushmeldingen"
         case .support: return "Supporttickets"
+        case .purchases: return "Aankopen"
         }
     }
 
@@ -28,6 +29,7 @@ enum InsMetric: String, CaseIterable, Identifiable, Codable {
         case .streams: return "live tv, films en series"
         case .push: return "verstuurd en mislukt"
         case .support: return "nieuw en gesloten"
+        case .purchases: return "Lifetime betaald en terugbetaald"
         }
     }
 
@@ -38,6 +40,7 @@ enum InsMetric: String, CaseIterable, Identifiable, Codable {
         case .streams: return "play.tv"
         case .push: return "bell.badge"
         case .support: return "lifepreserver"
+        case .purchases: return "creditcard"
         }
     }
 
@@ -49,12 +52,13 @@ enum InsMetric: String, CaseIterable, Identifiable, Codable {
         case .streams: return ["live", "movie", "episode"]
         case .push: return ["sent", "failed"]
         case .support: return ["new", "closed"]
+        case .purchases: return ["paid", "refunded"]
         }
     }
 
     /// Automatisch: staven voor aantallen gebeurtenissen per dag of week, anders een lijn.
     func autoBars(step: String) -> Bool {
-        (step == "day" || step == "week") && (self == .push || self == .support)
+        (step == "day" || step == "week") && (self == .push || self == .support || self == .purchases)
     }
 }
 

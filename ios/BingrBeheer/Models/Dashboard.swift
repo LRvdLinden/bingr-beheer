@@ -100,6 +100,7 @@ enum DashMetric: String, CaseIterable, Identifiable {
     case usersTotal = "users_total", usersNew7d = "users_new_7d", activeToday = "active_today", active30d = "active_30d"
     case devices, watchingNow = "watching_now", blocked, planFree = "plan_free", planLifetime = "plan_lifetime"
     case planCustom = "plan_custom", optedOut = "opted_out"
+    case purchases = "purchases_paid", revenue = "revenue_cents"
 
     var id: String { rawValue }
 
@@ -116,6 +117,8 @@ enum DashMetric: String, CaseIterable, Identifiable {
         case .planLifetime: return "Lifetime"
         case .planCustom: return "Eigen limieten"
         case .optedOut: return "Geen berichtenmail"
+        case .purchases: return "Aankopen"
+        case .revenue: return "Omzet"
         }
     }
 

@@ -176,9 +176,16 @@ struct AccountPlan: Hashable {
     let source: String?
     let note: String?
     let updatedAt: Date?
+    /// Laatste aankoop via Stripe (build 133): datum, bedrag (centen) en status (paid, refunded, disputed); nil = niet gekocht.
+    let purchasedAt: Date?
+    let amount: Int?
+    let purchaseStatus: String?
 
     init(_ j: JSON) {
         plan = j["plan"].text == "lifetime" ? "lifetime" : "free"
+        purchasedAt = j["purchased_at"].date
+        amount = j["amount"].int
+        purchaseStatus = j["status"].text
         maxStreams = j["max_streams"].int
         maxDevices = j["max_devices"].int
         source = j["source"].text
@@ -194,11 +201,18 @@ struct AccountPlan: Hashable {
     /// "Lifetime" of "Lifetime · 10/20" bij eigen limieten (streams/apparaten)
     var chipText: String { isCustom ? "\(name) · \(streams)/\(devices)" : name }
 
+    /// "gekocht op 19 okt 2026 voor € 4,99" (of terugbetaald), uit de laatste aankoop
+    var purchaseText: String? {
+        guard let purchasedAt else { return nil }
+        let what = purchaseStatus == "refunded" ? "terugbetaald" : purchaseStatus == "disputed" ? "chargeback" : "gekocht"
+        return "\(what) op \(Fmt.date(purchasedAt))" + (amount.map { " voor \(Fmt.euro($0))" } ?? "")
+    }
+
     var sourceText: String? {
         switch source {
         case "legacy": return "cadeau bij de invoering (bestaand account)"
         case "admin": return "via het beheer"
-        case "purchase": return "gekocht"
+        case "purchase": return purchaseText ?? "gekocht"
         default: return nil
         }
     }

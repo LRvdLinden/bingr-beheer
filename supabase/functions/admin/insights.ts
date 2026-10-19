@@ -51,6 +51,11 @@ export const METRICS: Record<string, { label: string; unit: string; series: Seri
     label: "Supporttickets", unit: "tickets",
     series: [{ key: "new", label: "Nieuwe tickets", agg: "sum" }, { key: "closed", label: "Gesloten", agg: "sum" }],
   },
+  // build 133: Lifetime-aankopen via Stripe (billing_purchases): betaald en terugbetaald/chargeback, alleen aantallen
+  purchases: {
+    label: "Aankopen", unit: "aankopen",
+    series: [{ key: "paid", label: "Betaald", agg: "sum" }, { key: "refunded", label: "Terugbetaald", agg: "sum" }],
+  },
 };
 export const METRIC_KEYS = Object.keys(METRICS);
 
