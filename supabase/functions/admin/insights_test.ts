@@ -137,3 +137,17 @@ Deno.test("antwoord bevat alleen aantallen (geen persoonsgegevens)", () => {
   ok(out.series.every((s) => s.values.every((v) => v === null || typeof v === "number")), "alleen getallen");
   ok(Object.values(METRICS).every((m) => m.series.length <= 3), "hoogstens 3 series (kleurenpalet)");
 });
+
+// build 133 voegde de metric purchases toe zonder label in web/admin.js (OPT_LABEL.insight): de tab Insights brak
+// (TypeError bij het opbouwen van de bronnen). Elke metric moet in het dashboard een naam, series en label hebben.
+Deno.test("web-dashboard kent alle metrics (INS_METRICS en OPT_LABEL.insight)", async () => {
+  const js = await Deno.readTextFile(new URL("../../../web/admin.js", import.meta.url));
+  const ins = js.split("const INS_METRICS = {")[1]?.split("\n  };")[0] ?? "";
+  const lab = /insight: \["Gegevens", \{([^\n]*)\}\]/.exec(js)?.[1] ?? "";
+  for (const [k, m] of Object.entries(METRICS)) {
+    const row = new RegExp(`\\n\\s*${k}: \\{ name: "[^"]+", series: \\[([^\\]]*)\\] \\}`).exec(ins);
+    ok(row, `INS_METRICS in web/admin.js mist ${k}`);
+    eq(row![1].replace(/[" ]/g, "").split(","), m.series.map((s) => s.key), `series van ${k} in web/admin.js`);
+    ok(new RegExp(`(^|[ ,])${k}: "[^"]+"`).test(lab), `OPT_LABEL.insight in web/admin.js mist ${k}`);
+  }
+});

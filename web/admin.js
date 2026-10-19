@@ -280,7 +280,7 @@
     metric: { name: "Kengetal", desc: "Eén getal: gebruikers, actief, apparaten, kijkers, abonnementen, geblokkeerd…", sizes: ["s", "m"], size: "s",
       opts: { metric: ["enum", Object.keys(METRICS), "users_total"] } },
     // grafiek zoals Homey Insights (actie insights); vervangt "Per dag" (daily_chart wordt bij het laden omgezet, zie normWidget)
-    insights: { name: "Grafiek (Insights)", desc: "Accounts, inlogs, streams, pushmeldingen of supporttickets door de tijd: kies uur, dag, week, maand of jaar en blader terug", sizes: ["s", "m", "l"], size: "l",
+    insights: { name: "Grafiek (Insights)", desc: "Accounts, inlogs, streams, pushmeldingen, supporttickets of aankopen door de tijd: kies uur, dag, week, maand of jaar en blader terug", sizes: ["s", "m", "l"], size: "l",
       opts: { insight: ["enum", Object.keys(INS_METRICS), "accounts"], period: ["enum", INS_PERIODS, "30d"], display: ["enum", ["auto", "line", "bar", "number"], "auto"], events: ["bool", null, true], off: ["hidden", null, []] } },
     platforms: { name: "Apparaten per platform", desc: "Actieve apparaten per platform (30 dagen of nu)", sizes: ["m", "l"], size: "l",
       opts: { source: ["enum", ["30d", "live"], "30d"], platforms: ["list", null, []] } },
@@ -305,7 +305,7 @@
     series: ["Gegevens", { new_users: "Nieuwe gebruikers", signins: "Inlogs (of actieve accounts als het inloglogboek leeg is)", active_users: "Accounts met app-activiteit" }],
     days: ["Periode", { 7: "Laatste 7 dagen", 14: "Laatste 14 dagen", 30: "Laatste 30 dagen" }],
     display: ["Weergave", { chart: "Grafiek", number: "Getal", list: "Lijst per status", auto: "Automatisch (staven voor aantallen per dag)", line: "Lijn", bar: "Staven" }],
-    insight: ["Gegevens", { accounts: "Accounts: nieuw en actief", signins: "Inlogs", streams: "Streams: live tv, films en series", push: "Pushmeldingen: verstuurd en mislukt", support: "Supporttickets: nieuw en gesloten" }],
+    insight: ["Gegevens", { accounts: "Accounts: nieuw en actief", signins: "Inlogs", streams: "Streams: live tv, films en series", push: "Pushmeldingen: verstuurd en mislukt", support: "Supporttickets: nieuw en gesloten", purchases: "Aankopen: betaald en terugbetaald" }],
     period: ["Periode", { hour: "Uur (per 5 minuten)", day: "Dag (per uur)", week: "Week (per dag)", month: "Maand (per dag)", year: "Jaar (per maand)", "24h": "Laatste 24 uur", "7d": "Laatste 7 dagen", "30d": "Laatste 30 dagen" }],
     source: ["Periode", { "30d": "Gezien in de laatste 30 dagen", live: "Nu actief (laatste 15 minuten)" }],
     platforms: ["Platforms", null],
@@ -1026,7 +1026,7 @@
 
   function renderInsSources() {
     $("insSources").innerHTML = Object.entries(INS_METRICS).map(([k, m]) => `<label class="ins-src-it"><input type="checkbox" value="${k}" ${insp.sources.includes(k) ? "checked" : ""}>
-      <span class="ins-src-box" aria-hidden="true"></span><span><b>${esc(m.name)}</b><span class="sub">${esc(OPT_LABEL.insight[1][k].split(": ")[1] || "")}</span></span></label>`).join("");
+      <span class="ins-src-box" aria-hidden="true"></span><span><b>${esc(m.name)}</b><span class="sub">${esc((OPT_LABEL.insight[1][k] || "").split(": ")[1] || "")}</span></span></label>`).join("");
     $("insSources").querySelectorAll("input").forEach((c) => (c.onchange = () => {
       const on = [...$("insSources").querySelectorAll("input:checked")].map((x) => x.value);
       insp.sources = on; inspSave(); loadInsightsPage();

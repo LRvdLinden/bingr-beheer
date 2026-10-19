@@ -35,7 +35,7 @@ jobs:
       # build 97: blokkerend (geen continue-on-error meer): faalt een test, dan wordt de functie niet bijgewerkt
       - name: Unittests (mails, blokkeren, downloads, widgets, namen, pushmeldingen, push van de Beheer-app, nieuwsbrief, insights, servers)
         run: |
-          deno test supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts supabase/functions/admin/names_test.ts supabase/functions/admin/push_test.ts supabase/functions/admin/admin_push_test.ts supabase/functions/admin/newsletter_test.ts supabase/functions/admin/insights_test.ts supabase/functions/admin/revenue_test.ts supabase/functions/admin/servers_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
+          deno test --allow-read=web supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts supabase/functions/admin/names_test.ts supabase/functions/admin/push_test.ts supabase/functions/admin/admin_push_test.ts supabase/functions/admin/newsletter_test.ts supabase/functions/admin/insights_test.ts supabase/functions/admin/revenue_test.ts supabase/functions/admin/servers_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
           grep -E "FAILED|error|=>" admin-test.log | head -30 | while IFS= read -r l; do echo "::error::${l:0:300}"; done
           exit 1
       - name: Controleren
@@ -140,4 +140,38 @@ jobs:
           # 6. de functie push (iptv-ios-appletv, docs/PUSH.md) staat online en weigert beheer zonder geheim (alleen de HTTP-code in het log)
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/push" -H "Content-Type: application/json" -d '{"action":"admin_history"}')
           case "$code" in 401|403) echo "::notice::functie push staat online (beheer alleen met geheim)";; *) echo "::warning::functie push gaf HTTP $code (draai de workflow Backend in iptv-ios-appletv)";; esac
+          exit $fail
+      # Insights op de echte server: inloggen met het beheer-account en de actie insights voor alle metrics en periodes.
+      # Het log is openbaar: alleen HTTP-status, foutcode en het aantal punten per serie (geen token, geen antwoord).
+      - name: Insights (alle metrics en periodes)
+        if: steps.check.outputs.skip != '1'
+        env:
+          A_USER: ${{ secrets.BINGR_ADMIN_USER }}
+          A_PASS: ${{ secrets.BINGR_ADMIN_PASSWORD }}
+        run: |
+          F="https://$REF.supabase.co/functions/v1/admin"
+          if [ -z "$A_USER" ] || [ -z "$A_PASS" ]; then echo "::warning::BINGR_ADMIN_USER/PASSWORD ontbreken in deze repo: insights niet getest"; exit 0; fi
+          jq -n --arg u "$A_USER" --arg p "$A_PASS" '{action:"login",user:$u,password:$p}' > /tmp/login.json
+          code=$(curl -s -o /tmp/l.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" --data @/tmp/login.json)
+          rm -f /tmp/login.json
+          TOKEN=$(jq -r '.token // empty' /tmp/l.json); rm -f /tmp/l.json
+          [ -n "$TOKEN" ] && echo "::add-mask::$TOKEN"
+          if [ "$code" != 200 ] || [ -z "$TOKEN" ]; then echo "::warning::inloggen voor de insights-test gaf HTTP $code"; exit 0; fi
+          fail=0
+          # één notice per metric (GitHub toont maximaal 10 annotaties per soort per stap)
+          for m in accounts signins streams push support purchases; do
+            line=""
+            for p in hour day week month year 24h 7d 30d; do
+              jq -n --arg t "$TOKEN" --arg m "$m" --arg p "$p" '{action:"insights",token:$t,metric:$m,period:$p,offset:0,events:true}' > /tmp/q.json
+              code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://beheer.bingr.online" -H "Content-Type: application/json" --data @/tmp/q.json)
+              if [ "$code" = 200 ]; then
+                pts=$(jq -r '[.series[] | "\(.key)=\(if .available then (.values|length) else "-" end)"] | join(",")' /tmp/b.json 2>/dev/null)
+                line="$line $p:200[$pts]"
+              else
+                line="$line $p:$code[$(jq -r '.error // "?"' /tmp/b.json 2>/dev/null | head -c 40)]"; fail=1
+              fi
+            done
+            if echo "$line" | grep -qE ' [a-z0-9]+:[^2]'; then echo "::error::insights $m:$line"; else echo "::notice::insights $m:$line"; fi
+          done
+          rm -f /tmp/q.json /tmp/b.json
           exit $fail

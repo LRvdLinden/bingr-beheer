@@ -9,7 +9,7 @@ name: Dashboard
 on:
   push:
     branches: [main]
-    paths: ['web/**', '.github/workflows/deploy-site.yml']
+    paths: ['web/**', 'tests/**', 'supabase/functions/admin/insights.ts', '.github/workflows/deploy-site.yml']
   workflow_dispatch:
 
 concurrency:
@@ -48,6 +48,13 @@ jobs:
           esac
           # het dashboard moet noindex houden (web/ bevat verder alleen de publieke Supabase-URL en publishable key)
           grep -q 'name="robots" content="noindex' web/index.html || { echo "::error::web/index.html mist noindex"; exit 1; }
+
+      # blokkerend: de tab Insights met een gesimuleerde functie admin (geen netwerk, geen echte gegevens) in Chrome van de
+      # runner; faalt bij JS-fouten of als bronnen, periodes of grafieken ontbreken (tests/dashboard_smoke.py)
+      - name: Rooktest dashboard (Insights)
+        run: |
+          python3 -m pip install -q playwright==1.56.0
+          python3 tests/dashboard_smoke.py --channel chrome
 
       - name: lftp installeren
         if: steps.check.outputs.skip != '1'
