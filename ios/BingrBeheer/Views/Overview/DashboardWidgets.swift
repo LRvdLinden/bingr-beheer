@@ -311,7 +311,7 @@ struct DashWidgetCard: View {
                 case .signupsRejected:
                     guard let g = s?.signupGuard else { return "" }
                     let d = g.rejected24h
-                    return "limiet \(Fmt.num(d.rateLimit)) · wegwerp \(Fmt.num(d.disposable)) · naam \(Fmt.num(d.name)) · 7 d: \(Fmt.num(g.rejected7d.total))"
+                    return "limiet \(Fmt.num(d.rateLimit)) · wegwerp \(Fmt.num(d.disposable)) · naam \(Fmt.num(d.name)) · honeypot \(Fmt.num(d.honeypot)) · te snel \(Fmt.num(d.tooFast)) · 7 d: \(Fmt.num(g.rejected7d.total))"
                 case .unconfirmedDeleted:
                     return "\(Fmt.num(s?.signupGuard?.unconfirmedDeleted24h ?? 0)) in 24 uur · na 48 uur zonder bevestiging"
                 default: return "accounts"

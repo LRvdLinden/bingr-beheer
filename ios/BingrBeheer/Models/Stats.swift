@@ -39,7 +39,7 @@ struct Stats {
     let revenueCents: Int?
     /// Registratiebescherming (build 134; nil bij een ouder schema): alleen aantallen.
     struct SignupGuard {
-        struct Reasons { let total, rateLimit, disposable, name: Int }
+        struct Reasons { let total, rateLimit, disposable, name, honeypot, tooFast: Int }
         let rejected24h: Reasons
         let rejected7d: Reasons
         let unconfirmedDeleted24h: Int
@@ -49,7 +49,8 @@ struct Stats {
             guard j["rejected_24h"]["total"].int != nil else { return nil }
             func reasons(_ r: JSON) -> Reasons {
                 Reasons(total: r["total"].int ?? 0, rateLimit: r["rate_limit"].int ?? 0,
-                        disposable: r["disposable"].int ?? 0, name: r["name"].int ?? 0)
+                        disposable: r["disposable"].int ?? 0, name: r["name"].int ?? 0,
+                        honeypot: r["honeypot"].int ?? 0, tooFast: r["too_fast"].int ?? 0)
             }
             rejected24h = reasons(j["rejected_24h"])
             rejected7d = reasons(j["rejected_7d"])

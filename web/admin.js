@@ -254,9 +254,9 @@
     // build 133: Lifetime-aankopen via Stripe; omzet = som van de betaalde aankopen (terugbetaald telt niet mee)
     purchases_paid: { label: "Aankopen", v: (s) => s.purchases_paid, h: (s) => (s.purchases_refunded ? `${nf.format(s.purchases_refunded)} terugbetaald` : `${nf.format(s.purchases_7d ?? 0)} in 7 dagen`), cls: () => "life" },
     revenue_cents: { label: "Omzet", v: (s) => s.revenue_cents, f: (v) => euro(v), h: () => "betaald, zonder terugbetalingen" },
-    // build 134: registratiebescherming (alleen aantallen; signup_guard in stats, null bij een ouder schema)
+    // build 134: registratiebescherming (alleen aantallen; signup_guard in stats, null bij een ouder schema); build 138: honeypot en te snel
     signups_rejected: { label: "Registraties geweigerd (24 u)", v: (s) => s.signup_guard?.rejected_24h?.total,
-      h: (s) => { const g = s.signup_guard, d = g.rejected_24h; return `limiet ${nf.format(d.rate_limit ?? 0)} · wegwerp ${nf.format(d.disposable ?? 0)} · naam ${nf.format(d.name ?? 0)} · 7 d: ${nf.format(g.rejected_7d?.total ?? 0)}`; },
+      h: (s) => { const g = s.signup_guard, d = g.rejected_24h; return `limiet ${nf.format(d.rate_limit ?? 0)} · wegwerp ${nf.format(d.disposable ?? 0)} · naam ${nf.format(d.name ?? 0)} · honeypot ${nf.format(d.honeypot ?? 0)} · te snel ${nf.format(d.too_fast ?? 0)} · 7 d: ${nf.format(g.rejected_7d?.total ?? 0)}`; },
       cls: (s) => (s.signup_guard?.rejected_24h?.total ? "blocked" : "") },
     unconfirmed_deleted: { label: "Onbevestigd verwijderd (7 d)", v: (s) => s.signup_guard?.unconfirmed_deleted_7d,
       h: (s) => `${nf.format(s.signup_guard?.unconfirmed_deleted_24h ?? 0)} in 24 uur · na 48 uur zonder bevestiging` },
