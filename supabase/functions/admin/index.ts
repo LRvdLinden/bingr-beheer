@@ -158,9 +158,12 @@
 //                          newsletter_unreachable, en van newsletter zelf bv. bad_email, rate_limited, tmdb_unavailable,
 //                          smtp_not_configured.
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
+//   mailtest_account_mails {to, lang?}    -> {ok, sent:{deleted, blocked, unblocked}}  (alleen met header x-bingr-mailtest van de
+//                       mailtest in iptv-ios-appletv, workflow Diagnose; zie _shared/mail.ts. De drie accountmails met
+//                       voorbeeldgegevens naar één testadres support+ci-…@bingr.online; er wordt geen account aangeraakt.)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
@@ -423,9 +426,9 @@ function clientIp(req: Request) {
 // de SMTP-server die afzender, dan met BINGR_SMTP_FROM als afzender en support@ als Reply-To. Antwoorden komen zo bij support.
 const SUPPORT_FROM = () => env("BINGR_SUPPORT_FROM") || "Bingr Support <support@bingr.online>";
 const addressOf = (s: string) => (s.match(/<([^>]+)>/)?.[1] ?? s).trim();
-async function sendAccountMail(to: string, m: Mail): Promise<{ ok: boolean; error?: string }> {
+async function sendAccountMail(to: string, m: Mail, kind: "blocked" | "unblocked" | "deleted"): Promise<{ ok: boolean; error?: string }> {
   if (!smtpConfigured()) return { ok: false, error: "smtp_not_configured" };
-  const base = { to, subject: m.subject, html: m.html, text: m.text, headers: { "Auto-Submitted": "auto-generated" } };
+  const base = { to, subject: m.subject, html: m.html, text: m.text, headers: { "Auto-Submitted": "auto-generated", "X-Bingr-Mail": `account-${kind}` } };
   const tx = transport();
   try {
     try {
@@ -702,6 +705,24 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
     if (!(await rateOk(`admin-unsub:${ip}`, UNSUB_MAX, UNSUB_WINDOW))) return json({ error: "rate_limited", retry_after: UNSUB_WINDOW }, 429);
     if (!(await unsubscribe(body.t))) return json({ error: "invalid_token" }, 400);
     return json({ ok: true });
+  }
+
+  if (action === "mailtest_account_mails") {
+    // mailtest (workflow Diagnose in iptv-ios-appletv): alleen naar een testadres en met de tijdelijke sleutel uit app_settings
+    if (!isMailtestAddress(body.to) ||
+      !(await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await admin.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    if (!(await rateOk("admin-mailtest", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+    const to = String(body.to).trim(), lang = accountLang(body.lang);
+    const sample = lang === "en" ? "Sample (mail test)" : "Voorbeeld (mailtest)";
+    const sent = {
+      deleted: (await sendAccountMail(to, deletedMail(lang, { email: to, ticketsDeleted: false, firstName: "Test" }), "deleted")).ok,
+      blocked: (await sendAccountMail(to, blockMail(lang, { email: to, reason: sample, until: new Date(Date.now() + 7 * 864e5), firstName: "Test" }), "blocked")).ok,
+      unblocked: (await sendAccountMail(to, unblockMail(lang, { email: to, firstName: "Test" }), "unblocked")).ok,
+    };
+    await audit("mailtest_account_mails", ip, null, { lang, sent });
+    return json({ ok: sent.deleted && sent.blocked && sent.unblocked, sent });
   }
 
   if (action === "widget_summary") {
@@ -1059,7 +1080,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (se) console.error("user_block streams", se.message);
       let mail: { ok: boolean; error?: string } = { ok: false };
       if (body.notify !== false && user.email) {
-        mail = await sendAccountMail(user.email, blockMail(accountLang(user.user_metadata?.lang), { email: user.email, reason, until: u.until, firstName: user.user_metadata?.first_name }));
+        mail = await sendAccountMail(user.email, blockMail(accountLang(user.user_metadata?.lang), { email: user.email, reason, until: u.until, firstName: user.user_metadata?.first_name }), "blocked");
         if (mail.ok) await admin.from("account_blocks").update({ notified: true }).eq("id", row.id);
       }
       await audit("user_block", ip, id, { until, notify: body.notify !== false, email_sent: mail.ok, streams: stopped?.length ?? null, length: reason.length });
@@ -1078,7 +1099,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (le) console.error("user_unblock record", le.message);
       let mail: { ok: boolean; error?: string } = { ok: false };
       if (body.notify !== false && user.email) {
-        mail = await sendAccountMail(user.email, unblockMail(accountLang(user.user_metadata?.lang), { email: user.email, firstName: user.user_metadata?.first_name }));
+        mail = await sendAccountMail(user.email, unblockMail(accountLang(user.user_metadata?.lang), { email: user.email, firstName: user.user_metadata?.first_name }), "unblocked");
       }
       await audit("user_unblock", ip, id, { notify: body.notify !== false, email_sent: mail.ok, lifted: lifted?.length ?? 0, record_error: le ? true : undefined });
       return json({ ok: true, email_sent: mail.ok, email_error: mail.error });
@@ -1127,7 +1148,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         if (ta || tb) { console.error("user_delete tickets", (ta ?? tb)?.message); ticketsOk = false; }
         ticketsDeleted = (a?.length ?? 0) + (b?.length ?? 0);
       }
-      const sent = mail ? await sendAccountMail(email, mail) : { ok: false };
+      const sent = mail ? await sendAccountMail(email, mail, "deleted") : { ok: false };
       await audit("user_delete", ip, id, {
         email: maskEmail(email), notify, email_sent: sent.ok, tickets_deleted: delTickets ? ticketsDeleted : undefined,
         purchases_kept: purchasesKept ? buys : undefined,
