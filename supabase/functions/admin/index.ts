@@ -163,7 +163,7 @@
 //                       voorbeeldgegevens naar één testadres support+ci-…@bingr.online; er wordt geen account aangeraakt.)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
@@ -436,7 +436,7 @@ async function sendAccountMail(to: string, m: Mail, kind: "blocked" | "unblocked
     } catch (e) {
       if (!smtpFrom() || addressOf(smtpFrom()).toLowerCase() === addressOf(SUPPORT_FROM()).toLowerCase()) throw e;
       console.error("account mail (support-afzender)", e instanceof Error ? e.message : e);
-      await tx.sendMail({ ...base, from: smtpFrom(), replyTo: addressOf(SUPPORT_FROM()) });
+      await tx.sendMail({ ...base, from: withName(addressOf(smtpFrom()), "Bingr Support"), replyTo: addressOf(SUPPORT_FROM()) });
     }
     return { ok: true };
   } catch (e) {
