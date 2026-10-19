@@ -55,6 +55,8 @@
   const ERR = {
     network: "Geen verbinding met de server.", server_error: "Er ging iets mis op de server.", not_found: "Niet gevonden.",
     too_soon: "Er is net al een reset-mail gestuurd. Probeer het over een minuut opnieuw.", reset_failed: "De reset-mail kon niet worden verstuurd.",
+    confirm_failed: "Het e-mailadres kon niet worden bevestigd.", resend_failed: "De bevestigingsmail kon niet worden verstuurd.",
+    already_confirmed: "Dit e-mailadres is al bevestigd.", confirm_too_soon: "Er is net al een bevestigingsmail gestuurd. Probeer het over een minuut opnieuw.",
     smtp_not_configured: "E-mail is niet ingesteld op de server.", text_missing: "Vul een Nederlandse titel en tekst in.",
     bad_expires_at: "De verloopdatum moet in de toekomst liggen.",
     status_not_configured: "De statusmonitor is nog niet ingesteld (Backend-workflow draaien).", bad_url: "Vul een geldig http(s)-adres in (geen intern adres).",
@@ -1566,7 +1568,7 @@
         <dt>Naam</dt><dd><span id="uName">${esc(fullName(u) || "—")}</span><button id="nameOpen" class="name-edit" type="button" aria-expanded="false" aria-controls="nameForm">Wijzig</button></dd>
         <dt>Aangemaakt</dt><dd>${esc(fmtDateTime(u.created_at))}</dd>
         <dt>Laatst ingelogd</dt><dd>${esc(u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : "nooit")}</dd>
-        <dt>Bevestigd</dt><dd>${u.confirmed ? "Ja" : "Nee"}</dd>
+        <dt>Bevestigd</dt><dd>${u.confirmed ? "Ja" : `Nee <span class="chip warn">onbevestigd</span>`}</dd>
         <dt>Taal</dt><dd>${esc(u.lang || "—")}</dd>
         <dt>Profielen</dt><dd>${nf.format(u.profile_count || 0)}</dd>
         <dt>Actief (30 d)</dt><dd>${nf.format(u.active_days_30d || 0)} dagen</dd>
@@ -1592,9 +1594,10 @@
         <div class="meta">Laatst gezien ${esc(ago(d.last_seen_at))} · gekoppeld ${esc(fmtDate(d.created_at))}</div></div></div>`).join("") || '<p class="empty">Geen apparaten.</p>'}
       ${serversSection(u.servers)}
       <div class="actions">
+        ${u.confirmed ? "" : '<button id="confirmBtn" class="btn ghost">E-mail bevestigen</button><button id="resendBtn" class="btn ghost">Bevestigingsmail opnieuw sturen</button>'}
         <button id="resetBtn" class="btn ghost">Stuur wachtwoord-reset</button>
         ${b ? "" : '<button id="blockOpen" class="btn ghost" aria-expanded="false" aria-controls="blockForm">Blokkeren…</button>'}
-        <p class="sub">De gebruiker krijgt de standaard reset-mail van Bingr en kiest zelf een nieuw wachtwoord. Je ziet of wijzigt nooit een wachtwoord.</p>
+        <p class="sub">De gebruiker krijgt de standaard reset-mail van Bingr en kiest zelf een nieuw wachtwoord. Je ziet of wijzigt nooit een wachtwoord.${u.confirmed ? "" : " Onbevestigd: <b>E-mail bevestigen</b> bevestigt het adres meteen (de klant kan dan inloggen); <b>Bevestigingsmail opnieuw sturen</b> stuurt de mail met de link nog een keer. Onbevestigde accounts worden na 48 uur verwijderd."}</p>
       </div>
       ${b ? "" : `<form id="blockForm" class="block-form hidden" novalidate>
         <h3>Account blokkeren</h3>
@@ -1629,6 +1632,21 @@
     wireName(u);
     wireNewsletter(u);
     wireServers();
+    if (!u.confirmed) {
+      $("confirmBtn").onclick = async () => {
+        if (!confirm(`Het e-mailadres ${u.email} handmatig bevestigen? Doe dit alleen als je zeker weet dat het adres van de klant is.`)) return;
+        $("confirmBtn").disabled = true;
+        try { const r = await call("user_confirm", { id: u.id }); toast(r.already ? "Was al bevestigd." : "E-mailadres bevestigd."); refreshUserViews(u.id); }
+        catch (e) { if (e.code !== "auth") toast(errText(e), true); $("confirmBtn").disabled = false; }
+      };
+      $("resendBtn").onclick = async () => {
+        if (!confirm(`De bevestigingsmail opnieuw sturen naar ${u.email}?`)) return;
+        $("resendBtn").disabled = true;
+        try { await call("user_resend_confirm", { id: u.id }); toast("Bevestigingsmail verstuurd."); }
+        catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+        finally { $("resendBtn").disabled = false; }
+      };
+    }
     $("resetBtn").onclick = async () => {
       if (!confirm(`Een wachtwoord-reset-mail sturen naar ${u.email}?`)) return;
       $("resetBtn").disabled = true;

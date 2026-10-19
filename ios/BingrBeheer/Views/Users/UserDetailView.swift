@@ -3,6 +3,7 @@ import SwiftUI
 /// Details van een account (actie `user_detail`) met apparaten, wachtwoord-reset (`send_reset`), blokkeren en opheffen
 /// (`user_block` / `user_unblock`, met geschiedenis) en verwijderen (`user_delete`, met het e-mailadres als bevestiging).
 /// Naam wijzigen (`user_set_name`) en het volledige e-mailadres tonen met het oog (`user_email`, in het logboek).
+/// Onbevestigd: e-mailadres handmatig bevestigen (`user_confirm`) of de bevestigingsmail opnieuw sturen (`user_resend_confirm`).
 struct UserDetailView: View {
     let userID: String
     let fallbackEmail: String
@@ -40,6 +41,10 @@ struct UserDetailView: View {
     @State private var loadingEmail = false
     // nieuwsbrief van dit account (user_newsletter_set)
     @State private var newsletterSaving = false
+    // onbevestigd account: handmatig bevestigen of de bevestigingsmail opnieuw sturen
+    @State private var askConfirmEmail = false
+    @State private var askResendConfirm = false
+    @State private var confirmingEmail = false
 
     var body: some View {
         ScrollView {
@@ -110,6 +115,28 @@ struct UserDetailView: View {
                     serversCard(u)
 
                     VStack(alignment: .leading, spacing: 10) {
+                        if !u.confirmed {
+                            Button {
+                                askConfirmEmail = true
+                            } label: {
+                                HStack {
+                                    if confirmingEmail { ProgressView().tint(.white) }
+                                    Label("E-mail bevestigen", systemImage: "checkmark.seal")
+                                }
+                            }
+                            .buttonStyle(.bingrGhost)
+                            .disabled(confirmingEmail)
+                            Button {
+                                askResendConfirm = true
+                            } label: {
+                                Label("Bevestigingsmail opnieuw sturen", systemImage: "envelope.arrow.triangle.branch")
+                            }
+                            .buttonStyle(.bingrGhost)
+                            .disabled(confirmingEmail)
+                            Text("Onbevestigd: E-mail bevestigen bevestigt het adres meteen (de klant kan dan inloggen); Bevestigingsmail opnieuw sturen stuurt de mail met de link nog een keer. Onbevestigde accounts worden na 48 uur verwijderd.")
+                                .font(.caption).foregroundStyle(Color.textDim)
+                                .padding(.bottom, 6)
+                        }
                         Button {
                             confirmReset = true
                         } label: {
@@ -180,6 +207,18 @@ struct UserDetailView: View {
             Button("Gratis maken", role: .destructive) { Task { await savePlan() } }
         } message: {
             Text("Statistieken, nu aan het kijken, Trakt en thema's gaan dan op slot voor \(user?.email ?? fallbackEmail).")
+        }
+        .alert("E-mail bevestigen", isPresented: $askConfirmEmail) {
+            Button("Annuleren", role: .cancel) {}
+            Button("Bevestigen") { Task { await confirmEmail() } }
+        } message: {
+            Text("Het e-mailadres \(user?.email ?? fallbackEmail) handmatig bevestigen? Doe dit alleen als je zeker weet dat het adres van de klant is.")
+        }
+        .alert("Bevestigingsmail", isPresented: $askResendConfirm) {
+            Button("Annuleren", role: .cancel) {}
+            Button("Versturen") { Task { await resendConfirm() } }
+        } message: {
+            Text("De bevestigingsmail opnieuw sturen naar \(user?.email ?? fallbackEmail)?")
         }
         .alert("Wachtwoord-reset", isPresented: $confirmReset) {
             Button("Annuleren", role: .cancel) {}
@@ -485,6 +524,30 @@ struct UserDetailView: View {
             if error is CancellationError { return }
             if let e = error as? APIError, e.code == "auth" { return }
             deleteError = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
+        }
+    }
+
+    private func confirmEmail() async {
+        confirmingEmail = true
+        defer { confirmingEmail = false }
+        do {
+            let r = try await session.call("user_confirm", ["id": userID])
+            session.show(r["already"].bool == true ? "Was al bevestigd." : "E-mailadres bevestigd.")
+            session.usersRevision += 1
+            await load()
+        } catch {
+            session.report(error)
+        }
+    }
+
+    private func resendConfirm() async {
+        confirmingEmail = true
+        defer { confirmingEmail = false }
+        do {
+            try await session.call("user_resend_confirm", ["id": userID])
+            session.show("Bevestigingsmail verstuurd.")
+        } catch {
+            session.report(error)
         }
     }
 

@@ -70,6 +70,10 @@
 //                       reason? (intern, alleen in het logboek)} -> {ok, email_sent, tickets_deleted}
 //                       (alle accountgegevens via on delete cascade, profielfoto's, daarna de bevestigingsmail vanaf support@)
 //   send_reset          {token, user_id}  -> {ok}    (standaard reset-mail van Supabase; beheer ziet of zet nooit wachtwoorden)
+//   user_confirm        {token, id} -> {ok, already}  (e-mailadres handmatig bevestigen: auth.admin.updateUserById email_confirm
+//                       true; voor accounts die de bevestigingsmail niet kregen. In admin_audit alleen of het al bevestigd was)
+//   user_resend_confirm {token, id} -> {ok}  (de bevestigingsmail opnieuw: POST /auth/v1/resend type signup, terug naar
+//                       bingr.online/account/; al bevestigd = 409 already_confirmed, te snel (60 s per adres) = 429 confirm_too_soon)
 //   (build 14 Beheer-app: de oude acties announce, announce_send, announcements_list en announcement_delete zijn weg;
 //   de tab Pushmeldingen en de widget Laatste pushmeldingen gebruiken alleen push_history.)
 //   Pushmeldingen (docs/PUSH.md in iptv-ios-appletv): doorgegeven aan de functie `push` met het geheim PUSH_ADMIN_SECRET
@@ -437,7 +441,7 @@ async function sendAccountMail(to: string, m: Mail): Promise<{ ok: boolean; erro
     return { ok: false, error: "send_failed" };
   } finally { tx.close(); }
 }
-type AuthUser = { id: string; email?: string; user_metadata?: Record<string, unknown> };
+type AuthUser = { id: string; email?: string; email_confirmed_at?: string | null; user_metadata?: Record<string, unknown> };
 async function authUser(id: string): Promise<AuthUser | null> {
   const { data, error } = await admin.auth.admin.getUserById(id);
   if (error && (error as { status?: number }).status !== 404) throw new Error(error.message);
@@ -987,6 +991,34 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         return json({ error: st === 429 ? "too_soon" : "reset_failed" }, st === 429 ? 429 : 502);
       }
       await audit("send_reset", ip, String(body.user_id));
+      return json({ ok: true });
+    }
+    case "user_confirm": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const user = await authUser(id);
+      if (!user) return json({ error: "not_found" }, 404);
+      const already = !!user.email_confirmed_at;
+      if (!already) {
+        const { error } = await admin.auth.admin.updateUserById(id, { email_confirm: true });
+        if (error) { console.error("user_confirm", error.message); return json({ error: "confirm_failed" }, 502); }
+      }
+      await audit("user_confirm", ip, id, { already });
+      return json({ ok: true, already });
+    }
+    case "user_resend_confirm": {
+      if (!isUuid(body.id)) return json({ error: "bad_id" }, 400);
+      const id = String(body.id).toLowerCase();
+      const user = await authUser(id);
+      if (!user?.email) return json({ error: "not_found" }, 404);
+      if (user.email_confirmed_at) return json({ error: "already_confirmed" }, 409);
+      const { error } = await admin.auth.resend({ type: "signup", email: user.email, options: { emailRedirectTo: `${SITE}/account/` } });
+      if (error) {
+        const st = (error as { status?: number }).status ?? 500;
+        console.error("user_resend_confirm", st);
+        return json({ error: st === 429 ? "confirm_too_soon" : "resend_failed" }, st === 429 ? 429 : 502);
+      }
+      await audit("user_resend_confirm", ip, id);
       return json({ ok: true });
     }
     case "user_block": {
