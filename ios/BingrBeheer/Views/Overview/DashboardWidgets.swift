@@ -223,6 +223,8 @@ struct DashWidgetCard: View {
         case .optedOut: return s.optedOut
         case .purchases: return s.purchasesPaid
         case .revenue: return s.revenueCents
+        case .signupsRejected: return s.signupGuard?.rejected24h.total
+        case .unconfirmedDeleted: return s.signupGuard?.unconfirmedDeleted7d
         }
     }
 
@@ -306,6 +308,12 @@ struct DashWidgetCard: View {
                 case .optedOut: return "afgemeld"
                 case .purchases: return (s?.purchasesRefunded ?? 0) > 0 ? "\(Fmt.num(s?.purchasesRefunded)) terugbetaald" : "Lifetime gekocht"
                 case .revenue: return "betaald, zonder terugbetalingen"
+                case .signupsRejected:
+                    guard let g = s?.signupGuard else { return "" }
+                    let d = g.rejected24h
+                    return "limiet \(Fmt.num(d.rateLimit)) · wegwerp \(Fmt.num(d.disposable)) · naam \(Fmt.num(d.name)) · 7 d: \(Fmt.num(g.rejected7d.total))"
+                case .unconfirmedDeleted:
+                    return "\(Fmt.num(s?.signupGuard?.unconfirmedDeleted24h ?? 0)) in 24 uur · na 48 uur zonder bevestiging"
                 default: return "accounts"
                 }
             }()

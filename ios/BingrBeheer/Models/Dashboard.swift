@@ -101,6 +101,8 @@ enum DashMetric: String, CaseIterable, Identifiable {
     case devices, watchingNow = "watching_now", blocked, planFree = "plan_free", planLifetime = "plan_lifetime"
     case planCustom = "plan_custom", optedOut = "opted_out"
     case purchases = "purchases_paid", revenue = "revenue_cents"
+    /// build 134: registratiebescherming (stats.signup_guard)
+    case signupsRejected = "signups_rejected", unconfirmedDeleted = "unconfirmed_deleted"
 
     var id: String { rawValue }
 
@@ -119,6 +121,8 @@ enum DashMetric: String, CaseIterable, Identifiable {
         case .optedOut: return "Geen berichtenmail"
         case .purchases: return "Aankopen"
         case .revenue: return "Omzet"
+        case .signupsRejected: return "Registraties geweigerd (24 u)"
+        case .unconfirmedDeleted: return "Onbevestigd verwijderd (7 d)"
         }
     }
 
@@ -387,6 +391,7 @@ struct DashLayout: Codable, Equatable {
             metric("active_30d", .active30d), metric("devices", .devices), metric("watching", .watchingNow),
             DashWidget(id: "support", type: .support, size: .s), metric("blocked", .blocked),
             metric("plan_free", .planFree), metric("plan_lifetime", .planLifetime),
+            metric("signups_rejected", .signupsRejected), metric("unconfirmed_deleted", .unconfirmedDeleted),
             DashWidget(id: "status", type: .status, size: .m),
             chart("chart_new", .accounts, .d30), chart("chart_streams", .streams, .d7), chart("chart_push", .push, .d30),
             DashWidget(id: "platforms", type: .platforms, size: .l), DashWidget(id: "versions", type: .versions, size: .l),

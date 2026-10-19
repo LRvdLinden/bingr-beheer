@@ -19,6 +19,8 @@
 //   max. 20 per 10 min per IP (one-click vanaf mailservers: 200 per 10 min). Inzage van persoonsgegevens (user_detail,
 //   users met zoekterm, support_get), geblokkeerde inlogpogingen en mislukte acties (met foutcode) staan in admin_audit.
 //   stats               {token}           -> {total_users, …, days:[…], platforms:[…], versions:[…], smtp}
+//                       signup_guard: {rejected_24h:{total, rate_limit, disposable, name}, rejected_7d:{…}, allowed_24h,
+//                       allowed_7d, unconfirmed_deleted_24h, unconfirmed_deleted_7d, disposable_domains} | null (build 134)
 //                       (build 133: purchases_paid, purchases_refunded, purchases_7d, revenue_cents = som van de betaalde
 //                       Lifetime-aankopen via Stripe; users/user_detail: plan.purchased_at/amount/currency/status van de laatste
 //                       aankoop, user_detail.purchases (zonder Stripe-id's). Schema in iptv-ios-appletv, docs/ACCOUNT.md "Betalen")
@@ -720,9 +722,11 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       return json({ ok: true });
     }
     case "stats": {
-      const { data, error } = await admin.rpc("bingr_admin_stats");
+      // build 134 (iptv-ios-appletv): registratiebescherming, alleen aantallen; ontbreekt de functie nog, dan signup_guard null
+      const [{ data, error }, guard] = await Promise.all([admin.rpc("bingr_admin_stats"), admin.rpc("bingr_admin_signup_guard")]);
       if (error) throw new Error(error.message);
-      return json({ ...data, smtp: smtpConfigured() });
+      if (guard.error && guard.error.code !== "PGRST202") console.error("admin", "signup_guard", guard.error.message);
+      return json({ ...data, signup_guard: guard.error ? null : guard.data ?? null, smtp: smtpConfigured() });
     }
     case "insights": {
       // grafieken van het overzicht (zoals Homey Insights): aantallen per tijdvak, nooit gegevens per persoon (insights.ts)

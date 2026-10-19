@@ -37,6 +37,27 @@ struct Stats {
     let purchasesPaid: Int?
     let purchasesRefunded: Int?
     let revenueCents: Int?
+    /// Registratiebescherming (build 134; nil bij een ouder schema): alleen aantallen.
+    struct SignupGuard {
+        struct Reasons { let total, rateLimit, disposable, name: Int }
+        let rejected24h: Reasons
+        let rejected7d: Reasons
+        let unconfirmedDeleted24h: Int
+        let unconfirmedDeleted7d: Int
+
+        init?(_ j: JSON) {
+            guard j["rejected_24h"]["total"].int != nil else { return nil }
+            func reasons(_ r: JSON) -> Reasons {
+                Reasons(total: r["total"].int ?? 0, rateLimit: r["rate_limit"].int ?? 0,
+                        disposable: r["disposable"].int ?? 0, name: r["name"].int ?? 0)
+            }
+            rejected24h = reasons(j["rejected_24h"])
+            rejected7d = reasons(j["rejected_7d"])
+            unconfirmedDeleted24h = j["unconfirmed_deleted_24h"].int ?? 0
+            unconfirmedDeleted7d = j["unconfirmed_deleted_7d"].int ?? 0
+        }
+    }
+    let signupGuard: SignupGuard?
     /// "audit": inlogs uit het inloglogboek; anders accounts met app-activiteit
     let signinsFromAudit: Bool
     let days: [Day]
@@ -60,6 +81,7 @@ struct Stats {
         purchasesPaid = j["purchases_paid"].int
         purchasesRefunded = j["purchases_refunded"].int
         revenueCents = j["revenue_cents"].int
+        signupGuard = SignupGuard(j["signup_guard"])
         signinsFromAudit = j["signins_source"].text == "audit"
         days = j["days"].array.compactMap { d in
             guard let day = d["day"].date else { return nil }
