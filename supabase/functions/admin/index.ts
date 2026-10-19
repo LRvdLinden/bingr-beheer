@@ -424,7 +424,8 @@ function clientIp(req: Request) {
 }
 // Accountmails (blokkeren, opheffen, verwijderen) gaan vanaf support@ (BINGR_SUPPORT_FROM, zoals de supportmails); weigert
 // de SMTP-server die afzender, dan met BINGR_SMTP_FROM als afzender en support@ als Reply-To. Antwoorden komen zo bij support.
-const SUPPORT_FROM = () => env("BINGR_SUPPORT_FROM") || "Bingr Support <support@bingr.online>";
+// altijd met weergavenaam: een kaal adres in BINGR_SUPPORT_FROM wordt "Bingr Support <adres>"
+const SUPPORT_FROM = () => withName(env("BINGR_SUPPORT_FROM") || "support@bingr.online", "Bingr Support");
 const addressOf = (s: string) => (s.match(/<([^>]+)>/)?.[1] ?? s).trim();
 async function sendAccountMail(to: string, m: Mail, kind: "blocked" | "unblocked" | "deleted"): Promise<{ ok: boolean; error?: string }> {
   if (!smtpConfigured()) return { ok: false, error: "smtp_not_configured" };
