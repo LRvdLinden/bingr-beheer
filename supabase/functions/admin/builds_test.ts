@@ -156,3 +156,24 @@ Deno.test("presskit: tellerweergave (totaal, deze versie, 7/30 dagen in NL-tijd,
   ok(e.total === 0 && e.version === null && e.version_total === 0 && e.last_30d === 0 && e.days.every((d) => d.n === 0), "leeg/ongeldig");
   ok(presskitStatsView(null, "1.3", now) === null && presskitStatsView([1], "1.3", now) === null, "geen teller");
 });
+
+Deno.test("Android App Bundle (android-aab): eigen platform, alleen met een kortgeldige link, geen releasemelding", async () => {
+  const { isBuildPlatform, isReleasePushPlatform, releaseKeys } = await import("./builds.ts");
+  ok(isBuildPlatform("android-aab") && !isBuildPlatform("aab") && !isBuildPlatform("android-apk"), "platform");
+  ok(isValidBuildPath("android-aab/Bingr-1.0.0-build138.aab"), "pad");
+  for (const p of ["android-aab/", "android-aab/../key.php", "Android-aab/x.aab", "android-aab/a/b.aab"]) ok(!isValidBuildPath(p), `ongeldig: ${p}`);
+  const t = await signBuildToken(KEY, "android-aab/Bingr-1.0.0-build138.aab", 600, NOW);
+  ok(JSON.parse(atob(t.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))).f === "android-aab/Bingr-1.0.0-build138.aab", "token");
+  const m = cleanManifest({ platforms: {
+    android: { file: "Bingr-1.0.0-build138.apk", version: "1.0.0", build: 138 },
+    "android-aab": { file: "Bingr-1.0.0-build138.aab", version: "1.0.0", build: 138, size: 70000000, uploaded_at: "2026-10-19T12:00:00+00:00",
+      history: [{ file: "Bingr-1.0.0-build137.aab", version: "1.0.0", build: 137 }] },
+  } })!;
+  ok(Object.keys(m.platforms).sort().join() === "android,android-aab", `platforms ${Object.keys(m.platforms)}`);
+  const a = m.platforms["android-aab"];
+  ok(a.build === 138 && a.size === 70000000 && a.uploaded_at === "2026-10-19T12:00:00+00:00" && a.history[0].build === 137, "velden");
+  ok(findBuild(m, "android-aab")?.file === "Bingr-1.0.0-build138.aab" && findBuild(m, "android-aab", "Bingr-1.0.0-build137.aab")?.build === 137, "zoeken");
+  ok(findBuild(m, "android-aab", "Bingr-1.0.0-build138.apk") === null, "APK niet via android-aab");
+  ok(!isReleasePushPlatform("android-aab"), "geen releasemelding");
+  ok(JSON.stringify(releaseKeys(m)) === JSON.stringify(["release:android:138"]), `alleen de APK telt voor de releasemelding: ${releaseKeys(m)}`);
+});

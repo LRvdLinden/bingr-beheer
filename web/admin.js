@@ -1917,6 +1917,7 @@
   // De pakketten staan niet op GitHub; een download loopt via dl.php met een link van 10 minuten uit de functie admin.
   const DL_PLATFORMS = [
     ["android", "Android en Android TV", "APK voor telefoons, tablets, Android TV, Google TV en Fire TV"],
+    ["android-aab", "Android App Bundle (Google Play)", ".aab voor Google Play (telefoon, tablet en Google TV), getekend met de upload key"],
     ["tizen", "Samsung TV", ".wgt voor Tizen"],
     ["apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS"],
     ["beheer", "BingrBeheer", "Xcode-project (zip) van deze beheer-app voor iPhone en iPad"],

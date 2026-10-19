@@ -14,7 +14,8 @@ srv_get(){ ftps_try "get \"$(srv_dir)/$1\" -o \"$2\"" >/dev/null 2>&1; [ -s "$2"
 srv_put(){ ftps_run "mkdir -p -f \"$(srv_dir)/$(dirname "$2")\"; put \"$1\" -o \"$(srv_dir)/$2\"; chmod ${3:-644} \"$(srv_dir)/$2\"" >/dev/null 2>&1; }
 srv_rm(){ ftps_try "rm -f \"$(srv_dir)/$1\"" >/dev/null 2>&1 || true; }
 
-PLATS="apple android tizen beheer"
+# android-aab = Android App Bundle voor Google Play (zelfde build als de APK, eigen map en branch inbox-android-aab)
+PLATS="apple android android-aab tizen beheer"
 
 builds_init(){
   BW=$(mktemp -d); mkdir -p "$BW/srv"

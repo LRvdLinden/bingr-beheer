@@ -125,7 +125,7 @@
 //   app_settings_get    {token}           -> {upgrade_link:{apple, android, androidtv, tizen, web}}
 //   app_settings_set    {token, upgrade_link:{apple, android, androidtv, tizen, web}} -> {ok, upgrade_link}
 //                       Abonnementen: tabellen account_plans en app_settings (schema in iptv-ios-appletv, docs/ACCOUNT.md).
-//   builds              {token}           -> {ready, platforms: {android|tizen|apple|beheer: {version, build, file, path, size,
+//   builds              {token}           -> {ready, platforms: {android|android-aab|tizen|apple|beheer: {version, build, file, path, size,
 //                       sha256, date, notes, history:[…]}} | null, updated?, reason?: "not_configured"|"no_builds"|"unreachable"}
 //                       (tab Downloads: builds/manifest.json van de server van beheer.bingr.online, opgehaald via dl.php met
 //                       een token van 60 s; de buildpakketten staan niet op GitHub)
@@ -136,7 +136,7 @@
 //   build_push          {token, platform: "apple"|"android", file? (standaard de nieuwste)} -> {ok, duplicate, devices, build,
 //                       missing_channels, push} (releasemelding van die build via push: release met PUSH_ADMIN_SECRET; één
 //                       keer per build; niet automatisch, want de stores keuren pas later goed; in admin_audit platform en build)
-//   build_link          {token, platform: "android"|"tizen"|"apple"|"beheer"|"presskit", file? (standaard de nieuwste; anders alleen
+//   build_link          {token, platform: "android"|"android-aab"|"tizen"|"apple"|"beheer"|"presskit", file? (standaard de nieuwste; anders alleen
 //                       een bestand uit het manifest)} -> {url, expires_at, file, size}  (https://beheer.bingr.online/dl.php?t=…,
 //                       10 minuten geldig; in admin_audit als build_link met platform en build, nooit de link of het token)
 //                       Tokens: HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY (gezet door de workflow Builds, dezelfde

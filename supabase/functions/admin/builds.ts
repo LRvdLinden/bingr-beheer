@@ -8,7 +8,8 @@
 /** Adres van het downloadscript (same-origin met het dashboard). */
 export const DL_URL = "https://beheer.bingr.online/dl.php";
 /** Platforms in builds/manifest.json, tevens de mappen in builds/. `presskit` = Bingr-PressKit (workflow PressKit). */
-export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer", "presskit"] as const;
+/** `android-aab` = Android App Bundle voor Google Play (alleen via een kortgeldige link, niet openbaar zoals de APK). */
+export const BUILD_PLATFORMS = ["android", "android-aab", "tizen", "apple", "beheer", "presskit"] as const;
 export type BuildPlatform = typeof BUILD_PLATFORMS[number];
 /** dl.php accepteert hoogstens 15 minuten. */
 export const MAX_TTL = 900;
@@ -34,7 +35,7 @@ export const PRESSKIT_STATS = "presskit-stats.json";
 /** Openbare link naar de nieuwste presskit (302 naar dl.php?app=presskit, workflow Website van bingr-website). */
 export const PRESSKIT_PUBLIC_URL = "https://bingr.online/presskit";
 
-/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json" of "<apple|android|tizen|beheer|presskit>/<bestandsnaam>". */
+/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json" of "<apple|android|android-aab|tizen|beheer|presskit>/<bestandsnaam>". */
 export function isValidBuildPath(path: unknown): path is string {
   if (typeof path !== "string") return false;
   if (path === "manifest.json" || path === PRESSKIT_STATS) return true;

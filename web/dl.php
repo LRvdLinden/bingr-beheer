@@ -5,7 +5,8 @@
 // payload = base64url(JSON {"f": "<map>/<bestand>" of "manifest.json", "e": <verloopt, unix-tijd>}); max. 15 minuten geldig.
 // payload f mag ook "presskit-stats.json" zijn (downloadteller van de presskit, alleen voor de functie admin).
 // Openbaar (bingr.online, knop "Testversie downloaden"): ?app=android levert ALLEEN de nieuwste Android-APK uit
-// builds/manifest.json, zonder token. Andere platforms, oudere builds en het manifest blijven alleen via een link uit het beheer.
+// builds/manifest.json, zonder token. Andere platforms (ook de App Bundle android-aab), oudere builds en het manifest blijven
+// alleen via een link uit het beheer.
 // Openbaar (bingr.online/presskit, link "PressKit" in de footer): ?app=presskit levert de nieuwste presskit uit het manifest
 // (platform presskit, workflow PressKit) als Bingr-PressKit.zip, met Range (hervatten). Elke GET zonder Range, of met een
 // Range vanaf byte 0, telt als download in builds/presskit-stats.json (totaal, per versie, per dag in NL-tijd, max. 400 dagen;
@@ -151,7 +152,7 @@ $p = $raw === false ? null : json_decode($raw, true);
 $now = time();
 if (!is_array($p) || !is_int($p['e'] ?? null) || $p['e'] < $now || $p['e'] > $now + 900) out(403, ['error' => 'expired']);
 $f = (string)($p['f'] ?? '');
-if (!preg_match('#^(manifest\.json|presskit-stats\.json|(apple|android|tizen|beheer|presskit)/[A-Za-z0-9][A-Za-z0-9._-]{0,150})$#', $f) || strpos($f, '..') !== false) {
+if (!preg_match('#^(manifest\.json|presskit-stats\.json|(apple|android|android-aab|tizen|beheer|presskit)/[A-Za-z0-9][A-Za-z0-9._-]{0,150})$#', $f) || strpos($f, '..') !== false) {
   out(400, ['error' => 'bad_file']);
 }
 $path = $dir . '/' . $f;
