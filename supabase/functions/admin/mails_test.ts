@@ -53,6 +53,10 @@ Deno.test("opheffen en verwijderen", () => {
   ok(d.html.includes("Kijkgeschiedenis en statistieken") && d.html.includes("supporttickets bewaren we"), "wat er weg is, tickets bewaard");
   ok(d.html.includes("nieuw account maken") && !d.html.includes(">Afmelden</a>"), "nieuw account, geen afmeldlink");
   ok(deletedMail("nl", { email: "a@b.nl", ticketsDeleted: true }).html.includes("Ook je supporttickets zijn verwijderd"), "tickets verwijderd");
+  ok(!d.html.includes("bewaarplicht"), "zonder aankopen geen zin over de bewaarplicht");
+  const k = deletedMail("nl", { email: "a@b.nl", ticketsDeleted: false, purchasesKept: true });
+  ok(k.html.includes("wettelijke bewaarplicht") && k.text.includes("zonder koppeling aan je account nog 7 jaar"), "aankopen bewaard (html en tekst)");
+  ok(deletedMail("en", { email: "a@b.nl", ticketsDeleted: false, purchasesKept: true }).text.includes("legal retention requirement"), "aankopen bewaard (Engels)");
   const e = deletedMail("en", { email: "a@b.nl", ticketsDeleted: false });
   ok(e.subject === "Your Bingr account has been deleted" && e.text.includes("- Watch history and statistics"), "Engels");
   ok(!/<[a-z]/i.test(d.text + u.text), "geen html in platte tekst");

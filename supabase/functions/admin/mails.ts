@@ -89,6 +89,7 @@ const ACC: Record<Lang, Record<string, string>> = {
     d_items: "Je account en inloggegevens\nJe profielen en profielfoto's\nGekoppelde apparaten en sessies\nJe instellingen, servers en afspeellijsten\nKijkgeschiedenis en statistieken\nMijn lijst, favorieten en andere verzamelingen",
     d_ticketsKept: "Je supporttickets bewaren we los van je account, zodat we lopende vragen kunnen afronden. Wil je dat we ook die verwijderen? Laat het ons weten via support.bingr.online.",
     d_ticketsDeleted: "Ook je supporttickets zijn verwijderd.",
+    d_purchases: "De gegevens van je aankopen (datum, bedrag, btw, betaalmethode en land) bewaren we zonder koppeling aan je account nog 7 jaar, vanwege de wettelijke bewaarplicht. Je e-mailadres of naam staat daar niet bij.",
     d_again: "Wil je Bingr later weer gebruiken? Je kunt altijd een nieuw account maken op bingr.online.",
     d_button: "Naar bingr.online", d_help: "Vragen? Neem contact op via support.bingr.online; daarvoor heb je geen account nodig.",
   },
@@ -111,6 +112,7 @@ const ACC: Record<Lang, Record<string, string>> = {
     d_items: "Your account and sign-in details\nYour profiles and profile pictures\nLinked devices and sessions\nYour settings, servers and playlists\nWatch history and statistics\nMy List, favorites and other collections",
     d_ticketsKept: "We keep your support tickets separately from your account so we can finish any open questions. Want us to delete those too? Let us know at support.bingr.online.",
     d_ticketsDeleted: "Your support tickets have been deleted as well.",
+    d_purchases: "We keep the details of your purchases (date, amount, VAT, payment method and country) without any link to your account for another 7 years, because of the legal retention requirement. Your email address or name is not kept with them.",
     d_again: "Want to use Bingr again later? You can always create a new account at bingr.online.",
     d_button: "Go to bingr.online", d_help: "Questions? Get in touch at support.bingr.online; you don't need an account for that.",
   },
@@ -164,7 +166,7 @@ ${note(t.u_help)}`;
 }
 
 /** Account verwijderd: wat er weg is, wat er met supporttickets gebeurt, en dat een nieuw account altijd kan. */
-export function deletedMail(lang: Lang, o: { email: string; ticketsDeleted: boolean; firstName?: unknown }): Mail {
+export function deletedMail(lang: Lang, o: { email: string; ticketsDeleted: boolean; firstName?: unknown; purchasesKept?: boolean }): Mail {
   const t = ACC[lang];
   const items = t.d_items.split("\n");
   const tickets = o.ticketsDeleted ? t.d_ticketsDeleted : t.d_ticketsKept;
@@ -173,11 +175,12 @@ ${detailRows([[t.account, mailto(o.email)]])}
 <p style="margin:22px 0 0;font-size:15px;line-height:23px;color:#ffffff;font-weight:700">${esc(t.d_what)}</p>
 ${bullets(items)}
 ${note(tickets)}
+${o.purchasesKept ? note(t.d_purchases) : ""}
 ${note(t.d_again)}
 ${button(SITE, t.d_button)}
 ${note(t.d_help)}`;
   return accountMail(lang, t.d_subject, t.d_title, content, [
-    t.d_intro, "", `${t.account}: ${o.email}`, "", `${t.d_what}:`, ...items.map((i) => `- ${i}`), "", tickets, "", t.d_again,
+    t.d_intro, "", `${t.account}: ${o.email}`, "", `${t.d_what}:`, ...items.map((i) => `- ${i}`), "", tickets, "", ...(o.purchasesKept ? [t.d_purchases, ""] : []), t.d_again,
     `${t.d_button}: ${SITE}`, t.d_help,
   ], t.footDel, o.firstName);
 }

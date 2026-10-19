@@ -1060,8 +1060,14 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (!confirmMatches(body.confirm, email, maskEmail(email))) return json({ error: "confirm_mismatch" }, 400);
       const notify = body.notify !== false && !!email;
       const delTickets = body.delete_tickets === true;
+      // aankopen blijven bewaard zonder koppeling aan het account (fiscale bewaarplicht, 7 jaar; user_id null via on delete
+      // set null, schema in iptv-ios-appletv, docs/ACCOUNT.md "Bewaarplicht"); de mail noemt dat alleen als er aankopen zijn
+      const { count: buys, error: be } = await admin.from("billing_purchases").select("id", { count: "exact", head: true })
+        .eq("user_id", id).in("status", ["paid", "refunded", "disputed"]);
+      if (be) console.error("user_delete purchases", be.code ?? "fout");
+      const purchasesKept = !be && (buys ?? 0) > 0;
       // e-mailadres en taal vastleggen vóór het verwijderen; de mail gaat pas als het verwijderen gelukt is
-      const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets, firstName: user.user_metadata?.first_name }) : null;
+      const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets, firstName: user.user_metadata?.first_name, purchasesKept }) : null;
       // build 95: eerst de gebruiker zelf; alle tabellen (profielen, servers, instellingen, apparaten, sessies, streams,
       // kijkgeschiedenis, statistieken, blokkades, e-mailvoorkeuren, tv-codes) gaan mee via on delete cascade. Mislukt dit,
       // dan wordt er niets anders verwijderd (geen foto's, geen tickets) en komt de mislukking in het logboek.
@@ -1092,6 +1098,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const sent = mail ? await sendAccountMail(email, mail) : { ok: false };
       await audit("user_delete", ip, id, {
         email: maskEmail(email), notify, email_sent: sent.ok, tickets_deleted: delTickets ? ticketsDeleted : undefined,
+        purchases_kept: purchasesKept ? buys : undefined,
         avatars_error: avatarsOk ? undefined : true, tickets_error: ticketsOk ? undefined : true,
         reason: cleanReason(body.reason).slice(0, 500) || undefined,
       });

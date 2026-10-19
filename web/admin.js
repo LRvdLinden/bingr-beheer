@@ -1616,7 +1616,7 @@
         <div class="bh-r">${esc(x.reason)}</div></div>`).join("")}</div>` : ""}
       <section class="danger-zone" aria-labelledby="dzTitle">
         <h3 id="dzTitle">Account verwijderen</h3>
-        <p class="sub">Verwijdert het account met profielen, apparaten en sessies, instellingen, servers, kijkgeschiedenis, statistieken en verzamelingen. Dit kan niet ongedaan worden gemaakt. De klant kan daarna altijd een nieuw account maken.</p>
+        <p class="sub">Verwijdert het account met profielen, apparaten en sessies, instellingen, servers, kijkgeschiedenis, statistieken en verzamelingen. Dit kan niet ongedaan worden gemaakt. De klant kan daarna altijd een nieuw account maken. Aankopen blijven zonder koppeling aan het account 7 jaar bewaard (fiscale bewaarplicht) en tellen mee in Omzet.</p>
         <label class="switch"><input id="dNotify" type="checkbox" ${smtpOk ? "checked" : "disabled"}><span class="track"></span><span>Bevestiging mailen vanaf support@bingr.online</span></label>
         <label class="switch"><input id="dTickets" type="checkbox"><span class="track"></span><span>Ook supporttickets verwijderen <span class="sub">(standaard bewaard, los van het account)</span></span></label>
         <label>Interne notitie <span class="sub">optioneel, alleen in het logboek</span><input id="dReason" maxlength="500" autocomplete="off"></label>

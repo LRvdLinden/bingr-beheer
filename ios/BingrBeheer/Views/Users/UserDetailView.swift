@@ -173,7 +173,7 @@ struct UserDetailView: View {
             Button("Verwijderen", role: .destructive) { Task { await deleteAccount() } }
             Button("Annuleren", role: .cancel) {}
         } message: {
-            Text("\(user?.email ?? fallbackEmail) en alle gegevens worden verwijderd. Dit kan niet ongedaan worden gemaakt.")
+            Text("\(user?.email ?? fallbackEmail) en alle gegevens worden verwijderd. Dit kan niet ongedaan worden gemaakt. Aankopen blijven zonder koppeling aan het account 7 jaar bewaard (fiscale bewaarplicht).")
         }
         .alert("Terug naar Gratis?", isPresented: $confirmDowngrade) {
             Button("Annuleren", role: .cancel) {}
