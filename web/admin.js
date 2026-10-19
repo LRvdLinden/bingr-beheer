@@ -215,7 +215,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -2575,7 +2575,7 @@
     }
     nlNotice(""); nlState = r; dd.nl = r; dd.nlErr = null; renderNl();
   }
-  $("nlRefresh").onclick = loadNewsletter;
+  $("nlRefresh").onclick = () => { loadNewsletter(); loadMailing(); };
   $("nlEnabled").onchange = async () => {
     const sw = $("nlEnabled"), on = sw.checked;
     if (!nlState || nlBusy) { sw.checked = !on; return; }
@@ -2707,6 +2707,213 @@
     } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
     finally { btn.disabled = false; }
   };
+
+  // ---- eigen mailing (blok "Eigen mailing" in de tab Nieuwsbrief; functie admin -> newsletter in iptv-ios-appletv) ----
+  // Acties mailing_status, mailing_render, mailing_test (één adres, nooit bewaard of gelogd), mailing_send en mailing_cancel.
+  // Het concept (onderwerp, tekst, URL's, doelgroep; geen adressen) blijft in localStorage van deze browser staan.
+  Object.assign(ERR, {
+    bad_content: "De inhoud van de mail is ongeldig.", bad_audience: "Kies een doelgroep.",
+    bad_subject_nl: "Vul een Nederlands onderwerp in (max. 150 tekens).", bad_subject_en: "Vul een Engels onderwerp in (max. 150 tekens).",
+    bad_body_nl: "Vul een Nederlandse tekst in (max. 8000 tekens).", bad_body_en: "Vul een Engelse tekst in (max. 8000 tekens).",
+    bad_button_text_nl: "Vul een Nederlandse knoptekst in (max. 40 tekens) of laat de knop-URL leeg.",
+    bad_button_text_en: "Vul een Engelse knoptekst in (max. 40 tekens) of laat de knop-URL leeg.",
+    bad_button_url: "De knop-URL moet met https:// beginnen (en met een knoptekst in beide talen).",
+    bad_image_url: "De afbeelding-URL moet met https:// beginnen.", bad_request_id: "Ongeldige verzendopdracht; probeer het opnieuw.",
+    service_ack_required: "Bevestig dat het servicebericht alleen belangrijke service-informatie bevat.",
+    mailing_busy: "Er wordt al een mailing verstuurd. Wacht tot die klaar is of annuleer hem.",
+    no_recipients: "Er zijn geen ontvangers in deze doelgroep.", not_active: "Deze mailing is al klaar of geannuleerd.",
+    send_failed: "De mail kon niet worden verstuurd.", bad_mailing_id: "Onbekende mailing.",
+  });
+  const ML_DRAFT = "bingr.beheer.mailing.draft";
+  const ML_FIELDS = ["mlSubNl", "mlBodyNl", "mlBtnNl", "mlSubEn", "mlBodyEn", "mlBtnEn", "mlImage", "mlBtnUrl"];
+  let mlState = null, mlTestLang = "nl", mlPrevLang = "nl", mlTimer = null, mlBusy = false;
+  const mlAudience = () => document.querySelector('input[name="mlAudience"]:checked')?.value === "service" ? "service" : "newsletter";
+  const mlContent = () => ({
+    nl: { subject: $("mlSubNl").value, body: $("mlBodyNl").value, button: $("mlBtnNl").value },
+    en: { subject: $("mlSubEn").value, body: $("mlBodyEn").value, button: $("mlBtnEn").value },
+    image: $("mlImage").value.trim(), button_url: $("mlBtnUrl").value.trim(),
+  });
+  function mlSave() {
+    try {
+      const d = { audience: mlAudience() };
+      ML_FIELDS.forEach((id) => { d[id] = $(id).value; });
+      localStorage.setItem(ML_DRAFT, JSON.stringify(d));
+    } catch { /* geen opslag: niet erg */ }
+  }
+  function mlRestore() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(ML_DRAFT) || "null"); } catch { d = null; }
+    if (!d || typeof d !== "object") return;
+    ML_FIELDS.forEach((id) => { if (typeof d[id] === "string") $(id).value = d[id].slice(0, Number($(id).maxLength) > 0 ? Number($(id).maxLength) : 8000); });
+    const r = document.querySelector(`input[name="mlAudience"][value="${d.audience === "service" ? "service" : "newsletter"}"]`);
+    if (r) r.checked = true;
+  }
+  // eenvoudige controle vóór een aanvraag (de functies controleren alles nog een keer, strenger)
+  function mlCheck(c, langs) {
+    const https = (u) => !u || /^https:\/\/[^\s"'<>\\`]+$/i.test(u);
+    if (!https(c.image)) return "bad_image_url";
+    if (!https(c.button_url)) return "bad_button_url";
+    for (const l of ["nl", "en"]) {
+      if (langs.includes(l) && !c[l].subject.trim()) return `bad_subject_${l}`;
+      if (langs.includes(l) && !c[l].body.trim()) return `bad_body_${l}`;
+      if (c.button_url && langs.includes(l) && !c[l].button.trim()) return `bad_button_text_${l}`;
+    }
+    if (!c.button_url && (c.nl.button.trim() || c.en.button.trim())) return "bad_button_url";
+    return "";
+  }
+  function mlAudienceUi() {
+    const svc = mlAudience() === "service";
+    $("mlWarn").classList.toggle("hidden", !svc);
+    $("mlAudHelp").textContent = svc
+      ? "Alle leden met een bevestigd e-mailadres (niet geblokkeerd of verwijderd), ook wie zich heeft afgemeld. Zonder afmeldlink; onderaan staat waarom ze dit krijgen."
+      : "Leden die de nieuwsbrief willen ontvangen (bevestigd e-mailadres, niet afgemeld). Met afmeldlink en afmelden met één klik.";
+    if (!svc) $("mlAck").checked = false;
+    mlRenderSend();
+  }
+  const mlCount = (a) => mlState?.audiences?.[a] || { nl: 0, en: 0, total: 0 };
+  const mlHours = (n) => {
+    const per = mlState?.per_hour || 0;
+    if (!per || n <= per) return "binnen een uur";
+    const h = Math.ceil(n / per);
+    return `ongeveer ${h} uur`;
+  };
+  function mlRenderSend() {
+    const a = mlAudience(), n = mlCount(a);
+    const busy = !!mlState?.active;
+    $("mlSend").disabled = mlBusy || busy || !mlState || (a === "service" && !$("mlAck").checked);
+    $("mlLimit").textContent = !mlState ? "" : busy
+      ? "Er wordt al een mailing verstuurd; een nieuwe kan pas als die klaar of geannuleerd is."
+      : `${nf.format(n.total)} ontvangers (${nf.format(n.nl)} NL, ${nf.format(n.en)} EN) · verzending in rondes van elke 5 minuten, max. ${nf.format(mlState.per_hour || 0)} per uur (${mlHours(n.total)}).`;
+  }
+  const AUD = { newsletter: "Nieuwsbrief", service: "Servicebericht" };
+  const ML_STATUS = { sending: ["bezig", "warn"], done: ["klaar", ""], cancelled: ["geannuleerd", "bad"] };
+  function renderMailing() {
+    const s = mlState;
+    if (!s) return;
+    $("mlCntNews").textContent = `(${nf.format(mlCount("newsletter").total)})`;
+    $("mlCntService").textContent = `(${nf.format(mlCount("service").total)})`;
+    const a = s.active, box = $("mlActive");
+    box.classList.toggle("hidden", !a);
+    if (a) {
+      const total = a.recipients?.total || 0, done = (a.sent || 0) + (a.failed || 0) + (a.skipped || 0) + (a.cancelled || 0);
+      box.innerHTML = `<div class="row-head"><div><span class="chip warn">Bezig met versturen</span> <span class="chip${a.audience === "service" ? " warn" : ""}">${esc(AUD[a.audience] || "")}</span>
+          <h3>${esc(a.subject?.nl || "—")}</h3><p class="sub">${esc(a.subject?.en || "")} · gestart ${esc(fmtDateTime(a.created_at))}</p></div>
+          <button id="mlCancel" class="btn ghost small" type="button">Annuleren</button></div>
+        <div class="progress"><div class="bar"><span></span></div>
+        <p class="sub"><b>${nf.format(a.sent || 0)}</b> verstuurd · <b>${nf.format(a.failed || 0)}</b> mislukt · <b>${nf.format(a.skipped || 0)}</b> overgeslagen · <b>${nf.format(a.left || 0)}</b> te gaan van ${nf.format(total)} (${nf.format(a.recipients?.nl || 0)} NL, ${nf.format(a.recipients?.en || 0)} EN)${a.left ? ` · nog ${mlHours(a.left)}` : ""}</p></div>`;
+      box.querySelector(".bar span").style.width = `${total ? Math.min(100, Math.round((done / total) * 100)) : 0}%`;
+      $("mlCancel").onclick = mlCancel;
+    } else box.replaceChildren();
+    const list = s.mailings || [];
+    $("mlList").innerHTML = list.map((m) => {
+      const n = (v, label, cls) => `<span class="ph-n ${cls}"><b>${nf.format(v || 0)}</b> ${label}</span>`;
+      const [st, tone] = ML_STATUS[m.status] || ML_STATUS.done;
+      return `<div class="ph"><div class="ph-main"><div class="ph-top"><span class="kind${m.audience === "service" ? " ml-svc" : " rem"}">${esc(AUD[m.audience] || "")}</span><span class="tt">${esc(m.subject?.nl || "—")}</span></div>
+          <div class="meta"><span>${esc(fmtDateTime(m.created_at))}</span>${m.subject?.en ? `<span>EN: ${esc(m.subject.en)}</span>` : ""}<span class="chip ${tone}">${st}</span>${m.cancelled ? `<span>${nf.format(m.cancelled)} niet verstuurd</span>` : ""}</div></div>
+        <div class="ph-nums nl-nums ml-nums" aria-label="Aantallen">${n(m.recipients?.total, "ontvangers", "")}${n(m.sent, "verstuurd", "s")}${n(m.failed, "mislukt", "f")}${n(m.skipped, "overgeslagen", "")}</div></div>`;
+    }).join("") || '<p class="empty">Nog geen eigen mailings verstuurd.</p>';
+    mlRenderSend();
+  }
+  async function loadMailing() {
+    clearTimeout(mlTimer);
+    try { mlState = await call("mailing_status"); }
+    catch (e) {
+      if (e.code === "auth") return;
+      mlState = null;
+      $("mlList").innerHTML = `<p class="empty">${esc(errText(e))}</p>`;
+      $("mlLimit").textContent = errText(e); $("mlSend").disabled = true;
+      return;
+    }
+    renderMailing();
+    // voortgang bijwerken zolang er een mailing loopt en de tab open is
+    if (mlState.active) {
+      mlTimer = setTimeout(() => {
+        if (!document.hidden && !$("tab-newsletter").classList.contains("hidden")) loadMailing();
+        else mlTimer = setTimeout(loadMailing, 60000);
+      }, 20000);
+    }
+  }
+  async function mlCancel() {
+    const a = mlState?.active;
+    if (!a || !confirm(`Mailing "${a.subject?.nl || ""}" annuleren? Wie nog niets kreeg (${nf.format(a.left || 0)}), krijgt hem niet meer. Wat al verstuurd is, blijft verstuurd.`)) return;
+    const btn = $("mlCancel"); if (btn) btn.disabled = true;
+    try {
+      const r = await call("mailing_cancel", { id: a.id });
+      toast(`Mailing geannuleerd (${nf.format(r.cancelled || 0)} niet verstuurd).`);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    loadMailing();
+  }
+  async function mlPreview(lang) {
+    const err = (m) => { $("mlErr").textContent = m; };
+    err("");
+    const c = mlContent(), bad = mlCheck(c, [lang]);
+    if (bad) return err(ERR[bad]);
+    mlPrevLang = lang;
+    const btn = $(lang === "en" ? "mlPrevEn" : "mlPrevNl");
+    btn.disabled = true;
+    try {
+      const r = await call("mailing_render", { content: c, audience: mlAudience(), lang });
+      if (lang !== mlPrevLang) return;
+      $("mlSubject").innerHTML = `<span class="sub">Onderwerp (${lang.toUpperCase()})</span> <b>${esc(r.subject || "—")}</b>`;
+      $("mlSubject").classList.remove("hidden");
+      $("mlView").classList.remove("hidden");
+      mountMail($("mlView"), r.html || "");
+    } catch (e) { if (e.code !== "auth") err(errText(e)); }
+    finally { btn.disabled = false; }
+  }
+  $("mlPrevNl").onclick = () => mlPreview("nl");
+  $("mlPrevEn").onclick = () => mlPreview("en");
+  nlSeg("mlTestLang", (l) => { mlTestLang = l; });
+  $("mlTest").onclick = async () => {
+    const to = $("mlTo").value.trim(), err = (m) => { $("mlTestErr").textContent = m; };
+    err("");
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[A-Za-z]{2,}$/.test(to) || to.length > 254) return err(ERR.bad_email);
+    const c = mlContent(), bad = mlCheck(c, mlTestLang === "both" ? ["nl", "en"] : [mlTestLang]);
+    if (bad) return err(ERR[bad]);
+    $("mlTest").disabled = true;
+    try {
+      await call("mailing_test", { to, content: c, audience: mlAudience(), lang: mlTestLang });
+      toast(mlTestLang === "both" ? "Twee testmails (NL en EN) verstuurd." : `Testmail (${mlTestLang.toUpperCase()}) verstuurd.`);
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    finally { $("mlTest").disabled = false; }
+  };
+  $("mlClear").onclick = () => {
+    if (!confirm("Alle velden van de mailing leegmaken?")) return;
+    ML_FIELDS.forEach((id) => { $(id).value = ""; });
+    $("mlErr").textContent = ""; $("mlView").classList.add("hidden"); $("mlSubject").classList.add("hidden");
+    mlSave();
+  };
+  $("mlForm").oninput = () => mlSave();
+  document.querySelectorAll('input[name="mlAudience"]').forEach((r) => { r.onchange = () => { mlAudienceUi(); mlSave(); }; });
+  $("mlAck").onchange = mlRenderSend;
+  $("mlForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = (m) => { $("mlErr").textContent = m; };
+    err("");
+    if (!mlState || mlBusy) return;
+    const audience = mlAudience(), c = mlContent(), bad = mlCheck(c, ["nl", "en"]);
+    if (bad) return err(ERR[bad]);
+    if (audience === "service" && !$("mlAck").checked) return err(ERR.service_ack_required);
+    const n = mlCount(audience);
+    if (!n.total) return err(ERR.no_recipients);
+    const who = audience === "service"
+      ? `SERVICEBERICHT aan alle ${nf.format(n.total)} leden met een bevestigd e-mailadres, ook wie zich heeft afgemeld (geen afmeldlink). Alleen voor belangrijke service-informatie, nooit reclame.`
+      : `Nieuwsbrief-abonnees: ${nf.format(n.total)} ontvangers.`;
+    if (!confirm(`Mailing versturen?\n\n${who}\n\n${nf.format(n.nl)} krijgen de Nederlandse versie ("${c.nl.subject.trim()}")\n${nf.format(n.en)} krijgen de Engelse versie ("${c.en.subject.trim()}")\n\nVerzending in rondes van elke 5 minuten, max. ${nf.format(mlState.per_hour || 0)} per uur (${mlHours(n.total)}). Annuleren kan zolang hij niet klaar is.`)) return;
+    mlBusy = true; mlRenderSend();
+    const request_id = crypto.randomUUID();
+    try {
+      // bij een netwerkfout één keer opnieuw met dezelfde request_id: de functie maakt dan geen tweede mailing
+      let r;
+      try { r = await call("mailing_send", { request_id, content: c, audience, service_ack: audience === "service" && $("mlAck").checked }); }
+      catch (x) { if (x.code !== "network") throw x; r = await call("mailing_send", { request_id, content: c, audience, service_ack: audience === "service" && $("mlAck").checked }); }
+      toast(`Mailing gestart: ${nf.format(r.recipients?.total || 0)} ontvangers.`);
+      $("mlAck").checked = false;
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    finally { mlBusy = false; loadMailing(); }
+  };
+  mlRestore();
+  mlAudienceUi();
 
   // ---- status ----
   const ST = { up: "Werkt", degraded: "Verminderd", down: "Storing" };

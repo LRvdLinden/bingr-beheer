@@ -157,6 +157,18 @@
 //                          Fouten: newsletter_not_configured (geen geheim), newsletter_not_deployed, newsletter_forbidden,
 //                          newsletter_unreachable, en van newsletter zelf bv. bad_email, rate_limited, tmdb_unavailable,
 //                          smtp_not_configured.
+//   Eigen mailing (tab Nieuwsbrief, blok Eigen mailing; functie `newsletter`, docs/NEWSLETTER.md "Eigen mailing vanuit het
+//   beheer" in iptv-ios-appletv; mailing.ts / mailing_test.ts). Alleen onderwerpen en aantallen terug, nooit adressen.
+//   mailing_status      {token} -> {active, mailings:[{id, created_at, finished_at, audience, status, subject:{nl,en},
+//                       recipients:{nl,en,total}, sent, failed, skipped, cancelled, left}], audiences:{newsletter, service},
+//                       per_hour, batch, sent_last_hour}
+//   mailing_render      {token, content, audience?, lang?} -> {subject, html}
+//   mailing_test        {token, to, content, audience?, lang?: nl|en|both} -> {ok, sent}  (adres nooit gelogd; in admin_audit
+//                       alleen taal en doelgroep; limiet gedeeld met newsletter_preview)
+//   mailing_send        {token, request_id (uuid), content, audience: newsletter|service, service_ack?} -> {ok, id, duplicate,
+//                       recipients}  (service alleen met service_ack: true; in admin_audit id, doelgroep en aantallen)
+//   mailing_cancel      {token, id} -> {ok, cancelled}
+//                       content = {nl:{subject, body, button}, en:{…}, image, button_url}
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 //   mailtest_account_mails {to, lang?}    -> {ok, sent:{deleted, blocked, unblocked}}  (alleen met header x-bingr-mailtest van de
 //                       mailtest in iptv-ios-appletv, workflow Diagnose; zie _shared/mail.ts. De drie accountmails met
@@ -185,6 +197,9 @@ import {
 import {
   cleanEmail, cleanEnabled, cleanLang, missingColumn, newsletterCall, planPrefChange, prefMap, prefView, renderView, statusView,
 } from "./newsletter.ts";
+import {
+  cleanAudience, cleanContent as cleanMailingContent, cleanMailingId, cleanRequestId, cleanTestLang, mailingStatusView, sendAudit,
+} from "./mailing.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -1254,6 +1269,66 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (status !== 200) return json(out, status);
       const r = renderView(out);
       return r ? json(r) : json({ error: "server_error" }, 502);
+    }
+    case "mailing_status": {
+      const { status, out } = await nlCall("mailing_status");
+      if (status !== 200) return json(out, status);
+      return json(mailingStatusView(out));
+    }
+    case "mailing_render": {
+      const audience = cleanAudience(body.audience);
+      if (!audience) return json({ error: "bad_audience" }, 400);
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      const c = cleanMailingContent(body.content, [lang]);
+      if (!c.ok) return json({ error: c.error }, 400);
+      const { status, out } = await nlCall("mailing_render", { content: c.content, audience, lang });
+      if (status !== 200) return json(out, status);
+      const r = renderView(out);
+      return r ? json(r) : json({ error: "server_error" }, 502);
+    }
+    case "mailing_test": {
+      // testmail naar één adres: nooit het adres loggen of in het logboek zetten
+      const to = cleanEmail(body.to);
+      if (!to) return json({ error: "bad_email" }, 400);
+      const audience = cleanAudience(body.audience);
+      if (!audience) return json({ error: "bad_audience" }, 400);
+      const lang = cleanTestLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      const c = cleanMailingContent(body.content, lang === "both" ? ["nl", "en"] : [lang]);
+      if (!c.ok) return json({ error: c.error }, 400);
+      // zelfde teller als newsletter_preview: samen max. NL_PREVIEW_MAX per uur
+      if (!(await rateOk(`admin-nlpreview:${ip}`, NL_PREVIEW_MAX, NL_PREVIEW_WINDOW))) {
+        return json({ error: "rate_limited", retry_after: NL_PREVIEW_WINDOW }, 429);
+      }
+      const { status, out } = await nlCall("mailing_test", { to, content: c.content, audience, lang });
+      if (status !== 200) return json(out, status);
+      await audit("mailing_test", ip, null, { lang, audience });
+      return json({ ok: true, sent: typeof out.sent === "number" ? out.sent : lang === "both" ? 2 : 1 });
+    }
+    case "mailing_send": {
+      const audience = cleanAudience(body.audience);
+      if (!audience) return json({ error: "bad_audience" }, 400);
+      // servicebericht (ook naar wie zich afmeldde): alleen met een expliciete bevestiging uit het dashboard
+      if (audience === "service" && body.service_ack !== true) return json({ error: "service_ack_required" }, 400);
+      const request_id = cleanRequestId(body.request_id);
+      if (!request_id) return json({ error: "bad_request_id" }, 400);
+      const c = cleanMailingContent(body.content, ["nl", "en"]);
+      if (!c.ok) return json({ error: c.error }, 400);
+      const { status, out } = await nlCall("mailing_send", { request_id, content: c.content, audience, service_ack: audience === "service" });
+      if (status !== 200) return json(out, status);
+      const a = sendAudit(out, audience);
+      if (!a.duplicate) await audit("mailing_send", ip, null, a);
+      return json({ ok: true, id: a.id, duplicate: a.duplicate, recipients: a.recipients });
+    }
+    case "mailing_cancel": {
+      const id = cleanMailingId(body.id);
+      if (!id) return json({ error: "bad_mailing_id" }, 400);
+      const { status, out } = await nlCall("mailing_cancel", { id });
+      if (status !== 200) return json(out, status);
+      const cancelled = typeof out.cancelled === "number" ? Math.max(0, Math.floor(out.cancelled)) : 0;
+      await audit("mailing_cancel", ip, null, { id, cancelled });
+      return json({ ok: true, cancelled });
     }
     case "admin_push_register": {
       // pushmeldingen van de Beheer-app op dit apparaat (de cron van de functie push leest admin_push_devices)

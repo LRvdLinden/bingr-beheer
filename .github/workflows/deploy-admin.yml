@@ -33,9 +33,9 @@ jobs:
         with:
           deno-version: v2.x
       # build 97: blokkerend (geen continue-on-error meer): faalt een test, dan wordt de functie niet bijgewerkt
-      - name: Unittests (mails, blokkeren, downloads, widgets, namen, pushmeldingen, push van de Beheer-app, nieuwsbrief, insights, servers)
+      - name: Unittests (mails, blokkeren, downloads, widgets, namen, pushmeldingen, push van de Beheer-app, nieuwsbrief, eigen mailing, insights, servers)
         run: |
-          deno test --allow-read=web supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts supabase/functions/admin/names_test.ts supabase/functions/admin/push_test.ts supabase/functions/admin/admin_push_test.ts supabase/functions/admin/newsletter_test.ts supabase/functions/admin/insights_test.ts supabase/functions/admin/revenue_test.ts supabase/functions/admin/servers_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
+          deno test --allow-read=web supabase/functions/admin/mails_test.ts supabase/functions/admin/blocks_test.ts supabase/functions/admin/builds_test.ts supabase/functions/admin/widget_test.ts supabase/functions/admin/names_test.ts supabase/functions/admin/push_test.ts supabase/functions/admin/admin_push_test.ts supabase/functions/admin/newsletter_test.ts supabase/functions/admin/mailing_test.ts supabase/functions/admin/insights_test.ts supabase/functions/admin/revenue_test.ts supabase/functions/admin/servers_test.ts > admin-test.log 2>&1 && { tail -3 admin-test.log; exit 0; }
           grep -E "FAILED|error|=>" admin-test.log | head -30 | while IFS= read -r l; do echo "::error::${l:0:300}"; done
           exit 1
       - name: Controleren
@@ -129,7 +129,7 @@ jobs:
           code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"widget_summary"}')
           [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::widget_summary vraagt om een widget-token" || { echo "::error::widget_summary zonder token gaf HTTP $code"; fail=1; }
           # blokkeren, opheffen en verwijderen alleen na inloggen (ook met een vervalst token)
-          for a in user_block user_unblock user_delete plan_get plan_set app_settings_get app_settings_set logout_all builds build_link widget_token widget_summary push_count push_send push_progress push_history; do
+          for a in user_block user_unblock user_delete plan_get plan_set app_settings_get app_settings_set logout_all builds build_link widget_token widget_summary push_count push_send push_progress push_history mailing_status mailing_render mailing_test mailing_send mailing_cancel; do
             code=$(curl -s -o /tmp/b.json -w '%{http_code}' -X POST "$F" -H "Origin: https://beheer.bingr.online" -H "Content-Type: application/json" \
               -d "{\"action\":\"$a\",\"token\":\"eyJ1IjoieCJ9.vervalst\",\"id\":\"00000000-0000-0000-0000-000000000000\",\"reason\":\"ci\",\"confirm\":\"x\"}")
             [ "$code" = 401 ] && grep -q not_signed_in /tmp/b.json && echo "::notice::$a vraagt om inloggen" || { echo "::error::$a zonder inloggen gaf HTTP $code"; fail=1; }
@@ -140,6 +140,12 @@ jobs:
           # 6. de functie push (iptv-ios-appletv, docs/PUSH.md) staat online en weigert beheer zonder geheim (alleen de HTTP-code in het log)
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/push" -H "Content-Type: application/json" -d '{"action":"admin_history"}')
           case "$code" in 401|403) echo "::notice::functie push staat online (beheer alleen met geheim)";; *) echo "::warning::functie push gaf HTTP $code (draai de workflow Backend in iptv-ios-appletv)";; esac
+          # 7. de functie newsletter (eigen mailing) weigert de mailing-acties zonder geheim (alleen de HTTP-code; er gaat geen mail weg)
+          for a in mailing_status mailing_send mailing_cancel; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/newsletter" -H "Content-Type: application/json" -d "{\"action\":\"$a\"}")
+            case "$code" in 403) ;; *) echo "::warning::functie newsletter gaf HTTP $code op $a (draai de workflow Backend in iptv-ios-appletv)";; esac
+          done
+          echo "::notice::eigen mailing: acties alleen na inloggen (admin) en met geheim (newsletter)"
           exit $fail
       # Insights op de echte server: inloggen met het beheer-account en de actie insights voor alle metrics en periodes.
       # Het log is openbaar: alleen HTTP-status, foutcode en het aantal punten per serie (geen token, geen antwoord).

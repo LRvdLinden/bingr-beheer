@@ -131,6 +131,24 @@ struct APIError: Error, LocalizedError {
         "tmdb_unavailable": "De films en series konden niet worden opgehaald (TMDB). Probeer het later opnieuw.",
         "email_opted_out": "Deze klant heeft alle mail van Bingr uitgezet; alleen de klant kan dat weer aanzetten.",
         "newsletter_prefs_unavailable": "De nieuwsbriefstand per account is nog niet beschikbaar (databaseschema bijwerken: workflow Backend in iptv-ios-appletv).",
+        // eigen mailing (mailing_*), zelfde teksten als web/admin.js
+        "bad_content": "De inhoud van de mail is ongeldig.",
+        "bad_audience": "Kies een doelgroep.",
+        "bad_subject_nl": "Vul een Nederlands onderwerp in (max. 150 tekens).",
+        "bad_subject_en": "Vul een Engels onderwerp in (max. 150 tekens).",
+        "bad_body_nl": "Vul een Nederlandse tekst in (max. 8000 tekens).",
+        "bad_body_en": "Vul een Engelse tekst in (max. 8000 tekens).",
+        "bad_button_text_nl": "Vul een Nederlandse knoptekst in (max. 40 tekens) of laat de knop-URL leeg.",
+        "bad_button_text_en": "Vul een Engelse knoptekst in (max. 40 tekens) of laat de knop-URL leeg.",
+        "bad_button_url": "De knop-URL moet met https:// beginnen (en met een knoptekst in beide talen).",
+        "bad_image_url": "De afbeelding-URL moet met https:// beginnen.",
+        "bad_request_id": "Ongeldige verzendopdracht; probeer het opnieuw.",
+        "service_ack_required": "Bevestig dat het servicebericht alleen belangrijke service-informatie bevat.",
+        "mailing_busy": "Er wordt al een mailing verstuurd. Wacht tot die klaar is of annuleer hem.",
+        "no_recipients": "Er zijn geen ontvangers in deze doelgroep.",
+        "not_active": "Deze mailing is al klaar of geannuleerd.",
+        "bad_mailing_id": "Onbekende mailing.",
+        "send_failed": "De mail kon niet worden verstuurd.",
     ]
 }
 

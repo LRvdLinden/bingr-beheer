@@ -5,7 +5,8 @@ import WebKit
 /// leden), volgende verzending (NL-tijd), ontvangers NL/EN, voorbeeld sturen naar één adres (nooit bewaard of gelogd),
 /// voorbeeld bekijken en de geschiedenis van edities. Acties newsletter_status, newsletter_set_enabled,
 /// newsletter_preview en newsletter_render (functie admin → newsletter). Blok Welkomstmail: aantallen uit
-/// newsletter_status.welcome, voorbeeld sturen (welcome_preview) en bekijken (welcome_render).
+/// newsletter_status.welcome, voorbeeld sturen (welcome_preview) en bekijken (welcome_render). Blok Eigen mailing: link naar
+/// MailingView (zelf een mail opstellen en versturen, acties mailing_*).
 struct NewsletterView: View {
     @Environment(Session.self) private var session
 
@@ -36,6 +37,7 @@ struct NewsletterView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let loadError { NoticeBanner(text: loadError) }
                 statusCard
+                mailingCard
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         sendCard
@@ -138,6 +140,27 @@ struct NewsletterView: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.surface2))
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: eigen mailing
+
+    private var mailingCard: some View {
+        NavigationLink {
+            MailingView()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "square.and.pencil").font(.title3).foregroundStyle(Color.bingrRed)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Eigen mailing").font(.headline).foregroundStyle(.white)
+                    Text("Zelf een mail opstellen in NL en EN en versturen naar de nieuwsbrief-abonnees, of een servicebericht aan alle gebruikers.")
+                        .font(.caption).foregroundStyle(Color.textDim).multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Color.textDim)
+            }
+            .card()
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: voorbeeld sturen

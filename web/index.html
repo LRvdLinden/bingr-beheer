@@ -239,6 +239,57 @@
         <label class="switch nl-switch"><input id="nlEnabled" type="checkbox" role="switch" disabled><span class="track"></span><span id="nlEnabledText">Laden…</span></label>
         <div id="nlFacts" class="ps-grid nl-facts" aria-live="polite"><p class="empty">Laden…</p></div>
       </div>
+      <form id="mlForm" class="panel ml-panel" novalidate>
+        <div class="row-head"><div><h2>Eigen mailing</h2>
+          <p class="sub">Stel zelf een mail op in het Nederlands en het Engels. Elke ontvanger krijgt de versie in de taal van zijn account (Nederlands → NL, alle andere talen → EN), in de huisstijl van Bingr. Afzender <b>noreply@bingr.online</b>.</p></div></div>
+        <div id="mlActive" class="ml-active hidden" aria-live="polite"></div>
+        <fieldset><legend>Doelgroep</legend>
+          <div class="pick" role="radiogroup" aria-label="Doelgroep">
+            <label><input type="radio" name="mlAudience" value="newsletter" checked><span>Nieuwsbrief-abonnees <b id="mlCntNews"></b></span></label>
+            <label><input type="radio" name="mlAudience" value="service"><span>Servicebericht aan alle gebruikers <b id="mlCntService"></b></span></label>
+          </div>
+          <p id="mlAudHelp" class="sub ml-aud-help">Leden die de nieuwsbrief willen ontvangen (bevestigd e-mailadres, niet afgemeld). Met afmeldlink en afmelden met één klik.</p>
+          <div id="mlWarn" class="ml-warn hidden" role="note">
+            <p><b>Alleen voor belangrijke service-informatie.</b> Een servicebericht gaat naar <b>alle</b> leden met een bevestigd e-mailadres, ook naar wie zich voor de nieuwsbrief of alle berichten heeft afgemeld, en heeft geen afmeldlink. Gebruik het alleen voor bijvoorbeeld een wijziging van de voorwaarden of de privacyverklaring, een storing of beveiligingsinformatie. <b>Nooit voor reclame, acties of nieuws</b>: dat mag volgens de AVG en de Telecommunicatiewet (art. 11.7) alleen naar wie zich niet heeft afgemeld (kies dan Nieuwsbrief-abonnees).</p>
+            <label class="pf"><input id="mlAck" type="checkbox"><span>Dit bericht bevat alleen belangrijke service-informatie en geen reclame</span></label>
+          </div>
+        </fieldset>
+        <div class="grid2 ml-langs">
+          <fieldset><legend>Nederlands</legend>
+            <label>Onderwerp<input id="mlSubNl" maxlength="150" autocomplete="off"></label>
+            <label>Tekst<textarea id="mlBodyNl" rows="12" maxlength="8000"></textarea></label>
+            <label>Knoptekst <span class="sub">(alleen met een knop-URL)</span><input id="mlBtnNl" maxlength="40" autocomplete="off"></label>
+          </fieldset>
+          <fieldset><legend>Engels</legend>
+            <label>Subject<input id="mlSubEn" maxlength="150" autocomplete="off"></label>
+            <label>Text<textarea id="mlBodyEn" rows="12" maxlength="8000"></textarea></label>
+            <label>Button text <span class="sub">(alleen met een knop-URL)</span><input id="mlBtnEn" maxlength="40" autocomplete="off"></label>
+          </fieldset>
+        </div>
+        <p class="sub ml-help">Opmaak: lege regel = nieuwe alinea · <code># Kop</code> · <code>## Kleinere kop</code> · <code>**vet**</code> · <code>[linktekst](https://…)</code> · <code>- punt</code> of <code>1. punt</code> voor een opsomming. Geen HTML; links en afbeeldingen alleen met https. Heeft een lid een voornaam, dan begint de mail met <i>Hoi …,</i> / <i>Hi …,</i>.</p>
+        <div class="grid2">
+          <label>Afbeelding-URL <span class="sub">(optioneel, https, bovenaan)</span><input id="mlImage" type="url" inputmode="url" maxlength="500" placeholder="https://" autocomplete="off" spellcheck="false"></label>
+          <label>Knop-URL <span class="sub">(optioneel, https)</span><input id="mlBtnUrl" type="url" inputmode="url" maxlength="500" placeholder="https://bingr.online/…" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <div id="mlErr" class="err" role="alert"></div>
+        <div class="form-btns"><button id="mlPrevNl" class="btn ghost small" type="button">Voorbeeld NL</button><button id="mlPrevEn" class="btn ghost small" type="button">Voorbeeld EN</button><button id="mlClear" class="btn ghost small" type="button">Leegmaken</button></div>
+        <p id="mlSubject" class="nl-subject hidden"></p>
+        <div id="mlView" class="nl-view hidden"></div>
+        <div class="ml-test">
+          <h3>Testmail</h3>
+          <p class="sub">Stuurt de mail met <b>[Test]</b> in het onderwerp alleen naar dit adres. Het adres wordt niet bewaard en niet gelogd. Telt mee voor dezelfde limiet als de voorbeelden (samen 10 per uur).</p>
+          <label>E-mailadres<input id="mlTo" type="email" inputmode="email" maxlength="254" autocomplete="email" spellcheck="false"></label>
+          <div class="nl-lang"><span class="sub">Taal</span><div id="mlTestLang" class="seg" role="group" aria-label="Taal van de testmail"><button type="button" data-lang="nl" class="on" aria-pressed="true">NL</button><button type="button" data-lang="en" aria-pressed="false">EN</button><button type="button" data-lang="both" aria-pressed="false">Beide</button></div>
+            <button id="mlTest" class="btn ghost small" type="button">Testmail sturen</button></div>
+          <div id="mlTestErr" class="err" role="alert"></div>
+        </div>
+        <div class="ml-send"><p id="mlLimit" class="sub"></p><button id="mlSend" class="btn" type="submit">Versturen…</button></div>
+      </form>
+      <div class="panel">
+        <h2>Verstuurde mailings</h2>
+        <p class="sub">Eigen mailings met doelgroep en aantallen (nooit adressen). <b>Verstuurd</b> = aangenomen door de mailserver; <b>overgeslagen</b> = intussen afgemeld, geblokkeerd of verwijderd.</p>
+        <div id="mlList" class="ph-list"><p class="empty">Laden…</p></div>
+      </div>
       <div class="grid2">
         <form id="nlPreviewForm" class="panel" novalidate>
           <h2>Voorbeeld sturen</h2>

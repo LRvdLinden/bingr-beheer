@@ -712,6 +712,28 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 @media (max-width:760px){.nl-nums{grid-template-columns:repeat(3,1fr)}}
 .w-of{font-size:.5em;font-weight:700;color:var(--sec);letter-spacing:0}
 .nl-user{margin-top:0;font-size:14px}
+/* eigen mailing (blok Eigen mailing in de tab Nieuwsbrief) */
+.ml-panel{margin-bottom:16px}
+.ml-panel fieldset{margin-top:16px}
+.ml-aud-help{margin-top:10px}
+.ml-warn{margin-top:14px;background:#ff8a5c14;border:1px solid #ff8a5c40;color:#ffd2bf;border-radius:12px;padding:12px 16px;font-size:14px;line-height:1.5}
+.ml-warn p{margin:0}
+.ml-warn .pf{margin-top:10px;color:#fff;font-weight:600}
+.ml-langs{margin-top:4px;gap:16px}
+.ml-langs fieldset{margin-top:12px}
+.ml-help{margin-top:12px;line-height:1.7}
+.ml-help code{background:#ffffff14;border-radius:4px;padding:1px 5px;font-size:13px;color:#fff;white-space:nowrap}
+.ml-test{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.ml-test h3,.ml-active h3{margin:0;font-size:16px}
+.ml-test .nl-lang{flex-wrap:wrap}
+.ml-send{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.ml-send .sub{flex:1 1 320px;margin:0}
+.ml-active{margin:16px 0 4px;background:var(--s2);border:1px solid #ffc56b40;border-radius:12px;padding:14px 16px}
+.ml-active h3{margin-top:8px;overflow-wrap:anywhere}
+.ml-active .row-head{align-items:flex-start}
+.kind.ml-svc{background:#ff8a5c24;color:var(--warn)}
+.ml-nums{grid-template-columns:repeat(4,auto)}
+@media (max-width:760px){.ml-nums{grid-template-columns:repeat(2,1fr)}}
 
 /* ---- overzicht: grafieken zoals Homey Insights (fillInsights / insChart in admin.js) ----
    kleuren: categorisch palet (dataviz), donkere stappen, gecontroleerd op #121212: blauw, oranje, aqua (ook bij kleurenblindheid

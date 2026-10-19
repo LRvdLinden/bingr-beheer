@@ -4,6 +4,8 @@
 Serveert web/ lokaal, onderschept alle aanroepen naar functions/v1/admin en geeft antwoorden in de vorm van de
 actuele contracten (insights.ts: metrics en series worden uit supabase/functions/admin/insights.ts gelezen). Opent de
 tab Insights met alle bronnen aangevinkt en faalt bij JS-fouten, console-errors of ontbrekende bronnen/periodes/grafieken.
+Daarna de tab Nieuwsbrief, blok Eigen mailing (mailing.ts): doelgroep met waarschuwing bij een servicebericht, voorbeeld,
+testmail, versturen met bevestiging, voortgang en annuleren (alleen nep-antwoorden; er gaat nergens een mail heen).
 
 Gebruik: python3 tests/dashboard_smoke.py [--channel chrome]   (pip install playwright; lokaal: playwright install chromium)
 """
@@ -57,13 +59,117 @@ def insights_answer(req):
     return 200, out
 
 
+MAILING = {"active": None, "sent": []}
+
+
+def mailing_answer(req):
+    """Nep-antwoorden voor de eigen mailing (contract supabase/functions/admin/mailing.ts); alleen aantallen."""
+    a = req["action"]
+    if a == "mailing_status":
+        act = MAILING["active"]
+        return 200, {"active": act, "mailings": ([act] if act else []) + MAILING["sent"],
+                     "audiences": {"newsletter": {"nl": 1000, "en": 234, "total": 1234}, "service": {"nl": 1100, "en": 300, "total": 1400}},
+                     "per_hour": 200, "batch": 50, "sent_last_hour": 0}
+    c = req.get("content") or {}
+    if a == "mailing_render":
+        lang = req.get("lang", "nl")
+        subj = (c.get(lang) or {}).get("subject", "")
+        return 200, {"subject": subj, "html": f'<!doctype html><html lang="{lang}"><body style="margin:0;background:#000000"><table role="presentation"><tr><td style="color:#ffffff;font-size:30px">BINGR</td></tr><tr><td><h1 style="color:#ffffff">{subj}</h1></td></tr></table></body></html>'}
+    if a == "mailing_test":
+        return (200, {"ok": True, "sent": 2 if req.get("lang") == "both" else 1}) if req.get("to") else (400, {"error": "bad_email"})
+    if a == "mailing_send":
+        if not re.fullmatch(r"[0-9a-f-]{36}", req.get("request_id", "")) or req.get("audience") not in ("newsletter", "service"):
+            return 400, {"error": "bad_request_id"}
+        MAILING["active"] = {"id": 7, "created_at": datetime.now(timezone.utc).isoformat(), "finished_at": None, "audience": req["audience"],
+                             "status": "sending", "subject": {"nl": c["nl"]["subject"], "en": c["en"]["subject"]},
+                             "recipients": {"nl": 1000, "en": 234, "total": 1234}, "sent": 300, "failed": 2, "skipped": 1, "cancelled": 0, "left": 931}
+        return 200, {"ok": True, "id": 7, "duplicate": False, "recipients": {"nl": 1000, "en": 234, "total": 1234}}
+    if a == "mailing_cancel":
+        act = MAILING["active"]
+        if not act:
+            return 409, {"error": "not_active"}
+        MAILING["sent"].insert(0, {**act, "status": "cancelled", "cancelled": act["left"], "left": 0})
+        MAILING["active"] = None
+        return 200, {"ok": True, "cancelled": 931}
+    return 200, {}
+
+
 def answer(req):
     a = req.get("action")
     if a == "insights":
         return insights_answer(req)
     if a == "support_counts":
         return 200, {"new": 0, "open": 0, "pending": 0}
+    if str(a).startswith("mailing_"):
+        return mailing_answer(req)
+    if a == "newsletter_status":
+        return 200, {"enabled": False, "next": None, "recipients": {"nl": 1000, "en": 234, "total": 1234}, "editions": [], "welcome": None}
     return 200, {}
+
+
+def mailing_smoke(b, base, errors, calls):
+    """Tab Nieuwsbrief, blok Eigen mailing. Vult errors aan; geeft het aantal geslaagde stappen terug."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    dialogs = []
+    page.on("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'newsletter');
+      try { localStorage.removeItem('bingr.beheer.mailing.draft'); } catch (e) {}
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"eigen mailing: {msg}")
+    page.goto(base + "#newsletter")
+    page.wait_for_selector("#tab-newsletter:not(.hidden)", timeout=10000)
+    page.wait_for_function("document.getElementById('mlCntNews').textContent.includes('1.234')", timeout=10000)
+    check(page.is_enabled("#mlSend"), "Versturen niet beschikbaar bij nieuwsbrief-abonnees")
+    page.click('input[name="mlAudience"][value="service"] + span')
+    check(page.is_visible("#mlWarn"), "geen waarschuwing bij een servicebericht")
+    check(not page.is_enabled("#mlSend"), "servicebericht zonder vinkje toch te versturen")
+    page.check("#mlAck")
+    check(page.is_enabled("#mlSend"), "servicebericht met vinkje niet te versturen")
+    page.click('input[name="mlAudience"][value="newsletter"] + span')
+    check(page.is_hidden("#mlWarn"), "waarschuwing blijft staan bij nieuwsbrief-abonnees")
+    page.fill("#mlSubNl", "Nieuw in Bingr"); page.fill("#mlBodyNl", "# Kop\n\nTekst met **vet**.")
+    page.fill("#mlSubEn", "New in Bingr"); page.fill("#mlBodyEn", "Text")
+    page.click("#mlPrevNl")
+    page.wait_for_selector("#mlView:not(.hidden)", timeout=5000)
+    check("Nieuw in Bingr" in page.inner_text("#mlSubject"), "voorbeeld zonder onderwerp")
+    check(page.evaluate("document.getElementById('mlView').shadowRoot.textContent.includes('BINGR')"), "voorbeeld niet getoond")
+    page.fill("#mlTo", "test@example.com")
+    page.click('#mlTestLang button[data-lang="both"]')
+    page.click("#mlTest")
+    page.wait_for_timeout(300)
+    check(calls.count("mailing_test") == 1, "testmail niet aangevraagd")
+    page.click("#mlSend")
+    page.wait_for_selector("#mlActive:not(.hidden)", timeout=5000)
+    check(any("1.000 krijgen de Nederlandse versie" in d for d in dialogs), "bevestiging zonder aantallen per taal")
+    check("931" in page.inner_text("#mlActive"), "voortgang zonder 'te gaan'")
+    check(page.evaluate("document.querySelector('#mlActive .bar span').style.width") == "25%", "voortgangsbalk niet gezet")
+    check(not page.is_enabled("#mlSend"), "tweede mailing te versturen terwijl er een loopt")
+    page.click("#mlCancel")
+    page.wait_for_selector("#mlActive.hidden", state="attached", timeout=5000)
+    check("geannuleerd" in page.inner_text("#mlList"), "geannuleerde mailing niet in de lijst")
+    page.close()
+    return steps
+
+
+def route_to(r, calls):
+    if r.request.method == "OPTIONS":
+        return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
+    body = json.loads(r.request.post_data or "{}")
+    calls.append(body.get("action"))
+    status, data = answer(body)
+    r.fulfill(status=status, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps(data))
 
 
 def main():
@@ -115,6 +221,7 @@ def main():
         if periods:
             page.click('#insPeriods [data-p="30d"]')
             page.wait_for_timeout(500)
+        ml_steps = mailing_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
     n = calls.count("insights")
@@ -123,6 +230,7 @@ def main():
             print(f"::error::Insights-rooktest: {e[:300]}")
         sys.exit(1)
     print(f"Insights-rooktest OK: {len(srcs)} bronnen, {len(periods)} periodes, {n} insights-aanroepen, geen JS-fouten")
+    print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 
 
 if __name__ == "__main__":
