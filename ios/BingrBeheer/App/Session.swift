@@ -6,7 +6,7 @@ import WidgetKit
 
 /// Onderdelen van het beheer (tabs van web/index.html) plus Instellingen.
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, insights, users, support, messages, newsletter, status, downloads, settings
+    case overview, insights, revenue, users, support, messages, newsletter, status, downloads, settings
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .overview: return "Overzicht"
         case .insights: return "Insights"
+        case .revenue: return "Omzet"
         case .users: return "Gebruikers"
         case .support: return "Support"
         case .messages: return "Pushmeldingen"
@@ -28,6 +29,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .overview: return "square.grid.2x2"
         case .insights: return "chart.xyaxis.line"
+        case .revenue: return "eurosign.circle"
         case .users: return "person.2"
         case .support: return "lifepreserver"
         case .messages: return "bell.badge"
@@ -277,6 +279,7 @@ final class Session {
             case "status": section = .status; return
             case "overview": section = .overview; return
             case "insights": section = .insights; return
+            case "revenue": section = .revenue; return
             case "downloads": section = .downloads; return
             case "newsletter": section = .newsletter; return
             default: break

@@ -63,6 +63,11 @@ struct APIError: Error, LocalizedError {
         "bad_max_streams": "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
         "bad_max_devices": "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.",
         "bad_settings": "Ongeldige instellingen.",
+        "revenue_not_configured": "Omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv draaien).",
+        "bad_rate": "Kies een btw-tarief tussen 0 en 50%.",
+        "billing_unavailable": "Betalen staat uit (geen STRIPE_SECRET_KEY).",
+        "bad_bucket": "Deze resolutie past niet bij de periode.",
+        "bad_mode": "Ongeldige keuze.",
         // build 97
         "invalid_token": "Ongeldige of verlopen link.",
         "unknown_action": "Onbekende actie (werk de app bij; de server is misschien nieuwer).",

@@ -72,6 +72,8 @@
     delete_failed: "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
     bad_plan: "Kies Gratis of Lifetime.", bad_max_streams: "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
     bad_max_devices: "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.", bad_settings: "Ongeldige instellingen.",
+    revenue_not_configured: "Omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv draaien).", bad_rate: "Kies een btw-tarief tussen 0 en 50%.",
+    billing_unavailable: "Betalen staat uit (geen STRIPE_SECRET_KEY).", bad_bucket: "Deze resolutie past niet bij de periode.", bad_mode: "Ongeldige keuze.",
     // build 97
     invalid_token: "Ongeldige of verlopen link.", unknown_action: "Onbekende actie (vernieuw de pagina; het dashboard is misschien bijgewerkt).",
     bad_priority: "Ongeldige prioriteit.", rate_limited: "Te veel verzoeken achter elkaar. Wacht een minuut en probeer het opnieuw.",
@@ -211,7 +213,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: loadNewsletter, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -222,7 +224,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "insights", "users", "support", "messages", "newsletter", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "revenue", "users", "support", "messages", "newsletter", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -805,6 +807,10 @@
   };
   const compact = (v) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}M` : Math.abs(v) >= 1e4 ? `${(v / 1e3).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}K` : v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }));
   const n1 = (v) => (v == null ? "—" : v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }));
+  // bedragen (tab Omzet: series met money = centen) of aantallen
+  const fmtVal = (s, v) => (v == null ? "—" : s?.money ? euro(v) : nf.format(v));
+  const sumVal = (s, v) => (v == null ? "—" : s?.money ? euro(v) : n1(v));
+  const axisVal = (money, v) => (money ? `€ ${compact(v / 100)}` : compact(v));
 
   /** Tekst van de periode boven de grafiek, bv. "Deze week · 12–18 okt" of "Oktober 2026". */
   function insRangeText(d) {
@@ -826,6 +832,7 @@
     if (d.step === "5min") return `${F.time.format(a)}–${F.time.format(b)}`;
     if (d.step === "hour") return `${F.long.format(a)}, ${F.time.format(a)}–${F.time.format(b)}`;
     if (d.step === "day") return F.longY.format(a);
+    if (d.step === "month") { const t = F.monYear.format(a); return t.charAt(0).toUpperCase() + t.slice(1); }
     const e = new Date(Date.parse(d.edges[i + 1]) - 1);
     return `Week ${isoWeek(a)} · ${F.dayMon.format(a)} – ${F.dayMon.format(e)}`;
   }
@@ -841,6 +848,10 @@
   function insTicks(d, width) {
     const n = d.edges.length - 1, room = Math.max(2, Math.floor(width / 58));
     const at = (i) => new Date(d.edges[i]);
+    if (d.step === "month") {
+      const k = 12 <= room ? 1 : 6 <= room ? 2 : 3;
+      return [...Array(n).keys()].filter((i) => i % k === 0).map((i) => [i, F.mon.format(at(i)).replace(".", "")]);
+    }
     if (d.step === "week") {
       // maandnamen bij de week waarin de maand begint
       const mon = (i) => F.mon.format(at(i)).replace(".", ""), k = 12 <= room ? 1 : 6 <= room ? 2 : 3;
@@ -933,7 +944,7 @@
   function insDelta(s, key, period, short = false) {
     const c = s.summary?.change_pct;
     if (c == null) return short ? "" : `<span class="ins-delta flat">geen vergelijking</span>`;
-    const up = c > 0, good = c === 0 ? null : up !== INS_DOWN_GOOD.has(key);
+    const up = c > 0, good = c === 0 ? null : up !== (INS_DOWN_GOOD.has(key) || !!s.down);
     const arrow = c === 0 ? "→" : up ? "▲" : "▼";
     return `<span class="ins-delta ${good === null ? "flat" : good ? "good" : "bad"}" title="Ten opzichte van dezelfde tijd ${esc(INS_PREV[period])}">${arrow} ${c > 0 ? "+" : ""}${n1(c)}%${short ? "" : ` <span class="ins-vs">t.o.v. ${esc(INS_PREV[period])}</span>`}</span>`;
   }
@@ -974,8 +985,8 @@
     sw.innerHTML = d.series.map((s) => {
       const on = s.available && (!off.has(s.key) || !multi), v = mainVal(s), sm = s.summary;
       const inner = `<span class="ins-key c${color(s.key)}" aria-hidden="true"></span><span class="ins-l">${esc(s.label)}${s.agg === "avg" ? " <small>gem./dag</small>" : ""}</span>
-        <span class="ins-v">${!s.available ? '<span class="ins-na">alleen per dag</span>' : v == null ? "—" : esc(n1(v))}</span>
-        ${s.available && sm ? `<span class="ins-d">${insDelta(s, s.key, d.period, !big)}</span>${cfg.big ? `<span class="ins-mm">min ${esc(n1(sm.min))} · max ${esc(n1(sm.max))} · gem. ${esc(n1(sm.avg))}${d.now_index != null && sm.last != null ? ` · nu ${esc(n1(sm.last))}` : ""}</span>` : ""}` : ""}`;
+        <span class="ins-v">${!s.available ? '<span class="ins-na">alleen per dag</span>' : v == null ? "—" : esc(sumVal(s, v))}</span>
+        ${s.available && sm ? `<span class="ins-d">${insDelta(s, s.key, d.period, !big)}</span>${cfg.big ? `<span class="ins-mm">min ${esc(sumVal(s, sm.min))} · max ${esc(sumVal(s, sm.max))} · gem. ${esc(sumVal(s, sm.avg))}${d.now_index != null && sm.last != null ? ` · nu ${esc(sumVal(s, sm.last))}` : ""}</span>` : ""}` : ""}`;
       return multi
         ? `<button type="button" class="ins-s${on ? " on" : ""}" data-s="${esc(s.key)}" aria-pressed="${on}" ${s.available ? "" : "disabled"} title="${on ? "Verbergen" : "Tonen"} in de grafiek">${inner}</button>`
         : `<div class="ins-s on">${inner}</div>`;
@@ -1009,7 +1020,7 @@
   })();
   let inspOffset = 0, inspSeq = 0, inspData = {}, inspCtl = {};
   const inspSave = () => { try { localStorage.setItem(INSP_KEY, JSON.stringify(insp)); } catch { /* privé-venster */ } };
-  const RES_TEXT = { "5min": "per 5 minuten", hour: "per uur", day: "per dag", week: "per week" };
+  const RES_TEXT = { "5min": "per 5 minuten", hour: "per uur", day: "per dag", week: "per week", month: "per maand" };
 
   function renderInsSources() {
     $("insSources").innerHTML = Object.entries(INS_METRICS).map(([k, m]) => `<label class="ins-src-it"><input type="checkbox" value="${k}" ${insp.sources.includes(k) ? "checked" : ""}>
@@ -1127,6 +1138,203 @@
     toast("CSV gedownload (alleen aantallen per tijdvak).");
   }
 
+  // ---- tab Omzet: Lifetime-aankopen via Stripe (actie revenue), zelfde grafieken en bediening als Insights ----
+  // Alleen bedragen (centen) en aantallen per tijdvak; geen gegevens per persoon. Btw volgens Stripe Tax of berekend
+  // (tarief in app_settings.revenue_vat); zie supabase/functions/admin/revenue.ts.
+  const REV_KEY = KEY + ".revenue";
+  const REV_PERIODS = ["day", "week", "month", "year", "7d", "30d"];
+  const REV_BUCKETS = { day: ["hour"], week: ["day", "hour"], "7d": ["day", "hour"], month: ["day"], "30d": ["day"], year: ["month", "week"] };
+  const REV_BUCKET_TAB = { hour: "Per uur", day: "Per dag", week: "Per week", month: "Per maand" };
+  const REV_MONEY = ["gross", "net", "proceeds"], REV_COUNT = ["count", "refund_count"];
+  const REV_MODE_TEXT = { "": "Volgens Stripe-sleutel", live: "Live", test: "Test", all: "Live en test" };
+  const revp = (() => {
+    const def = { period: "month", bucket: "auto", mode: "", kind: "line", off: { money: [], count: [] } };
+    try {
+      const r = JSON.parse(localStorage.getItem(REV_KEY) || "null");
+      if (!isObj(r)) return def;
+      const period = REV_PERIODS.includes(r.period) ? r.period : def.period;
+      return {
+        period, bucket: REV_BUCKETS[period].includes(r.bucket) ? r.bucket : "auto", mode: ["", "live", "test", "all"].includes(r.mode) ? r.mode : "",
+        kind: r.kind === "bar" ? "bar" : "line",
+        off: { money: Array.isArray(r.off?.money) ? REV_MONEY.filter((k) => r.off.money.includes(k)) : [], count: Array.isArray(r.off?.count) ? REV_COUNT.filter((k) => r.off.count.includes(k)) : [] },
+      };
+    } catch { return def; }
+  })();
+  const revSave = () => { try { localStorage.setItem(REV_KEY, JSON.stringify(revp)); } catch { /* privé-venster */ } };
+  let revOffset = 0, revSeq = 0, revData = null, revCtl = {};
+  const revCache = new Map();
+  const revQuery = () => ({ period: revp.period, offset: revOffset, bucket: revp.bucket, ...(revp.mode ? { mode: revp.mode } : {}) });
+  const revCacheKey = () => JSON.stringify(revQuery());
+
+  function renderRevControls() {
+    $("revPeriods").innerHTML = REV_PERIODS.map((p, i) => `${i === 4 ? '<span class="ins-sep" aria-hidden="true"></span>' : ""}<button type="button" role="radio" data-p="${p}" aria-checked="${p === revp.period}" class="${p === revp.period ? "on" : ""}">${INS_PERIOD_TAB[p]}</button>`).join("");
+    $("revPeriods").querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => {
+      if (b.dataset.p === revp.period) return;
+      revp.period = b.dataset.p; revp.bucket = "auto"; revOffset = 0; revSave(); renderRevControls(); loadRevenue();
+      $("revPeriods").querySelector(`[data-p="${revp.period}"]`)?.focus();
+    }));
+    const bs = REV_BUCKETS[revp.period], cur = revp.bucket === "auto" ? bs[0] : revp.bucket;
+    $("revBuckets").classList.toggle("hidden", bs.length < 2);
+    $("revBuckets").innerHTML = bs.length < 2 ? "" : bs.map((b) => `<button type="button" role="radio" data-b="${b}" aria-checked="${b === cur}" class="${b === cur ? "on" : ""}">${REV_BUCKET_TAB[b]}</button>`).join("");
+    $("revBuckets").querySelectorAll("[data-b]").forEach((b) => (b.onclick = () => {
+      if (b.dataset.b === cur) return;
+      revp.bucket = b.dataset.b === bs[0] ? "auto" : b.dataset.b; revSave(); renderRevControls(); loadRevenue();
+      $("revBuckets").querySelector(`[data-b="${b.dataset.b}"]`)?.focus();
+    }));
+    $("revMoney").querySelectorAll("[data-k]").forEach((b) => {
+      const on = b.dataset.k === revp.kind;
+      b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on));
+      b.onclick = () => { if (revp.kind === b.dataset.k) return; revp.kind = b.dataset.k; revSave(); renderRevControls(); if (revData) paintRevenue(revData); };
+    });
+  }
+  function renderRevMode(d) {
+    const sel = $("revMode");
+    sel.innerHTML = Object.entries(REV_MODE_TEXT).map(([k, t]) => {
+      const n = d ? (k === "live" ? d.live_count : k === "test" ? d.test_count : k === "all" ? d.live_count + d.test_count : null) : null;
+      return `<option value="${k}" ${k === revp.mode ? "selected" : ""}>${esc(t)}${k === "" && d ? ` (${d.mode === "all" ? "alles" : d.mode})` : n != null ? ` (${nf.format(n)})` : ""}</option>`;
+    }).join("");
+  }
+  $("revMode").onchange = () => { revp.mode = $("revMode").value; revSave(); revOffset = 0; loadRevenue(); };
+  $("revPrev").onclick = () => { revOffset--; loadRevenue(); };
+  $("revNext").onclick = () => { revOffset = Math.min(0, revOffset + 1); loadRevenue(); if ($("revNext").disabled) $("revPrev").focus(); };
+  $("revNow").onclick = () => { revOffset = 0; loadRevenue(); $("revPrev").focus(); };
+  $("revRefresh").onclick = () => { revCache.clear(); loadRevenue(); };
+  $("revCsv").onclick = () => revDownloadCsv();
+
+  async function loadRevenue() {
+    if (!$("revPeriods").childElementCount) { renderRevControls(); renderRevMode(null); }
+    const seq = ++revSeq, key = revCacheKey();
+    $("revNow").disabled = revOffset === 0; $("revNext").disabled = revOffset === 0;
+    if (!revData) {
+      $("revTiles").innerHTML = ["Deze maand", "Vorige maand", "Dit jaar", "Totaal"].map((l) => `<div class="kpi"><div class="l">${l}</div><div class="v"><span class="skel skel-num"></span></div><div class="h">&nbsp;</div></div>`).join("");
+      ["revMoney", "revCount"].forEach((id) => insSkeleton($(id)));
+    } else ["revMoney", "revCount"].forEach((id) => $(id).querySelector(".ins-chart").classList.add("stale"));
+    try {
+      const d = revCache.get(key) || await call("revenue", revQuery());
+      revCache.set(key, d);
+      if (seq !== revSeq) return;
+      revData = d;
+      paintRevenue(d);
+    } catch (e) {
+      if (e.code === "auth" || seq !== revSeq) return;
+      const msg = e.code === "revenue_not_configured" ? "Omzet nog niet ingericht: draai de workflow Backend in iptv-ios-appletv." : errText(e);
+      $("revTiles").innerHTML = "";
+      $("revMain").classList.add("hidden"); $("revBasis").classList.add("hidden");
+      $("revEmpty").classList.remove("hidden");
+      $("revEmpty").innerHTML = `<h2>Omzet niet beschikbaar</h2><p class="sub">${esc(msg)}</p>`;
+      $("revCsv").disabled = true;
+    }
+  }
+
+  function revTile(label, t, extra = "") {
+    return `<div class="kpi rev-tile"><div class="l">${esc(label)}</div><div class="v">${esc(euro(t.gross))}</div>
+      <div class="h">netto ${esc(euro(t.net))} · opbrengst <b class="${t.proceeds < 0 ? "neg" : ""}">${esc(euro(t.proceeds))}</b></div>
+      <div class="h">${nf.format(t.count)} ${t.count === 1 ? "aankoop" : "aankopen"}${t.refund_count + t.dispute_count ? ` · ${nf.format(t.refund_count + t.dispute_count)} terugbetaald` : ""}${extra}</div></div>`;
+  }
+  function revSub(d, keys) {
+    // InsightsOut-vorm voor insBody/insChart met alleen deze series
+    return { ...d, events: [], series: keys.map((k) => d.series.find((s) => s.key === k)).filter(Boolean) };
+  }
+  function paintRevenue(d) {
+    renderRevMode(d);
+    const T = d.totals;
+    $("revTiles").innerHTML = revTile("Deze maand", T.month) + revTile("Vorige maand", T.prev_month) + revTile("Dit jaar", T.year) + revTile("Totaal", T.all);
+    $("revCsv").disabled = d.empty;
+    if (d.empty) {
+      $("revMain").classList.add("hidden");
+      $("revEmpty").classList.remove("hidden");
+      $("revEmpty").innerHTML = `<div class="ins-empty rev-none"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.6A4 4 0 0 0 9 11.5v1a4 4 0 0 0 6.5 2.9M7.5 11h5M7.5 13h5"/></svg>
+        <h2>Nog geen aankopen</h2><p class="sub">${d.billing.enabled
+          ? `Betalen staat aan (${d.billing.mode === "live" ? "live" : "testmodus"}). Zodra iemand Lifetime koopt op bingr.online/upgrade/, verschijnt de omzet hier.${d.mode !== "all" && d.live_count + d.test_count ? ` Er zijn wel ${d.mode === "live" ? "test" : "live"}aankopen: kies hierboven “Live en test”.` : ""}`
+          : "Betalen staat uit: er is geen STRIPE_SECRET_KEY (GitHub-secret in iptv-ios-appletv, workflow Backend)."}</p></div>`;
+    } else {
+      $("revEmpty").classList.add("hidden"); $("revMain").classList.remove("hidden");
+    }
+    $("revBasis").classList.remove("hidden");
+    renderRevBasis(d);
+    if (d.empty) return;
+    $("revRange").textContent = insRangeText(d);
+    $("revRes").textContent = (RES_TEXT[d.step] || "").replace(/^./, (c) => c.toUpperCase());
+    $("revPrev").disabled = !d.has_prev;
+    $("revCount").querySelector(".ins-card-res").textContent = RES_TEXT[d.step] || "";
+    revCtl = {};
+    const hooks = (k) => ({ onShow: (t) => Object.entries(revCtl).forEach(([m, c]) => { if (m !== k) c.showTime(t); }), onHide: () => Object.entries(revCtl).forEach(([m, c]) => { if (m !== k) c.hide(); }) });
+    const paintMoney = () => insBody($("revMoney"), revSub(d, REV_MONEY), {
+      keys: REV_MONEY, off: revp.off.money, big: true, kind: revp.kind, gid: "rev-money",
+      setOff: (arr) => { revp.off.money = arr; revSave(); revDraws.money = paintMoney(); }, hooks: hooks("money"), onCtl: (c) => { revCtl.money = c; },
+    });
+    const paintCount = () => insBody($("revCount"), revSub(d, REV_COUNT), {
+      keys: REV_COUNT, off: revp.off.count, big: true, kind: "bar", gid: "rev-count",
+      setOff: (arr) => { revp.off.count = arr; revSave(); revDraws.count = paintCount(); }, hooks: hooks("count"), onCtl: (c) => { revCtl.count = c; },
+    });
+    revDraws.money = paintMoney(); revDraws.count = paintCount();
+    renderRevBreak(d);
+    revBars($("revMethods"), d.by_method);
+    revBars($("revCountries"), d.by_country);
+    $("revLive").textContent = `${insRangeText(d)}: bruto ${euro(T.period.gross)}, opbrengst ${euro(T.period.proceeds)}`;
+  }
+  const revDraws = {};
+  window.addEventListener("resize", () => { clearTimeout(revResize); revResize = setTimeout(() => { if (!$("tab-revenue").classList.contains("hidden")) Object.values(revDraws).forEach((f) => f && f()); }, 150); });
+  let revResize;
+
+  function renderRevBreak(d) {
+    const t = d.totals.period, p = d.totals.prev_period;
+    $("revBreakSub").textContent = `${insRangeText(d)} · vorige: ${INS_PREV[d.period]}`;
+    const row = (label, a, b, cls = "", hint = "") => `<tr class="${cls}"><th scope="row">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ""}</th><td>${esc(a)}</td><td>${esc(b)}</td></tr>`;
+    const neg = (v) => (v ? `− ${euro(v)}` : euro(0));
+    $("revBreak").innerHTML = `<table class="rev-table"><thead><tr><th scope="col"><span class="sr">Post</span></th><th scope="col">Deze periode</th><th scope="col">Vorige</th></tr></thead><tbody>
+      ${row("Aankopen", nf.format(t.count), nf.format(p.count))}
+      ${row("Bruto omzet", euro(t.gross), euro(p.gross), "", "incl. btw")}
+      ${row("Btw", neg(t.vat), neg(p.vat))}
+      ${row("Netto omzet", euro(t.net), euro(p.net), "sum", "excl. btw")}
+      ${row("Stripe-kosten", neg(t.fees), neg(p.fees), "", t.missing_fees ? `${nf.format(t.missing_fees)} nog onbekend` : "")}
+      ${row("Terugbetaald / chargebacks", neg(t.refunds_net), neg(p.refunds_net), "", `excl. btw; incl. btw ${euro(t.refunds)}`)}
+      ${row("Netto opbrengst", euro(t.proceeds), euro(p.proceeds), `total${t.proceeds < 0 ? " neg" : ""}`)}</tbody></table>`;
+  }
+  function revBars(el, rows) {
+    if (!rows.length) { el.innerHTML = '<p class="empty">Geen aankopen in deze periode.</p>'; return; }
+    const max = Math.max(1, ...rows.map((r) => r.gross));
+    el.innerHTML = rows.slice(0, 10).map((r) => `<div class="hbar"><span class="n">${esc(r.label)}</span><span class="t"><span data-w="${Math.max(2, (r.gross / max) * 100).toFixed(1)}"></span></span><span class="c">${esc(euro(r.gross))}<small>${nf.format(r.count)}×</small></span></div>`).join("");
+    el.querySelectorAll("span[data-w]").forEach((b) => { b.style.width = `${b.dataset.w}%`; });
+  }
+  function renderRevBasis(d) {
+    const missing = d.totals.all.missing_fees;
+    $("revBasis").innerHTML = `<div class="rev-basis-in"><div><b>${esc(d.vat.text)}.</b> <span class="sub">${esc(d.vat.note)}</span>
+        <p class="sub">Netto opbrengst = netto omzet − Stripe-kosten − terugbetalingen en chargebacks (excl. btw). Aankopen tellen op de betaaldatum, terugbetalingen op hun eigen datum.</p></div>
+      <div class="rev-basis-act">${d.vat.source !== "stripe_tax" ? `<form id="revVatForm" class="rev-vat"><label for="revVat">Btw-tarief</label><input id="revVat" type="number" min="0" max="50" step="0.01" value="${esc(String(d.vat.rate))}" inputmode="decimal"><span>%</span><button class="btn ghost small" type="submit">Opslaan</button></form>` : ""}
+      ${missing ? `<p class="sub rev-missing">${nf.format(missing)} ${missing === 1 ? "aankoop" : "aankopen"} zonder Stripe-kosten.</p>${d.billing.enabled ? '<button id="revBackfill" class="btn ghost small" type="button">Kosten ophalen bij Stripe</button>' : ""}` : ""}</div></div>`;
+    const f = $("revVatForm");
+    if (f) f.onsubmit = async (e) => {
+      e.preventDefault();
+      const rate = Number(String($("revVat").value).replace(",", "."));
+      try { const r = await call("revenue_vat_set", { rate }); toast(`Btw-tarief ${n1(r.rate)}% opgeslagen.`); revCache.clear(); loadRevenue(); }
+      catch (err) { if (err.code !== "auth") toast(err.code === "bad_rate" ? "Kies een tarief tussen 0 en 50%." : errText(err), true); }
+    };
+    const b = $("revBackfill");
+    if (b) b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await call("revenue_backfill");
+        toast(r.updated ? `Stripe-kosten van ${nf.format(r.updated)} ${r.updated === 1 ? "aankoop" : "aankopen"} opgehaald${r.remaining ? `, nog ${nf.format(r.remaining)}` : ""}.` : "Nog geen nieuwe kosten bij Stripe (soms pas na een paar dagen).");
+        revCache.clear(); loadRevenue();
+      } catch (err) { if (err.code !== "auth") toast(err.code === "billing_unavailable" ? "Geen STRIPE_SECRET_KEY: kosten ophalen kan niet." : errText(err), true); b.disabled = false; }
+    };
+  }
+  // CSV: per aankoop en terugbetaling alleen datum, soort, bedragen, methode en land (de functie maakt het bestand)
+  async function revDownloadCsv() {
+    $("revCsv").disabled = true;
+    try {
+      const r = await call("revenue_export", revQuery());
+      const blob = new Blob([r.csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = r.file_name || "bingr-omzet.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast(`CSV gedownload (${nf.format(r.rows)} regels, zonder persoonsgegevens).`);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { $("revCsv").disabled = !revData || revData.empty; }
+  }
+
   // monotone kubische curve (Fritsch–Carlson, zoals d3.curveMonotoneX) door punten [x, y]
   function monoPath(pts) {
     const n = pts.length;
@@ -1145,19 +1353,20 @@
   // hooks: {onShow(tijd), onHide()} voor een gedeelde crosshair (tab Insights); geeft {showTime(tijd), hide()} terug
   function insChart(el, d, shown, kind, color, gid, hooks = {}) {
     const n = d.edges.length - 1, none = { showTime() {}, hide() {} };
-    const total = shown.reduce((a, s) => a + (s.summary ? s.summary.total : 0), 0);
-    if (!shown.length || total === 0) {
+    if (!shown.length || !shown.some((s) => s.values.some((v) => v))) {
       el.innerHTML = `<div class="ins-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 15l3-4 3 2 4-6"/></svg><p>Geen gegevens in deze periode</p>${d.has_prev ? '<p class="sub">Blader met ‹ naar een eerdere periode.</p>' : ""}</div>`;
       return none;
     }
     const W = Math.max(260, Math.round(el.clientWidth || 560)), H = Math.max(120, Math.round(el.clientHeight || 200));
     const yw = 34, L = yw, R = 6, T = 10, B = 24, iw = W - L - R, ih = H - T - B, bw = iw / n;
-    const max = Math.max(1, ...shown.flatMap((s) => s.values.filter((v) => v != null)));
-    const step = niceStep(max), top = Math.ceil(max / step) * step;
-    const y = (v) => T + ih - (v / top) * ih, cx = (i) => L + (i + 0.5) * bw;
+    // ook negatieve waarden (tab Omzet: opbrengst in een tijdvak met alleen een terugbetaling); bedragen in centen
+    const vals = shown.flatMap((s) => s.values.filter((v) => v != null)), money = shown.every((s) => s.money);
+    const max = Math.max(1, ...vals), lo = Math.min(0, ...vals);
+    const step = niceStep(max - lo), top = Math.ceil(max / step) * step, bot = lo < 0 ? -Math.ceil(-lo / step) * step : 0;
+    const y = (v) => T + ih - ((v - bot) / (top - bot)) * ih, cx = (i) => L + (i + 0.5) * bw, y0 = y(0);
     let svg = `<defs>${shown.map((s) => `<linearGradient id="${gid}-g${color(s.key)}" class="ins-grad c${color(s.key)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0"/><stop offset="1"/></linearGradient>`).join("")}</defs>`;
     svg += '<g class="ins-grid">';
-    for (let v = 0; v <= top + 1e-9; v += step) svg += `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"${v === 0 ? ' class="base"' : ""}/><text x="${L - 8}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end">${compact(v)}</text>`;
+    for (let v = bot; v <= top + 1e-9; v += step) svg += `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"${Math.abs(v) < 1e-9 ? ' class="base"' : ""}/><text x="${L - 8}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end">${esc(axisVal(money, v))}</text>`;
     svg += "</g><g class=\"ins-x\">";
     for (const [i, t] of insTicks(d, iw)) svg += `<text x="${(kind === "bar" ? cx(i) : cx(i)).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(t)}</text>`;
     svg += "</g>";
@@ -1183,9 +1392,10 @@
       svg += '<g class="ins-bars">';
       for (let i = 0; i < n; i++) {
         shown.forEach((s, j) => {
-          const v = s.values[i]; if (v == null || v <= 0) return;
-          const x = cx(i) - gw / 2 + j * (bwi + 2), h = Math.max(2, (v / top) * ih), r = Math.min(4, bwi / 2, h);
-          svg += `<path data-i="${i}" class="ins-bar c${color(s.key)}" d="M${x.toFixed(1)},${T + ih} V${(T + ih - h + r).toFixed(1)} Q${x.toFixed(1)},${(T + ih - h).toFixed(1)} ${(x + r).toFixed(1)},${(T + ih - h).toFixed(1)} H${(x + bwi - r).toFixed(1)} Q${(x + bwi).toFixed(1)},${(T + ih - h).toFixed(1)} ${(x + bwi).toFixed(1)},${(T + ih - h + r).toFixed(1)} V${T + ih} Z"/>`;
+          const v = s.values[i]; if (v == null || v === 0) return;
+          const x = cx(i) - gw / 2 + j * (bwi + 2), h = Math.max(2, (Math.abs(v) / (top - bot)) * ih), r = Math.min(4, bwi / 2, h), sg = v < 0 ? -1 : 1;
+          const tip = y0 - sg * h, rr = sg * r; // afgeronde kant van de staaf weg van de nullijn
+          svg += `<path data-i="${i}" class="ins-bar c${color(s.key)}" d="M${x.toFixed(1)},${y0.toFixed(1)} V${(tip + rr).toFixed(1)} Q${x.toFixed(1)},${tip.toFixed(1)} ${(x + r).toFixed(1)},${tip.toFixed(1)} H${(x + bwi - r).toFixed(1)} Q${(x + bwi).toFixed(1)},${tip.toFixed(1)} ${(x + bwi).toFixed(1)},${(tip + rr).toFixed(1)} V${y0.toFixed(1)} Z"/>`;
         });
       }
       svg += "</g>";
@@ -1197,7 +1407,7 @@
         if (cur.length) segs.push(cur);
         for (const sg of segs) {
           const line = monoPath(sg);
-          svg += `<path class="ins-area" fill="url(#${gid}-g${color(s.key)})" d="${line}L${sg[sg.length - 1][0].toFixed(1)},${T + ih}L${sg[0][0].toFixed(1)},${T + ih}Z"/>`;
+          svg += `<path class="ins-area" fill="url(#${gid}-g${color(s.key)})" d="${line}L${sg[sg.length - 1][0].toFixed(1)},${y0.toFixed(1)}L${sg[0][0].toFixed(1)},${y0.toFixed(1)}Z"/>`;
           svg += `<path class="ins-line c${color(s.key)}" d="${line}"/>`;
           if (sg.length === 1) svg += `<circle class="ins-dot c${color(s.key)}" cx="${sg[0][0]}" cy="${sg[0][1]}" r="3"/>`;
         }
@@ -1207,7 +1417,7 @@
     svg += `<rect class="ins-hit" x="${L}" y="${T}" width="${iw}" height="${ih}" tabindex="0" role="slider" aria-label="Waarden per tijdvak (pijltjestoetsen)" aria-valuemin="0" aria-valuemax="${n - 1}" aria-valuenow="0"/>`;
     // tabel voor schermlezers (zelfde waarden als de grafiek)
     const table = `<div class="sr"><table><caption>${esc(insRangeText(d))}</caption><thead><tr><th>Tijd</th>${shown.map((s) => `<th>${esc(s.label)}</th>`).join("")}</tr></thead><tbody>${
-      [...Array(n).keys()].filter((i) => shown.some((s) => s.values[i] != null)).map((i) => `<tr><td>${esc(insBucketText(d, i))}</td>${shown.map((s) => `<td>${s.values[i] == null ? "—" : nf.format(s.values[i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      [...Array(n).keys()].filter((i) => shown.some((s) => s.values[i] != null)).map((i) => `<tr><td>${esc(insBucketText(d, i))}</td>${shown.map((s) => `<td>${esc(fmtVal(s, s.values[i]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">${svg}</svg><div class="tip ins-tip hidden" role="status"></div>${table}`;
     const root = el.querySelector("svg"), hit = root.querySelector(".ins-hit"), cross = root.querySelector(".ins-cross"), tip = el.querySelector(".ins-tip");
     const xl = cross.querySelector("line");
@@ -1224,7 +1434,7 @@
       });
       root.querySelectorAll(".ins-bar").forEach((b) => b.classList.toggle("dim", Number(b.dataset.i) !== i));
       const here = evs.filter((e) => e.a < E[i + 1] && e.b > E[i]);
-      tip.innerHTML = `<div class="ins-tt">${esc(insBucketText(d, i))}</div>${shown.map((s) => `<div class="ins-tr"><span class="ins-tk c${color(s.key)}"></span><b>${s.values[i] == null ? "—" : esc(nf.format(s.values[i]))}</b><span>${esc(s.label)}</span></div>`).join("")}${
+      tip.innerHTML = `<div class="ins-tt">${esc(insBucketText(d, i))}</div>${shown.map((s) => `<div class="ins-tr"><span class="ins-tk c${color(s.key)}"></span><b>${esc(fmtVal(s, s.values[i]))}</b><span>${esc(s.label)}</span></div>`).join("")}${
         here.slice(0, 3).map((e) => `<div class="ins-te ${e.kind}"><span class="ins-ek" aria-hidden="true"></span>${e.kind === "maintenance" ? "Onderhoud" : "Storing"}: ${esc(e.name || "onbekend")}</div>`).join("")}`;
       tip.classList.remove("hidden");
       const sx = root.getBoundingClientRect().width / W || 1, tw = tip.offsetWidth, cw = el.clientWidth;

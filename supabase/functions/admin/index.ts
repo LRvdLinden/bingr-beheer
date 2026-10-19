@@ -28,6 +28,18 @@
 //                       offset?: 0, -1, …, events?: bool} -> {step, edges:[…], now_index, has_prev, has_next, series:[{key, label,
 //                       agg, available, values:[n|null], prev_values, summary}], events?:[{kind, name, from, to}]}
 //                       (alleen aantallen per tijdvak, plus storingen/onderhoud van de statuspagina; insights.ts)
+//   revenue             {token, period: day|week|month|year|7d|30d, offset?: 0, -1, …, bucket?: auto|hour|day|week|month,
+//                       mode?: live|test|all (standaard de modus van STRIPE_SECRET_KEY, zonder sleutel all)}
+//                       -> {step, edges, now_index, has_prev, has_next, series:[{key: gross|net|proceeds|vat|fees|refunds|count|
+//                       refund_count, label, money, values, prev_values, summary}], totals:{period, prev_period, month, prev_month,
+//                       year, all: {count, gross, vat, net, fees, refunds, proceeds, …}}, by_method, by_country, vat:{source, rate,
+//                       text, note}, billing:{enabled, mode}, live_count, test_count, empty}   (tab Omzet; alleen aantallen en
+//                       bedragen in centen, nooit gegevens per persoon; bingr_admin_revenue in iptv-ios-appletv; revenue.ts)
+//   revenue_export      {token, period, offset?, bucket?, mode?} -> {csv, file_name, rows}  (per aankoop/terugbetaling alleen datum,
+//                       soort, bedrag, btw, kosten, netto, methode en land; geen e-mail, naam, account of Stripe-id)
+//   revenue_backfill    {token} -> {checked, updated, remaining}  (ontbrekende Stripe-kosten ophalen met STRIPE_SECRET_KEY, max. 20
+//                       per keer; 503 billing_unavailable zonder sleutel)
+//   revenue_vat_set     {token, rate: 0–50} -> {ok, rate}  (app_settings.revenue_vat: btw-tarief zonder Stripe Tax, standaard 21)
 //   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
 //                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade;
@@ -151,6 +163,10 @@ import { cleanName } from "./names.ts";
 import { serversFromRow } from "./servers.ts";
 import { build as buildInsights, parseQuery as parseInsights, plan as planInsights } from "./insights.ts";
 import {
+  buildRevenue, cleanRate, cleanRows, defaultMode, detailsFromPaymentIntent, detailsPatch, isPaymentIntent, parseRevenue, revenueCsv,
+  revenuePlan, tileRanges,
+} from "./revenue.ts";
+import {
   buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, PRESSKIT_PUBLIC_URL, PRESSKIT_STATS,
   presskitStatsView, releaseKey, releaseKeys, releaseOf, releasePushView, signBuildToken,
 } from "./builds.ts";
@@ -194,6 +210,23 @@ const linkView = (v: unknown) => {
   const o = v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
   return Object.fromEntries(LINK_KEYS.map((k) => [k, typeof o[k] === "boolean" ? o[k] : DEFAULT_LINK[k]]));
 };
+
+// ---- omzet (tab Omzet): Stripe alleen voor revenue_backfill; sleutel nooit in een log of foutmelding ----
+const stripeKey = () => { const k = env("STRIPE_SECRET_KEY").trim(); return /^(sk|rk)_(test|live)_[A-Za-z0-9]+$/.test(k) ? k : ""; };
+const stripeTaxOn = () => /^(1|true|yes|on|ja)$/i.test(env("STRIPE_AUTOMATIC_TAX").trim());
+async function stripeGet(key: string, path: string, params: [string, string][]): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const qs = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/${path}${qs ? `?${qs}` : ""}`, {
+      headers: { Authorization: `Bearer ${key}`, "Stripe-Version": "2025-03-31.basil" }, signal: ctl.signal,
+    });
+    return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) as Record<string, unknown> };
+  } catch (e) {
+    // nooit de URL (betaal-id) of de headers (sleutel) in de fout
+    throw new Error(`stripe_unreachable ${e instanceof Error ? e.name : ""}`.trim());
+  } finally { clearTimeout(timer); }
+}
 
 // ---- downloads (tab Downloads): builds/manifest.json op de server van beheer.bingr.online, alleen via dl.php ----
 // De sleutel (BINGR_BUILDS_KEY) zet de workflow Builds; zonder sleutel is de tab "nog niet ingericht". Nooit de sleutel,
@@ -744,6 +777,62 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       if (ev?.error) console.error("admin", "insights events", ev.error.message);
       return json(buildInsights(p, data, now, ev ? (ev.error ? [] : ev.data) : undefined));
+    }
+    case "revenue": case "revenue_export": {
+      // tab Omzet: bedragen per tijdvak en totalen, nooit gegevens per persoon (revenue.ts)
+      const q = parseRevenue(body);
+      if ("error" in q) return json({ error: q.error }, 400);
+      const now = Date.now(), p = revenuePlan(q, now), key = stripeKey();
+      const mode = q.mode ?? defaultMode(key);
+      const iso = (t: number) => new Date(t).toISOString();
+      if (action === "revenue_export") {
+        const { data, error } = await admin.rpc("bingr_admin_revenue_rows", { p_from: iso(p.cur[0]), p_to: iso(p.cur[p.cur.length - 1]), p_mode: mode });
+        if (error?.code === "PGRST202") return json({ error: "revenue_not_configured" }, 503);
+        if (error) throw new Error(error.message);
+        const rows = cleanRows(data);
+        const day = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Amsterdam" }).format(new Date(p.cur[0]));
+        await audit("revenue_export", ip, null, { period: q.period, offset: q.offset, mode, rows: rows.length });
+        return json({ csv: revenueCsv(rows), file_name: `bingr-omzet-${q.period}-${day}${mode === "all" ? "" : "-" + mode}.csv`, rows: rows.length });
+      }
+      const { data, error } = await admin.rpc("bingr_admin_revenue", { p_edges: p.edges.map(iso), p_mode: mode, p_ranges: tileRanges(p, now) });
+      // schema nog niet bijgewerkt (workflow Backend in iptv-ios-appletv)
+      if (error?.code === "PGRST202") return json({ error: "revenue_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      if (data === null) return json({ error: "bad_period" }, 400);
+      return json(buildRevenue(p, data, now, {
+        mode, stripeTax: stripeTaxOn(), billing: { enabled: !!key, mode: key ? (/_live_/.test(key) ? "live" : "test") : null },
+      }));
+    }
+    case "revenue_backfill": {
+      const key = stripeKey();
+      if (!key) return json({ error: "billing_unavailable" }, 503);
+      const sel = () => admin.from("billing_purchases").select("id,payment_intent", { count: "exact" }).is("fee", null)
+        .in("status", ["paid", "refunded", "disputed"]).not("payment_intent", "is", null);
+      const { data, error } = await sel().order("paid_at", { ascending: false }).limit(20);
+      if (error) throw new Error(error.message);
+      let updated = 0, checked = 0;
+      for (const r of (data ?? []) as { id: number; payment_intent: string }[]) {
+        if (!isPaymentIntent(r.payment_intent)) continue;
+        checked++;
+        const res = await stripeGet(key, `payment_intents/${r.payment_intent}`, [["expand[]", "latest_charge.balance_transaction"]]);
+        if (!res.ok) { console.error("admin", "revenue_backfill stripe", res.status); continue; }
+        const d = detailsFromPaymentIntent(res.body);
+        if (!d) continue;
+        const { error: ue } = await admin.from("billing_purchases").update(detailsPatch(d, new Date().toISOString())).eq("id", r.id);
+        if (ue) throw new Error(ue.message);
+        if (d.fee !== null) updated++;
+      }
+      const { count } = await sel().limit(1);
+      await audit("revenue_backfill", ip, null, { checked, updated, remaining: count ?? null });
+      return json({ checked, updated, remaining: count ?? 0 });
+    }
+    case "revenue_vat_set": {
+      const rate = cleanRate(body.rate);
+      if (rate === null) return json({ error: "bad_rate" }, 400);
+      const { error } = await admin.from("app_settings").upsert({ key: "revenue_vat", value: { rate }, updated_at: new Date().toISOString() });
+      if (error) throw new Error(error.message);
+      await audit("revenue_vat_set", ip, null, { rate });
+      return json({ ok: true, rate });
     }
     case "users": {
       const size = Math.min(Math.max(Number(body.page_size ?? 25) || 25, 1), 50);
