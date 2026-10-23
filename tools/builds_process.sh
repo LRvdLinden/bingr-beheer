@@ -201,6 +201,11 @@ PY
 }
 
 builds_finish(){
+  # Beheer-app: notities (nieuwste en oudere builds) uit de interne changelog ios/changelog.json, ook voor pakketten
+  # die al op de server staan (bv. met de oude uitpak-uitleg). Niet de openbare Bingr-changelog.
+  if [ -f ios/changelog.json ] && python3 tools/beheer_notes.py --manifest "$BW/srv/manifest.json"; then
+    BUILDS_CHANGED=1; echo "::notice::beheer: notities bijgewerkt uit ios/changelog.json."
+  fi
   if [ "${BUILDS_CHANGED:-0}" = 1 ]; then
     srv_put "$BW/srv/manifest.json" manifest.json 600 || { echo "::error::Manifest niet op de server gezet."; return 1; }
   fi

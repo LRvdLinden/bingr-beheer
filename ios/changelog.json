@@ -1,0 +1,109 @@
+{
+ "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
+ "builds": [
+  {
+   "build": 29,
+   "version": "1.0.0",
+   "date": "2026-10-23",
+   "items": [
+    {"type": "new", "nl": "Eigen interne changelog voor de Beheer-app: bij Downloads staat per build wat er nieuw, verbeterd en opgelost is"},
+    {"type": "improved", "nl": "Notities in Downloads netjes opgemaakt met kopjes en opsommingen (ook bij Bingr, Android en de andere platforms)"},
+    {"type": "improved", "nl": "Geen vaste uitpak-uitleg meer bij het Xcode-project van de Beheer-app"}
+   ]
+  },
+  {
+   "build": 28,
+   "version": "1.0.0",
+   "date": "2026-10-23",
+   "items": [
+    {"type": "new", "nl": "Downloads: Bingr voor Windows (installer .exe), alleen via een kortgeldige downloadlink"},
+    {"type": "improved", "nl": "Support-inbox: duidelijke labels voor de importresultaten en het aantal mails dat nog wacht"}
+   ]
+  },
+  {
+   "build": 27,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "new", "nl": "Nieuwsbrief: eigen mailing opstellen en versturen, in het Nederlands en Engels, met voorbeeld, testmail, doelgroep, voortgang en annuleren"},
+    {"type": "improved", "nl": "Accountmails worden altijd verstuurd met de afzendernaam \"Bingr Support\""},
+    {"type": "improved", "nl": "Accountmails (verwijderd, geblokkeerd, opgeheven) zijn te testen met voorbeeldgegevens, zonder een account aan te raken"},
+    {"type": "fixed", "nl": "Tab Insights werkt weer: bronnen, periodes en grafieken bleven leeg door een ontbrekend label voor Aankopen"}
+   ]
+  },
+  {
+   "build": 26,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "new", "nl": "Downloads: Android App Bundle (.aab) voor Google Play, alleen via een kortgeldige downloadlink"}
+   ]
+  },
+  {
+   "build": 25,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "improved", "nl": "Overzicht: geweigerde registraties ook geteld per honeypot en als te snel ingevuld"}
+   ]
+  },
+  {
+   "build": 24,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "new", "nl": "Gebruikersdetails: een onbevestigd e-mailadres met de hand bevestigen of de bevestigingsmail opnieuw sturen"}
+   ]
+  },
+  {
+   "build": 23,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "improved", "nl": "Account verwijderen: aankopen blijven zonder koppeling aan het account bewaard (bewaarplicht), met uitleg in de bevestiging en de mail"}
+   ]
+  },
+  {
+   "build": 22,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "new", "nl": "Tab Omzet: bruto, btw, netto, Stripe-kosten, terugbetalingen en opbrengst per periode, met grafieken, verdeling per betaalmethode en land, en CSV-export"}
+   ]
+  },
+  {
+   "build": 21,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "new", "nl": "Overzicht: geweigerde registraties per reden (limiet, wegwerpadres, naam) en het aantal verwijderde onbevestigde accounts"}
+   ]
+  },
+  {
+   "build": 20,
+   "version": "1.0.0",
+   "date": "2026-10-19",
+   "items": [
+    {"type": "new", "nl": "Aankopen via Stripe: datum en bedrag bij de gebruiker, aankopen en omzet in het overzicht"},
+    {"type": "new", "nl": "Insights: nieuwe grafiek Aankopen"}
+   ]
+  },
+  {
+   "build": 19,
+   "version": "1.0.0",
+   "date": "2026-10-18",
+   "items": [
+    {"type": "new", "nl": "Gebruikersdetails: servers van een account (alleen het adres van Xtream-bronnen, met naam en welke actief is)"}
+   ]
+  },
+  {
+   "build": 18,
+   "version": "1.0.0",
+   "date": "2026-10-18",
+   "items": [
+    {"type": "new", "nl": "Downloads: kaart PressKit met de openbare download en een downloadteller"},
+    {"type": "improved", "nl": "Kop van het dashboard met alleen het logo en het hamburgermenu"}
+   ]
+  }
+ ]
+}

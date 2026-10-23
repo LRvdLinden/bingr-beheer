@@ -106,11 +106,8 @@ struct DownloadsView: View {
                 if let notes = b.notes {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Notities").font(.caption).foregroundStyle(Color.textDim)
-                        // als gewone tekst (geen Markdown of HTML)
-                        Text(verbatim: notes)
-                            .font(.subheadline)
-                            .foregroundStyle(Color(hex: 0xE6E6E6))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // kopjes (Nieuw / Verbeterd / Opgelost) en opsommingen; geen HTML of links
+                        BuildNotesView(text: notes)
                             .padding(12)
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.surface2))
                     }

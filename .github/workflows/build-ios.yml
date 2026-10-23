@@ -10,7 +10,7 @@ name: Beheer-app
 on:
   push:
     branches: [main]
-    paths: ['ios/**', '.github/workflows/build-ios.yml']
+    paths: ['ios/**', '.github/workflows/build-ios.yml', 'tools/beheer_notes.py']
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+        with:
+          # volledige geschiedenis: terugval voor de notities (commitregels sinds de vorige BingrBeheer-build)
+          fetch-depth: 0
 
       - name: Xcode-versie kiezen
         run: |
@@ -142,15 +145,11 @@ jobs:
           Z="$RUNNER_TEMP/Bingr-Beheer-$V-build$B-Xcode.zip"
           # ios/ met het gegenereerde BingrBeheer.xcodeproj (zonder build-mappen)
           zip -qr "$Z" ios -x 'ios/build/*' 'ios/DerivedData/*' '*.DS_Store' 'ios/*.xcodeproj/xcuserdata/*' 'ios/*.xcodeproj/project.xcworkspace/xcuserdata/*'
+          # notities voor Downloads: wat er in deze build nieuw, verbeterd en opgelost is, uit de interne changelog
+          # ios/changelog.json (niet de openbare Bingr-changelog); zonder item de commitregels sinds de vorige build
           N="$RUNNER_TEMP/notes.md"
-          {
-            echo "BingrBeheer $V (build $B): Xcode-project voor iOS/iPadOS 17+ en macOS 14+ (Mac Catalyst)."
-            echo
-            echo "Uitpakken, \`ios/BingrBeheer.xcodeproj\` openen, bij Signing & Capabilities je Team kiezen en op je iPhone/iPad draaien,"
-            echo "of als bestemming *My Mac (Mac Catalyst)* / *Any Mac (Mac Catalyst)* kiezen voor de Mac-app."
-            echo
-            echo "Commit $(echo $GITHUB_SHA | cut -c1-7)."
-          } > "$N"
+          python3 tools/beheer_notes.py "$B" --fallback > "$N"
+          grep -q '^\*\*' "$N" || echo "::warning::Geen item voor build $B in ios/changelog.json en geen commitregels: notities leeg."
           # builds.pub.pem van de nieuwste main (de workflow Builds kan hem net vernieuwd hebben)
           git fetch -q origin main && git checkout -q origin/main -- builds.pub.pem 2>/dev/null || true
           tools/seal_build.sh beheer "$Z" "$V" "$B" "$N"

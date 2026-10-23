@@ -1956,6 +1956,30 @@
     }
     return `<button class="btn small${compact ? " ghost" : ""}" type="button" data-push-p="${esc(p)}" data-push-f="${esc(b.file)}" data-push-b="${esc(b.build)}">Pushmelding versturen</button>`;
   }
+  // notities van een build (Bingr-changelog of de interne changelog van de Beheer-app, ios/changelog.json) als nette
+  // opmaak: "### kop", "**Nieuw**" op een eigen regel = kopje, "- punt" = opsomming, "_datum_" = grijs, verder alinea's;
+  // binnen een regel **vet** en `code`. Alles eerst ge-escaped; geen inline styles (CSP).
+  function notesInline(t) {
+    return esc(t).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+  function notesHtml(txt) {
+    const out = [];
+    let list = null;
+    const flush = () => { if (list) { out.push(`<ul>${list.join("")}</ul>`); list = null; } };
+    for (const raw of String(txt).split(/\r?\n/)) {
+      const line = raw.trim();
+      let m;
+      if (!line) { flush(); continue; }
+      if ((m = line.match(/^[-*•]\s+(.*)$/))) { (list ||= []).push(`<li>${notesInline(m[1])}</li>`); continue; }
+      flush();
+      if ((m = line.match(/^#{1,6}\s+(.*)$/))) out.push(`<h4 class="bld-notes-h">${notesInline(m[1])}</h4>`);
+      else if ((m = line.match(/^\*\*([^*]+)\*\*:?$/))) out.push(`<h5 class="bld-notes-k bld-notes-k-${({ Nieuw: "new", Verbeterd: "improved", Opgelost: "fixed" })[m[1].trim()] || "other"}">${esc(m[1].trim())}</h5>`);
+      else if ((m = line.match(/^_([^_]+)_$/))) out.push(`<p class="sub">${esc(m[1])}</p>`);
+      else out.push(`<p>${notesInline(line)}</p>`);
+    }
+    flush();
+    return out.join("");
+  }
   function dlCard([p, title, hint], b) {
     if (!b) {
       return `<div class="panel bld-card"><div class="bld-head"><div><h2>${esc(title)}</h2><p class="sub">${esc(hint)}</p></div></div>
@@ -1972,7 +1996,7 @@
         <dt>Bestand</dt><dd class="brk">${esc(b.file)}</dd>
         ${b.sha256 ? `<dt>SHA-256</dt><dd class="brk bld-hash">${esc(b.sha256)}</dd>` : ""}
       </dl>
-      ${typeof b.notes === "string" && b.notes.trim() ? `<div class="bld-notes"><div class="sub">Notities</div><div class="bld-notes-body">${esc(b.notes.trim())}</div></div>` : ""}
+      ${typeof b.notes === "string" && b.notes.trim() ? `<div class="bld-notes"><div class="sub">Notities</div><div class="bld-notes-body">${notesHtml(b.notes.trim())}</div></div>` : ""}
       <div class="form-btns">${dlButton(p, b, false)}${dlPushInfo(p, b, false)}</div>
       ${DL_PUSH[p] ? `<p class="sub bld-push-hint">Pushmelding pas versturen als deze build in de stores staat. Alleen apparaten met een oudere build krijgen hem, één keer per build.</p>` : ""}
       ${hist.length ? `<div class="bld-hist"><div class="sub">Oudere builds</div><ul>${hist.map((h) => `<li><span><b>${esc(dlBuild(h))}</b>

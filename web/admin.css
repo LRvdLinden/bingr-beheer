@@ -515,7 +515,19 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .bld-card .dl{margin:16px 0 0}
 .bld-hash{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--sec)}
 .bld-notes{margin-top:16px}
-.bld-notes-body{margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55;color:#e6e6e6;max-height:240px;overflow:auto;background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:12px 14px}
+.bld-notes-body{margin-top:6px;word-break:break-word;font-size:14px;line-height:1.55;color:#e6e6e6;max-height:320px;overflow:auto;background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:12px 14px}
+.bld-notes-body>:first-child{margin-top:0}
+.bld-notes-body>:last-child{margin-bottom:0}
+.bld-notes-body p{margin:6px 0}
+.bld-notes-body ul{margin:4px 0 10px;padding-left:20px}
+.bld-notes-body li{margin:3px 0}
+.bld-notes-body li::marker{color:var(--sec)}
+.bld-notes-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.bld-notes-h{margin:14px 0 4px;font-size:14px;font-weight:700;color:#fff}
+.bld-notes-k{margin:12px 0 2px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--sec)}
+.bld-notes-k-new{color:#46d369}
+.bld-notes-k-improved{color:#5aa9ff}
+.bld-notes-k-fixed{color:#f5a524}
 .bld-card .form-btns{margin-top:18px}
 .bld-hist{margin-top:20px;border-top:1px solid var(--line-soft);padding-top:14px}
 .bld-hist ul{list-style:none;margin:6px 0 0;padding:0}
