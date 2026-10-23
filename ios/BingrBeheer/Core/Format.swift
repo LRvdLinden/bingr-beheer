@@ -139,7 +139,8 @@ enum Labels {
             "rejected:auth_failed": ("Geweigerd: SPF/DMARC afgekeurd", .bad), "rejected:rate_limited": ("Geweigerd: limiet", .bad),
             "rejected:empty": ("Geweigerd: geen tekst", .bad), "rejected:no_sender": ("Geweigerd: geen afzender", .bad),
             "rejected:bad_email": ("Geweigerd: ongeldig adres", .bad), "error": ("Fout (volgende ronde opnieuw)", .bad),
-            "error:skipped": ("Fout, overgeslagen", .bad),
+            "error:skipped": ("Fout, overgeslagen", .bad), "error:retry": ("Fout (volgende ronde opnieuw)", .bad),
+            "ignored:not_ci": ("Testmap: geen testadres", .neutral), "rejected:agent_unverified": ("Geweigerd: support zonder DKIM", .bad),
         ]
         return map[k] ?? (k, .neutral)
     }
