@@ -60,6 +60,8 @@ jobs:
       IMPORT_REPO: ${{ inputs.import_repo || 'false' }}
       INBOX_REPO: ${{ vars.BINGR_INBOX_REPO || 'LRvdLinden/bingr-inbox' }}
       INBOX_TOKEN: ${{ secrets.BINGR_INBOX_READ_TOKEN }}
+      # security M4: alleen ondertekende pakketten (tools/build_sig.py, tools/signers/); pas op true als alle sleutels er zijn
+      BUILDS_REQUIRE_SIGNATURE: ${{ vars.BUILDS_REQUIRE_SIGNATURE || 'false' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 

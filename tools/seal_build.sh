@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Levert een buildpakket VERSLEUTELD aan voor de afgesloten map builds/ op de server van beheer.bingr.online.
 # Gebruik (vanuit een anonieme clone van bingr-beheer, of na een anonieme download van dit script en builds.pub.pem):
-#   TOKEN=<token met alleen Contents: write op de inbox-repo> tools/seal_build.sh <apple|android|android-aab|tizen|windows|beheer> <bestand> <versie> <build> [notities.md]
+#   TOKEN=<token met alleen Contents: write op de inbox-repo> [BINGR_SIGN_KEY=<Ed25519-sleutel, PEM>] tools/seal_build.sh <apple|android|android-aab|tizen|windows|beheer> <bestand> <versie> <build> [notities.md]
 # Doel: de PRIVÉ repo ${BINGR_INBOX_REPO:-LRvdLinden/bingr-inbox} (H3: aanleverende repo's hebben geen schrijftoken meer op
 # de openbare repo bingr-beheer, zodat niemand daarmee het dashboard of de functie admin kan vervangen). Alleen de
 # workflow Beheer-app van bingr-beheer zelf levert met zijn eigen GITHUB_TOKEN aan bij bingr-beheer, en dan alleen
@@ -56,9 +56,26 @@ json.dump({"platform": plat, "version": ver, "build": int(build), "file": name, 
            "source": os.environ.get("GITHUB_REPOSITORY", ""), "commit": os.environ.get("GITHUB_SHA", "")[:12]},
           open(out, "w"), indent=1)
 PY
+# Security M4: handtekening (Ed25519) over meta.json met de eigen sleutel van deze repo (secret BINGR_BUILD_SIGN_KEY, als
+# BINGR_SIGN_KEY meegegeven). De workflow Builds controleert hem met de openbare sleutel in tools/signers/. Zonder sleutel:
+# een waarschuwing en geen handtekening (Builds neemt dat alleen aan zolang BUILDS_REQUIRE_SIGNATURE niet aan staat).
+if [ -n "${BINGR_SIGN_KEY:-}" ]; then
+  ( umask 077; printf '%s\n' "$BINGR_SIGN_KEY" > "$w/sign.pem" )
+  python3 "$here/tools/build_sig.py" msg "$w/out/meta.json" > "$w/msg"
+  if openssl pkeyutl -sign -rawin -inkey "$w/sign.pem" -in "$w/msg" -out "$w/sig.bin" 2>/dev/null; then
+    openssl base64 -A -in "$w/sig.bin" > "$w/out/meta.sig"
+    echo "::notice::$plat build $build ondertekend (Ed25519)."
+  else
+    echo "::warning::Ondertekenen mislukt (is BINGR_BUILD_SIGN_KEY een Ed25519-sleutel in PEM?). Pakket gaat zonder handtekening."
+  fi
+  rm -f "$w/sign.pem" "$w/msg" "$w/sig.bin"
+else
+  echo "::warning::Secret BINGR_BUILD_SIGN_KEY ontbreekt: pakket niet ondertekend (security M4). Zie README.md van bingr-beheer, 'Ondertekende buildpakketten'."
+fi
 cd "$w/out"
 git init -q -b "inbox-$plat"
 git add pkg.enc key.enc meta.json
+[ -s meta.sig ] && git add meta.sig
 git -c user.name=github-actions -c user.email=actions@github.com commit -qm "Inbox: $plat build $build (versleuteld)"
 remote="${INBOX_REMOTE:-${BEHEER_REMOTE:-https://github.com/$repo.git}}"   # INBOX_REMOTE/BEHEER_REMOTE alleen voor tests
 # token als Authorization-kop, alleen voor deze git-aanroepen (niet in de URL, niet in .git/config, niet in argv)
