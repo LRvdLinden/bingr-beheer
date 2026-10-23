@@ -434,11 +434,17 @@ function maskEmail(e: unknown) {
   return `${ml}@${md}`;
 }
 // build 95: het IP voor de inlogblokkade. Niet meer de eerste waarde van X-Forwarded-For (die kiest de aanvaller zelf),
-// maar cf-connecting-ip, dan x-real-ip, dan de LAATSTE waarde van X-Forwarded-For (toegevoegd door de proxy vóór de functie).
+// maar cf-connecting-ip (zet Cloudflare altijd zelf), anders de LAATSTE waarde van X-Forwarded-For (toegevoegd door de proxy
+// vóór de functie). Security L7: geen x-real-ip meer (zelf mee te sturen) en alleen een geldig IP-adres telt, anders "?".
+const IP_RE = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:.]{2,45})$/i;
+const validIp = (s: string) => s.length <= 45 && IP_RE.test(s) && (s.includes(":") || s.split(".").every((p) => Number(p) <= 255));
 function clientIp(req: Request) {
   const h = (k: string) => (req.headers.get(k) ?? "").trim();
+  const cf = h("cf-connecting-ip");
+  if (cf && validIp(cf)) return cf;
   const xff = h("x-forwarded-for").split(",").map((s) => s.trim()).filter(Boolean);
-  return (h("cf-connecting-ip") || h("x-real-ip") || xff[xff.length - 1] || "?").slice(0, 64);
+  const last = xff[xff.length - 1] ?? "";
+  return validIp(last) ? last : "?";
 }
 // Accountmails (blokkeren, opheffen, verwijderen) gaan vanaf support@ (BINGR_SUPPORT_FROM, zoals de supportmails); weigert
 // de SMTP-server die afzender, dan met BINGR_SMTP_FROM als afzender en support@ als Reply-To. Antwoorden komen zo bij support.
