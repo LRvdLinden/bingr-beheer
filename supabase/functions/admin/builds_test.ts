@@ -197,3 +197,14 @@ Deno.test("windows: installer (.exe) van bingr-windows, alleen via een kortgeldi
   ok(j.f === "windows/Bingr-1.0.1-build141-setup.exe", "token-pad");
   ok(!isReleasePushPlatform("windows"), "geen releasemelding voor windows");
 });
+
+Deno.test("windows: openbare teller in de toegestane paden, token en weergave per build", async () => {
+  const { WINDOWS_STATS, WINDOWS_PUBLIC_URL, presskitStatsView } = await import("./builds.ts");
+  ok(isValidBuildPath(WINDOWS_STATS) && isValidBuildPath("windows/Bingr_1.0.1_x64-setup.exe"), "paden");
+  for (const p of ["windows-stats.json/x", "windows/../key.php", "Windows-stats.json"]) ok(!isValidBuildPath(p), `ongeldig: ${p}`);
+  const t = await signBuildToken(KEY, WINDOWS_STATS, 60, NOW);
+  ok(JSON.parse(atob(t.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))).f === "windows-stats.json", "token voor de teller");
+  ok(WINDOWS_PUBLIC_URL === "https://bingr.online/windows", "openbare link");
+  const v = presskitStatsView({ total: 5, by_version: { "140": 3, "139": 2 }, by_day: {} }, "140", NOW);
+  ok(v !== null && v.total === 5 && v.version_total === 3 && v.days.length === 30, "weergave per build");
+});

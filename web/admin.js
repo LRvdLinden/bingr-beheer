@@ -1997,11 +1997,30 @@
         ${b.sha256 ? `<dt>SHA-256</dt><dd class="brk bld-hash">${esc(b.sha256)}</dd>` : ""}
       </dl>
       ${typeof b.notes === "string" && b.notes.trim() ? `<div class="bld-notes"><div class="sub">Notities</div><div class="bld-notes-body">${notesHtml(b.notes.trim())}</div></div>` : ""}
+      ${p === "windows" ? winPublic(b) : ""}
       <div class="form-btns">${dlButton(p, b, false)}${dlPushInfo(p, b, false)}</div>
       ${DL_PUSH[p] ? `<p class="sub bld-push-hint">Pushmelding pas versturen als deze build in de stores staat. Alleen apparaten met een oudere build krijgen hem, één keer per build.</p>` : ""}
       ${hist.length ? `<div class="bld-hist"><div class="sub">Oudere builds</div><ul>${hist.map((h) => `<li><span><b>${esc(dlBuild(h))}</b>
         <span class="sub">${esc([h.version, dlDate(h), fmtSize(h.size)].filter((x) => x && x !== "—").join(" · "))}</span></span><span class="bld-hist-btns">${dlPushInfo(p, h, true)}${dlButton(p, h, true)}</span></li>`).join("")}</ul></div>` : ""}
     </div>`;
+  }
+  // Windows: de nieuwste installer is openbaar (testversie) via bingr.online/windows -> dl.php?app=windows; teller per build
+  // uit builds/windows-stats.json (alleen aantallen, actie builds -> windows_public)
+  let dlWinPub = null;
+  function winPublic(b) {
+    const st = dlWinPub?.stats || null, url = dlWinPub?.public_url || "https://bingr.online/windows";
+    const num = (v) => (st ? nf.format(v ?? 0) : "—");
+    return `<div class="pk-stats">
+        <div class="pk-nums">
+          <div><b>${num(st?.total)}</b><span>Openbare downloads</span></div>
+          <div><b>${num(st?.version_total)}</b><span>Build ${esc(b.build ?? "—")}</span></div>
+          <div><b>${num(st?.last_7d)}</b><span>Laatste 7 dagen</span></div>
+          <div><b>${num(st?.last_30d)}</b><span>Laatste 30 dagen</span></div>
+        </div>
+        ${st ? "" : `<p class="sub">Nog geen tellingen (teller nog niet op de server).</p>`}
+      </div>
+      <label class="pk-link"><span class="sub">Openbare link (testversie, zonder inloggen; telt als download)</span>
+        <span class="pk-link-row"><input id="winUrl" type="text" readonly value="${esc(url)}"><button id="winCopy" class="btn small ghost" type="button">Kopiëren</button></span></label>`;
   }
   // PressKit (workflow PressKit): openbare download via bingr.online/presskit; teller uit builds/presskit-stats.json (alleen aantallen)
   function pkCard(b, pk) {
@@ -2050,8 +2069,15 @@
     }
     if (r.updated) $("dlUpdated").textContent = `Bijgewerkt ${fmtDateTime(r.updated)}`;
     dlPush = r.release_push && typeof r.release_push === "object" ? r.release_push : {};
+    dlWinPub = r.windows_public && typeof r.windows_public === "object" ? r.windows_public : null;
     el.innerHTML = DL_PLATFORMS.map((x) => dlCard(x, r.platforms[x[0]])).join("") + pkCard(r.platforms.presskit, r.presskit);
     el.querySelectorAll(".pk-spark i[data-h]").forEach((i) => { i.style.height = `${Math.max(2, Number(i.dataset.h))}%`; });
+    const winCopy = $("winCopy");
+    if (winCopy) winCopy.onclick = async () => {
+      const inp = $("winUrl");
+      try { await navigator.clipboard.writeText(inp.value); toast("Link gekopieerd."); }
+      catch { inp.select(); toast("Selecteer de link en kopieer hem.", true); }
+    };
     const pkCopy = $("pkCopy");
     if (pkCopy) pkCopy.onclick = async () => {
       const inp = $("pkUrl");

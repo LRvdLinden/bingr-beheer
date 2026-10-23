@@ -133,6 +133,8 @@
 //                       releasemeldingen per build; leeg = nog niet verstuurd)
 //                       presskit: {public_url, stats: {total, version, version_total, last_7d, last_30d, days:[{date, n}]} | null}
 //                       als platforms.presskit er is (workflow PressKit; teller builds/presskit-stats.json via dl.php, alleen aantallen)
+//                       windows_public: {public_url, stats: {…zelfde vorm, version = build}} | null als platforms.windows er is
+//                       (openbare installer via bingr.online/windows -> dl.php?app=windows; teller builds/windows-stats.json)
 //   build_push          {token, platform: "apple"|"android", file? (standaard de nieuwste)} -> {ok, duplicate, devices, build,
 //                       missing_channels, push} (releasemelding van die build via push: release met PUSH_ADMIN_SECRET; één
 //                       keer per build; niet automatisch, want de stores keuren pas later goed; in admin_audit platform en build)
@@ -186,7 +188,7 @@ import {
   revenuePlan, tileRanges,
 } from "./revenue.ts";
 import {
-  buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, PRESSKIT_PUBLIC_URL, PRESSKIT_STATS,
+  buildUrl, cleanManifest, findBuild, isBuildPlatform, isReleasePushPlatform, isValidBuildFile, MIN_KEY, PRESSKIT_PUBLIC_URL, PRESSKIT_STATS, WINDOWS_PUBLIC_URL, WINDOWS_STATS,
   presskitStatsView, releaseKey, releaseKeys, releaseOf, releasePushView, signBuildToken,
 } from "./builds.ts";
 import { actionAllowed, readToken, signToken, summarizeStatus, summarizeSupport, WIDGET_SCOPE, WIDGET_TTL_MS } from "./widget.ts";
@@ -291,18 +293,19 @@ async function fetchManifest(): Promise<{ ok: true; manifest: Manifest } | { ok:
   return { ok: true, manifest };
 }
 
-// Downloadteller van de presskit (builds/presskit-stats.json via dl.php met een token van 60 s). Fout of nog geen teller = null.
-async function fetchPresskitStats(): Promise<unknown> {
+// Downloadteller van de presskit of de Windows-installer (builds/<naam>-stats.json via dl.php met een token van 60 s).
+// Fout of nog geen teller = null.
+async function fetchDownloadStats(file: string = PRESSKIT_STATS): Promise<unknown> {
   const key = buildsKey();
   if (key.length < MIN_KEY) return null;
-  const { token } = await signBuildToken(key, PRESSKIT_STATS, 60);
+  const { token } = await signBuildToken(key, file, 60);
   try {
     const res = await fetch(buildUrl(token), { redirect: "error", signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
     if (!res.ok) { await res.body?.cancel().catch(() => {}); return null; }
     const text = await res.text();
     return text.length > 200_000 ? null : JSON.parse(text);
   } catch (e) {
-    console.error("admin", "builds", "presskit-stats", e instanceof Error ? e.name : "fetch");
+    console.error("admin", "builds", file === WINDOWS_STATS ? "windows-stats" : "presskit-stats", e instanceof Error ? e.name : "fetch");
     return null;
   }
 }
@@ -1447,9 +1450,13 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const r = await fetchManifest();
       if (!r.ok) return json({ ready: false, platforms: null, reason: r.reason });
       const pk = r.manifest.platforms.presskit;
-      const [release_push, pkRaw] = await Promise.all([releasePushes(r.manifest), pk ? fetchPresskitStats() : Promise.resolve(null)]);
+      const win = r.manifest.platforms.windows;
+      const [release_push, pkRaw, winRaw] = await Promise.all([releasePushes(r.manifest), pk ? fetchDownloadStats(PRESSKIT_STATS) : Promise.resolve(null),
+        win ? fetchDownloadStats(WINDOWS_STATS) : Promise.resolve(null)]);
       const presskit = pk ? { public_url: PRESSKIT_PUBLIC_URL, stats: presskitStatsView(pkRaw, pk.version) } : null;
-      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated, release_push, presskit });
+      // teller van de Windows-installer telt per build (dl.php gebruikt het buildnummer als "versie")
+      const windows_public = win ? { public_url: WINDOWS_PUBLIC_URL, stats: presskitStatsView(winRaw, win.build == null ? null : String(win.build)) } : null;
+      return json({ ready: true, platforms: r.manifest.platforms, updated: r.manifest.updated, release_push, presskit, windows_public });
     }
     case "build_push": {
       // knop "Pushmelding versturen" bij een build van apple of android: releasemelding via de functie push (actie

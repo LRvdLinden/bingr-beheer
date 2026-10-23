@@ -112,6 +112,8 @@ struct BuildsOverview {
     var pushes: [String: ReleasePushState]
     /// PressKit (los van de buildplatforms; nil als er nog geen presskit op de server staat)
     let presskit: PresskitOverview?
+    /// Openbare Windows-installer (bingr.online/windows) met downloadteller per build; nil als er geen Windows-build is
+    let windowsPublic: PublicDownloadStats?
 
     init(_ j: JSON) {
         ready = j["ready"].bool ?? false
@@ -124,6 +126,7 @@ struct BuildsOverview {
         }
         pushes = (j["release_push"].object ?? [:]).mapValues { ReleasePushState($0) }
         presskit = PresskitOverview(platform: p["presskit"], info: j["presskit"])
+        windowsPublic = j["windows_public"].object == nil ? nil : PublicDownloadStats(j["windows_public"], fallback: "https://bingr.online/windows")
     }
 
     /// Tekst voor de lege of niet-ingerichte toestand (nil als er builds zijn).
@@ -195,6 +198,31 @@ struct PresskitOverview {
             }
         } else {
             total = nil; versionTotal = 0; last7 = 0; last30 = 0; days = []
+        }
+    }
+}
+
+/// Openbare download zonder inloggen (actie `builds` → `windows_public`): de link en de teller (alleen aantallen, per build,
+/// uit builds/windows-stats.json via dl.php ?app=windows).
+struct PublicDownloadStats {
+    let publicURL: URL
+    /// nil = nog geen teller op de server
+    let total: Int?
+    let buildTotal: Int
+    let last7: Int
+    let last30: Int
+
+    init(_ j: JSON, fallback: String) {
+        publicURL = j["public_url"].text.flatMap { URL(string: $0) }.flatMap { $0.scheme == "https" ? $0 : nil }
+            ?? URL(string: fallback)!
+        let s = j["stats"]
+        if s.object != nil {
+            total = s["total"].int ?? 0
+            buildTotal = s["version_total"].int ?? 0
+            last7 = s["last_7d"].int ?? 0
+            last30 = s["last_30d"].int ?? 0
+        } else {
+            total = nil; buildTotal = 0; last7 = 0; last30 = 0
         }
     }
 }

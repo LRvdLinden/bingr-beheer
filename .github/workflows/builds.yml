@@ -122,7 +122,16 @@ jobs:
             ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
             echo "$ping" | grep -q '"ready":true' && echo "::notice::dl.php is klaar (rechten 644)." || { echo "::error::dl.php kan de sleutel niet lezen."; exit 1; }
           fi
-          for f in builds/ builds/manifest.json builds/key.php builds/private.pem builds/android/ builds/android-aab/ builds/apple/ builds/tizen/ builds/windows/; do
+          # teller van de openbare Windows-installer (dl.php ?app=windows) moet schrijfbaar zijn voor PHP; zo niet, ruimere rechten (alleen dit bestand)
+          for mode in 600 660 666; do
+            ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
+            echo "$ping" | grep -q '"winstats":true' && { echo "::notice::Downloadteller Windows is schrijfbaar."; break; }
+            [ "$mode" = 600 ] && continue
+            [ -n "${FTPS_USER:-}" ] || { source tools/ftps.sh; ftps_connect >/dev/null; }
+            ftps_try "chmod $mode \"$FTPS_TARGET/builds/windows-stats.json\"" >/dev/null 2>&1
+          done
+          echo "$ping" | grep -q '"winstats":true' || echo "::warning::Downloadteller Windows (builds/windows-stats.json) is niet schrijfbaar voor PHP; downloads worden niet geteld."
+          for f in builds/ builds/manifest.json builds/key.php builds/private.pem builds/windows-stats.json builds/android/ builds/android-aab/ builds/apple/ builds/tizen/ builds/windows/; do
             c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "${url}$f" || true)
             [ "$c" = 200 ] && { echo "::error::${url}$f is rechtstreeks bereikbaar"; exit 1; }
           done

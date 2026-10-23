@@ -1,0 +1,18 @@
+/* Openbare 404-pagina van dl.php (?app=windows zonder build op de server); stijl van bingr.online, geen inline styles (CSP) */
+:root{--red:#E50914;--red-hi:#ff2a35;--bg:#000;--s1:#121212;--txt:#fff;--sec:#bdbdbd;--dim:#8f8f8f;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.55;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px 16px}
+.nf{max-width:520px;text-align:center}
+.nf img{width:72px;height:72px;border-radius:16px;margin-bottom:20px}
+.nf h1{font-size:26px;font-weight:800;letter-spacing:-.015em;margin-bottom:10px}
+.nf p{color:var(--sec)}
+.nf .en{color:var(--dim);font-size:14px;margin-top:10px}
+.btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:24px}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:var(--red);color:#fff;font-weight:700;font-size:15px;
+  padding:12px 20px;text-decoration:none;transition:background .15s}
+.btn:hover{background:var(--red-hi)}
+.btn.ghost{background:#ffffff26;box-shadow:inset 0 0 0 1px #ffffff33}.btn.ghost:hover{background:#ffffff38}
+:focus-visible{outline:3px solid #fff;outline-offset:3px}

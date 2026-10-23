@@ -35,11 +35,15 @@ export const isBuildPlatform = (p: unknown): p is BuildPlatform =>
 export const PRESSKIT_STATS = "presskit-stats.json";
 /** Openbare link naar de nieuwste presskit (302 naar dl.php?app=presskit, workflow Website van bingr-website). */
 export const PRESSKIT_PUBLIC_URL = "https://bingr.online/presskit";
+/** Downloadteller van de openbare Windows-installer (dl.php ?app=windows schrijft hem, per build; alleen aantallen). */
+export const WINDOWS_STATS = "windows-stats.json";
+/** Openbare link naar de nieuwste Windows-installer (302 naar dl.php?app=windows, workflow Website van bingr-website). */
+export const WINDOWS_PUBLIC_URL = "https://bingr.online/windows";
 
-/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json" of "<apple|android|android-aab|tizen|windows|beheer|presskit>/<bestandsnaam>". */
+/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json", "windows-stats.json" of "<apple|android|android-aab|tizen|windows|beheer|presskit>/<bestandsnaam>". */
 export function isValidBuildPath(path: unknown): path is string {
   if (typeof path !== "string") return false;
-  if (path === "manifest.json" || path === PRESSKIT_STATS) return true;
+  if (path === "manifest.json" || path === PRESSKIT_STATS || path === WINDOWS_STATS) return true;
   const i = path.indexOf("/");
   return i > 0 && isBuildPlatform(path.slice(0, i)) && isValidBuildFile(path.slice(i + 1));
 }

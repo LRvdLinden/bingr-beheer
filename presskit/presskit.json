@@ -1,5 +1,5 @@
 {
-  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is; 'include' = alleen deze namen op het eerste niveau; 'exclude' = mappen of bestanden die op elk niveau wegblijven (bv. raw). Later erbij: SamsungTV/ (zelfde vorm, bv. bron appstore/samsungtv/...).",
+  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is; 'include' = alleen deze namen op het eerste niveau; 'exclude' = mappen of bestanden die op elk niveau wegblijven (bv. raw). Later erbij: SamsungTV/ (zelfde vorm, bv. bron appstore/samsungtv/...). Windows/ maakt presskit/make_windows.py (iconen uit bingr-windows, vensters rond appstore/en/Mac/raw).",
   "name": "Bingr-PressKit",
   "files": [
     { "to": "CREDITS.txt", "from": "appstore/en/CREDITS.txt", "optional": true }
@@ -16,6 +16,10 @@
       "include": ["Phone", "Tablet-7in", "Tablet-10in", "AndroidTV", "icon-512.png", "feature-graphic-1024x500.png", "tv-banner-1280x720.png", "CREDITS.txt"],
       "exclude": ["raw"],
       "label": "Google Play images: phone, 7\" and 10\" tablet (marketing images 01-08), Android TV (plain 1920 x 1080, styled in marketing/), icon-512.png, feature graphic, TV banner, CREDITS.txt"
+    },
+    {
+      "to": "Windows", "from": "presskit/windows",
+      "label": "Windows 10 and 11 app: Bingr.ico (16-256 px), AppIcon-256.png and AppIcon-512.png, Screenshots/ (illustrative: Bingr screens in a Windows 11-style app window, 3136 x 2044; free film artwork as in CREDITS.txt)"
     },
     { "to": "Promo", "from": "appstore/en/Promo", "optional": true, "label": "App Store header and search promos" }
   ],

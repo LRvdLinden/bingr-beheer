@@ -35,6 +35,12 @@ builds_init(){
   [ -n "$BUILDS_KEY" ] || { echo "::error::Sleutel op de server is ongeldig; draai Builds met 'Sleutels opnieuw maken'."; return 1; }
   echo "::add-mask::$BUILDS_KEY"
   openssl pkey -in "$BW/srv/private.pem" -pubout -out "$BW/pub.pem" 2>/dev/null
+  # downloadteller van de openbare Windows-installer (dl.php ?app=windows): één keer aanmaken, nooit overschrijven
+  if ! srv_get windows-stats.json "$BW/winstats.json"; then
+    echo '{"total":0,"by_version":{},"by_day":{}}' > "$BW/winstats.json"
+    srv_put "$BW/winstats.json" windows-stats.json 600 && echo "::notice::Downloadteller Windows aangemaakt." \
+      || echo "::warning::Downloadteller Windows niet op de server gezet."
+  fi
 }
 
 # pakket toevoegen: <platform> <bestand> <meta.json>

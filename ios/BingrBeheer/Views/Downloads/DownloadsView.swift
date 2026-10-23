@@ -112,6 +112,9 @@ struct DownloadsView: View {
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.surface2))
                     }
                 }
+                if p.key == "windows", let pub = overview?.windowsPublic {
+                    publicDownloadRow(pub, build: b.build)
+                }
                 buttons(p.key, b, primary: true)
                 if ReleasePushState.audience[p.key] != nil {
                     pushRow(p.key, b, compact: false)
@@ -211,6 +214,43 @@ struct DownloadsView: View {
             buttons("presskit", b, primary: true)
         }
         .card()
+    }
+
+    /// Openbare download (Windows-testversie via bingr.online/windows): teller per build en de link om te kopiëren of te delen.
+    @ViewBuilder private func publicDownloadRow(_ pub: PublicDownloadStats, build: String?) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let total = pub.total {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12, alignment: .leading)], alignment: .leading, spacing: 12) {
+                    stat(total, "Openbare downloads")
+                    stat(pub.buildTotal, "Build \(build ?? "—")")
+                    stat(pub.last7, "Laatste 7 dagen")
+                    stat(pub.last30, "Laatste 30 dagen")
+                }
+            } else {
+                Text("Nog geen tellingen (teller nog niet op de server).").font(.caption).foregroundStyle(Color.textDim)
+            }
+            Text("Openbare link (testversie, zonder inloggen; telt als download)").font(.caption).foregroundStyle(Color.textDim)
+            HStack(spacing: 8) {
+                Text(verbatim: pub.publicURL.absoluteString)
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    UIPasteboard.general.url = pub.publicURL
+                    session.show("Link gekopieerd.")
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.bingrGhost)
+                .accessibilityLabel("Openbare link kopiëren")
+                ShareLink(item: pub.publicURL) { Image(systemName: "square.and.arrow.up") }
+                    .buttonStyle(.bingrGhost)
+                    .accessibilityLabel("Openbare link delen")
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.surface2))
     }
 
     private func stat(_ n: Int, _ label: String) -> some View {
