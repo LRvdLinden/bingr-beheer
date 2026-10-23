@@ -4,7 +4,7 @@
 # IMPORT_REPO (true = eenmalig de oude pakketten uit versions/ van deze repo overzetten),
 # INBOX_REPO (privé inbox-repo, standaard LRvdLinden/bingr-inbox) en INBOX_TOKEN (secret BINGR_INBOX_READ_TOKEN:
 # Contents read+write op alleen die repo, om branches na verwerking te verwijderen).
-# H3: iptv-ios-appletv en bingr-android leveren aan bij de privé inbox-repo (geen schrijftoken meer op deze openbare repo);
+# H3: iptv-ios-appletv, bingr-android en bingr-windows leveren aan bij de privé inbox-repo (geen schrijftoken meer op deze openbare repo);
 # inbox-branches in deze repo zelf (Beheer-app via GITHUB_TOKEN, en oude pakketten van vóór de overgang) worden ook verwerkt.
 # Het log is openbaar: alleen platform, build en gelukt/mislukt; nooit sleutels, mappen of serverantwoorden.
 
@@ -15,7 +15,8 @@ srv_put(){ ftps_run "mkdir -p -f \"$(srv_dir)/$(dirname "$2")\"; put \"$1\" -o \
 srv_rm(){ ftps_try "rm -f \"$(srv_dir)/$1\"" >/dev/null 2>&1 || true; }
 
 # android-aab = Android App Bundle voor Google Play (zelfde build als de APK, eigen map en branch inbox-android-aab)
-PLATS="apple android android-aab tizen beheer"
+# windows = installer (.exe) van Bingr voor Windows (repo bingr-windows), branch inbox-windows
+PLATS="apple android android-aab tizen windows beheer"
 
 builds_init(){
   BW=$(mktemp -d); mkdir -p "$BW/srv"

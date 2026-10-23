@@ -44,9 +44,10 @@ Deno.test("token: weigert korte sleutel, ongeldig pad en een te lange of rare ge
 
 Deno.test("pad: zelfde regels als dl.php", () => {
   for (const p of ["manifest.json", "android/Bingr-1.0.0-build105.apk", "tizen/Bingr-1.0.0-build105.wgt",
-    "apple/Bingr-1.0.0-build105-Xcode.zip", "beheer/Bingr-Beheer-1.0.0-build7-Xcode.zip"]) ok(isValidBuildPath(p), `geldig: ${p}`);
+    "apple/Bingr-1.0.0-build105-Xcode.zip", "beheer/Bingr-Beheer-1.0.0-build7-Xcode.zip",
+    "windows/Bingr-1.0.1-build140-setup.exe"]) ok(isValidBuildPath(p), `geldig: ${p}`);
   for (const p of ["", "key.php", "builds/manifest.json", "android/", "android/../key.php", "android/a..b", "ios/x.zip",
-    "android/.htaccess", "android/a/b.apk", "/android/x.apk", "android/x y.apk", "Android/x.apk", "manifest.json/x",
+    "android/.htaccess", "android/a/b.apk", "win/x.exe", "Windows/x.exe", "windows/../key.php", "/android/x.apk", "android/x y.apk", "Android/x.apk", "manifest.json/x",
     `android/${"a".repeat(152)}`, null, 5, undefined]) ok(!isValidBuildPath(p), `ongeldig: ${String(p)}`);
   ok(isValidBuildFile("Bingr-1.0.0-build105.apk") && !isValidBuildFile("-x") && !isValidBuildFile("a/b"), "bestandsnaam");
 });
@@ -61,7 +62,7 @@ const RAW = {
         { file: "../key.php" }, "onzin"],
     },
     tizen: { file: "../../etc/passwd" },
-    windows: { file: "Bingr.exe" },
+    linux: { file: "Bingr.AppImage" },
   },
 };
 
@@ -85,6 +86,7 @@ Deno.test("manifest: build zoeken (nieuwste, uit history, of weigeren)", () => {
   ok(findBuild(m, "android", "Bingr-1.0.0-build1.apk") === null, "staat niet in het manifest");
   ok(findBuild(m, "android", "../key.php") === null, "ongeldige naam");
   ok(findBuild(m, "tizen") === null && findBuild(m, "windows") === null && findBuild(m, "apple") === null, "geen build");
+  ok(findBuild(m, "linux") === null, "onbekend platform");
   ok(findBuild(null, "android") === null, "geen manifest");
 });
 
@@ -176,4 +178,22 @@ Deno.test("Android App Bundle (android-aab): eigen platform, alleen met een kort
   ok(findBuild(m, "android-aab", "Bingr-1.0.0-build138.apk") === null, "APK niet via android-aab");
   ok(!isReleasePushPlatform("android-aab"), "geen releasemelding");
   ok(JSON.stringify(releaseKeys(m)) === JSON.stringify(["release:android:138"]), `alleen de APK telt voor de releasemelding: ${releaseKeys(m)}`);
+});
+
+Deno.test("windows: installer (.exe) van bingr-windows, alleen via een kortgeldige link", async () => {
+  const { isBuildPlatform, BUILD_PLATFORMS, isReleasePushPlatform } = await import("./builds.ts");
+  ok(isBuildPlatform("windows") && BUILD_PLATFORMS.includes("windows"), "platform windows");
+  const m = cleanManifest({ platforms: { windows: {
+    version: "1.0.1", build: 141, file: "Bingr-1.0.1-build141-setup.exe", size: 5_000_000, sha256: "cd",
+    history: [{ version: "1.0.1", build: 140, file: "Bingr-1.0.1-build140-setup.exe" }, { file: "..\\x.exe" }],
+  } } })!;
+  ok(Object.keys(m.platforms).join() === "windows", "alleen windows");
+  ok(findBuild(m, "windows")?.build === 141, "nieuwste");
+  ok(findBuild(m, "windows", "Bingr-1.0.1-build140-setup.exe")?.build === 140, "history");
+  ok(m.platforms.windows.history.length === 1, "ongeldige naam in history valt weg");
+  ok(findBuild(m, "windows", "Bingr-1.0.1-build139-setup.exe") === null, "niet in het manifest");
+  const { token } = await signBuildToken(KEY, "windows/Bingr-1.0.1-build141-setup.exe", 600, NOW);
+  const j = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))));
+  ok(j.f === "windows/Bingr-1.0.1-build141-setup.exe", "token-pad");
+  ok(!isReleasePushPlatform("windows"), "geen releasemelding voor windows");
 });

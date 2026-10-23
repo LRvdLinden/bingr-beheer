@@ -1,7 +1,7 @@
 name: Builds
 
-# Zet de buildpakketten van Bingr (APK, App Bundle .aab voor Google Play, Samsung TV .wgt, Xcode-projecten) in de afgesloten map builds/ op de server van
-# beheer.bingr.online. Ze staan nooit onversleuteld op GitHub: de workflows van iptv-ios-appletv en bingr-android leveren
+# Zet de buildpakketten van Bingr (APK, App Bundle .aab voor Google Play, Samsung TV .wgt, Windows-installer .exe, Xcode-projecten) in de afgesloten map builds/ op de server van
+# beheer.bingr.online. Ze staan nooit onversleuteld op GitHub: de workflows van iptv-ios-appletv, bingr-android en bingr-windows leveren
 # ze versleuteld aan op de branch inbox-<platform> van de PRIVÉ repo LRvdLinden/bingr-inbox, de Beheer-app op inbox-beheer
 # van deze repo (tools/seal_build.sh). Deze workflow haalt ze op (inbox-repo met secret BINGR_INBOX_READ_TOKEN; branches
 # in deze repo zelf ook, voor de Beheer-app en de overgang), ontsleutelt ze met de privésleutel die alleen op de server
@@ -122,7 +122,7 @@ jobs:
             ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
             echo "$ping" | grep -q '"ready":true' && echo "::notice::dl.php is klaar (rechten 644)." || { echo "::error::dl.php kan de sleutel niet lezen."; exit 1; }
           fi
-          for f in builds/ builds/manifest.json builds/key.php builds/private.pem builds/android/ builds/android-aab/ builds/apple/; do
+          for f in builds/ builds/manifest.json builds/key.php builds/private.pem builds/android/ builds/android-aab/ builds/apple/ builds/tizen/ builds/windows/; do
             c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "${url}$f" || true)
             [ "$c" = 200 ] && { echo "::error::${url}$f is rechtstreeks bereikbaar"; exit 1; }
           done
