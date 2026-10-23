@@ -18,6 +18,11 @@ concurrency:
   group: admin-deploy
   cancel-in-progress: false
 
+
+# security M5: alleen lezen (deze workflow pusht niets en gebruikt GITHUB_TOKEN alleen voor de checkout)
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -31,7 +36,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2 (v2.0.5)
         with:
-          deno-version: v2.x
+          deno-version: v2.9.6   # vast (security M5); bijwerken = bewuste wijziging
       # build 97: blokkerend (geen continue-on-error meer): faalt een test, dan wordt de functie niet bijgewerkt
       - name: Unittests (mails, blokkeren, downloads, widgets, namen, pushmeldingen, push van de Beheer-app, nieuwsbrief, eigen mailing, insights, servers)
         run: |

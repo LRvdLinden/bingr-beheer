@@ -16,6 +16,11 @@ concurrency:
   group: dashboard-deploy
   cancel-in-progress: false
 
+
+# security M5: alleen lezen (deze workflow pusht niets en gebruikt GITHUB_TOKEN alleen voor de checkout)
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
