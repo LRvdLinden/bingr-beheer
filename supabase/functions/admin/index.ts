@@ -1140,6 +1140,10 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const purchasesKept = !be && (buys ?? 0) > 0;
       // e-mailadres en taal vastleggen vóór het verwijderen; de mail gaat pas als het verwijderen gelukt is
       const mail = notify ? deletedMail(accountLang(user.user_metadata?.lang), { email, ticketsDeleted: delTickets, firstName: user.user_metadata?.first_name, purchasesKept }) : null;
+      // security H1: supporttickets horen alleen via user_id bij een account (nooit op e-mailadres); tellen vóór het
+      // verwijderen, want de trigger bingr_support_user_deleted (schema in iptv-ios-appletv) wist ze bij het verwijderen
+      const { count: ownTickets, error: te } = await admin.from("support_tickets").select("id", { count: "exact", head: true }).eq("user_id", id);
+      if (te) console.error("user_delete tickets count", te.code ?? "fout");
       // build 95: eerst de gebruiker zelf; alle tabellen (profielen, servers, instellingen, apparaten, sessies, streams,
       // kijkgeschiedenis, statistieken, blokkades, e-mailvoorkeuren, tv-codes) gaan mee via on delete cascade. Mislukt dit,
       // dan wordt er niets anders verwijderd (geen foto's, geen tickets) en komt de mislukking in het logboek.
@@ -1158,14 +1162,13 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         const { error: rm } = await admin.storage.from("avatars").remove(files.map((f) => `${id}/${f.name}`));
         if (rm) { console.error("user_delete avatars", rm.message); avatarsOk = false; break; }
       }
-      // supporttickets: standaard bewaard (user_id is al leeg via on delete set null, daarom op e-mailadres); op verzoek
-      // ook verwijderd
-      let ticketsDeleted = 0, ticketsOk = true;
+      // supporttickets van het account (user_id) zijn al weg via de trigger bij het verwijderen; gast-tickets met hetzelfde
+      // e-mailadres blijven altijd staan (security H1: een account op hetzelfde adres is geen bewijs van eigendom)
+      let ticketsDeleted = 0, ticketsOk = !te;
       if (delTickets) {
         const { data: a, error: ta } = await admin.from("support_tickets").delete().eq("user_id", id).select("id");
-        const { data: b, error: tb } = email ? await admin.from("support_tickets").delete().ilike("email", email.replace(/[\\%_]/g, "\\$&")).select("id") : { data: [], error: null };
-        if (ta || tb) { console.error("user_delete tickets", (ta ?? tb)?.message); ticketsOk = false; }
-        ticketsDeleted = (a?.length ?? 0) + (b?.length ?? 0);
+        if (ta) { console.error("user_delete tickets", ta.code ?? "fout"); ticketsOk = false; }
+        ticketsDeleted = (ownTickets ?? 0) + (a?.length ?? 0);
       }
       const sent = mail ? await sendAccountMail(email, mail, "deleted") : { ok: false };
       await audit("user_delete", ip, id, {

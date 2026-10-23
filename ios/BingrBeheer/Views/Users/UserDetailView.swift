@@ -474,8 +474,8 @@ struct UserDetailView: View {
             Toggle("Bevestiging mailen vanaf support@bingr.online", isOn: $deleteNotify).font(.subheadline).tint(.bingrRed)
             Toggle(isOn: $deleteTickets) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Ook supporttickets verwijderen").font(.subheadline)
-                    Text("Standaard bewaard, los van het account").font(.caption).foregroundStyle(Color.textDim)
+                    Text("Supporttickets van dit account verwijderen").font(.subheadline)
+                    Text("Gekoppelde tickets; tickets zonder account op hetzelfde e-mailadres blijven altijd staan").font(.caption).foregroundStyle(Color.textDim)
                 }
             }
             .tint(.bingrRed)

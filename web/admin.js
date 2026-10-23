@@ -1621,7 +1621,7 @@
         <h3 id="dzTitle">Account verwijderen</h3>
         <p class="sub">Verwijdert het account met profielen, apparaten en sessies, instellingen, servers, kijkgeschiedenis, statistieken en verzamelingen. Dit kan niet ongedaan worden gemaakt. De klant kan daarna altijd een nieuw account maken. Aankopen blijven zonder koppeling aan het account 7 jaar bewaard (fiscale bewaarplicht) en tellen mee in Omzet.</p>
         <label class="switch"><input id="dNotify" type="checkbox" ${smtpOk ? "checked" : "disabled"}><span class="track"></span><span>Bevestiging mailen vanaf support@bingr.online</span></label>
-        <label class="switch"><input id="dTickets" type="checkbox"><span class="track"></span><span>Ook supporttickets verwijderen <span class="sub">(standaard bewaard, los van het account)</span></span></label>
+        <label class="switch"><input id="dTickets" type="checkbox"><span class="track"></span><span>Supporttickets van dit account verwijderen <span class="sub">(gekoppelde tickets; tickets zonder account op hetzelfde e-mailadres blijven altijd staan)</span></span></label>
         <label>Interne notitie <span class="sub">optioneel, alleen in het logboek</span><input id="dReason" maxlength="500" autocomplete="off"></label>
         <label>Typ het e-mailadres ter bevestiging <span class="sub">volledig, of precies zoals hierboven: ${esc(u.email)}</span>
           <input id="dConfirm" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email"></label>
@@ -2278,7 +2278,7 @@
     catch (e) { if (e.code !== "auth") $("drawerBody").innerHTML = `<h2 id="dTitle">#${esc(n)}</h2><p class="err">${esc(errText(e))}</p>`; return; }
     if (supOpen !== n) return;
     const t = r.ticket, a = r.account;
-    const acc = a ? `${a.linked ? "Gekoppeld" : "Gevonden op e-mailadres"} · ${nf.format(a.device_count || 0)} apparaten${(a.platforms || []).length ? ` · ${a.platforms.map((p) => esc(pname(p))).join(", ")}` : ""}${(a.app_versions || []).length ? `<br><span class="sub">Versies: ${a.app_versions.map(esc).join(", ")}</span>` : ""}<br><span class="sub">Account sinds ${esc(fmtDate(a.created_at))}${a.last_seen_at ? ` · laatst gezien ${esc(ago(a.last_seen_at))}` : ""}${a.confirmed ? "" : " · onbevestigd"} · ${nf.format(a.tickets || 0)} ticket(s)</span>` : "Geen Bingr-account met dit adres";
+    const acc = a ? `${a.linked ? "Gekoppeld" : "Niet gekoppeld (account met hetzelfde e-mailadres, geen bewijs van eigendom)"} · ${nf.format(a.device_count || 0)} apparaten${(a.platforms || []).length ? ` · ${a.platforms.map((p) => esc(pname(p))).join(", ")}` : ""}${(a.app_versions || []).length ? `<br><span class="sub">Versies: ${a.app_versions.map(esc).join(", ")}</span>` : ""}<br><span class="sub">Account sinds ${esc(fmtDate(a.created_at))}${a.last_seen_at ? ` · laatst gezien ${esc(ago(a.last_seen_at))}` : ""}${a.confirmed ? "" : " · onbevestigd"} · ${nf.format(a.tickets || 0)} ticket(s)</span>` : "Geen Bingr-account met dit adres";
     $("drawerBody").innerHTML = `
       <h2 id="dTitle"><span class="tnum">#${t.number}</span> ${esc(t.subject)}</h2>
       <div class="tmeta">${supBadge(t.status)}${t.priority !== "normal" ? ` <span class="chip ${t.priority === "low" ? "" : "bad"}">${esc(SUP_PRIO[t.priority] || t.priority)}</span>` : ""}<span class="sub">Aangemaakt ${esc(fmtDateTime(t.created_at))}</span></div>

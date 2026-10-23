@@ -97,7 +97,7 @@ struct TicketDetailView: View {
             InfoRow(label: "Account") {
                 if let a = t.account {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(a.linked ? "Gekoppeld" : "Gevonden op e-mailadres") · \(Fmt.plural(a.deviceCount, "apparaat", "apparaten"))"
+                        Text("\(a.linked ? "Gekoppeld" : "Niet gekoppeld (zelfde e-mailadres)") · \(Fmt.plural(a.deviceCount, "apparaat", "apparaten"))"
                              + (a.platforms.isEmpty ? "" : " · " + a.platforms.map { Labels.platform($0) }.joined(separator: ", ")))
                         if !a.appVersions.isEmpty {
                             Text("Versies: \(a.appVersions.joined(separator: ", "))").font(.caption).foregroundStyle(Color.textDim)
