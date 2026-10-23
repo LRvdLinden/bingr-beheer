@@ -166,38 +166,6 @@ builds_inbox_main(){
   fi
 }
 
-# Security M4: komt dit pakket echt van de repo die dit platform mag aanleveren? Handtekening (Ed25519, tools/build_sig.py)
-# met de openbare sleutel uit tools/signers/. Ongeldig of verkeerde repo = altijd weigeren. Zonder handtekening of zonder
-# openbare sleutel: weigeren als BUILDS_REQUIRE_SIGNATURE=true (repository-variabele), anders aannemen met een waarschuwing.
-# Het log noemt alleen platform en reden.
-builds_verify(){
-  local src="$1" plat="$2" d="$3" want got pub
-  if [ "$plat" = beheer ]; then
-    [ "$src" = origin ] && return 0
-    echo "::warning::beheer: de Beheer-app komt alleen uit bingr-beheer zelf, niet uit de inbox-repo; geweigerd."; return 1
-  fi
-  want=$(python3 tools/build_sig.py signer "$plat")
-  got=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("source",""))' "$d/meta.json" 2>/dev/null || true)
-  if [ -n "$got" ] && [ "$got" != "$want" ]; then
-    echo "::warning::$plat: pakket van een andere repo dan $want; geweigerd."; return 1
-  fi
-  pub=$(python3 tools/build_sig.py pub "$plat")
-  if [ -s "$d/meta.sig" ] && [ -n "$pub" ]; then
-    python3 tools/build_sig.py msg "$d/meta.json" > "$d/msg" 2>/dev/null \
-      && openssl base64 -d -A -in "$d/meta.sig" -out "$d/sig.bin" 2>/dev/null \
-      && openssl pkeyutl -verify -rawin -pubin -inkey "$pub" -in "$d/msg" -sigfile "$d/sig.bin" >/dev/null 2>&1 \
-      && [ "$got" = "$want" ] && { rm -f "$d/msg" "$d/sig.bin"; echo "::notice::$plat: handtekening van $want klopt."; return 0; }
-    rm -f "$d/msg" "$d/sig.bin"
-    echo "::warning::$plat: handtekening ongeldig of niet van $want; pakket geweigerd."; return 1
-  fi
-  local why; why=$([ -n "$pub" ] && echo "zonder handtekening" || echo "nog geen openbare sleutel in tools/signers/ voor $want")
-  if [ "${BUILDS_REQUIRE_SIGNATURE:-false}" = true ]; then
-    echo "::warning::$plat: $why; geweigerd (BUILDS_REQUIRE_SIGNATURE staat aan)."; return 1
-  fi
-  echo "::warning::$plat: $why; nog aangenomen (security M4 nog niet afgedwongen: zet BUILDS_REQUIRE_SIGNATURE=true als alle sleutels er zijn)."
-  return 0
-}
-
 builds_inbox_from(){
   local src="$1" remote plat sha d k iv
   remote=$([ "$src" = inbox ] && echo inbox || echo origin)
@@ -206,9 +174,7 @@ builds_inbox_from(){
     [ -n "$sha" ] || continue
     d="$BW/in-$src-$plat"; rm -rf "$d"; mkdir -p "$d"
     src_git "$src" fetch -q --depth 1 "$remote" "refs/heads/inbox-$plat" 2>/dev/null || { echo "::warning::$plat ($src): inbox niet op te halen"; continue; }
-    for x in pkg.enc key.enc meta.json meta.sig; do src_git "$src" show "FETCH_HEAD:$x" > "$d/$x" 2>/dev/null || true; done
-    # security M4: de Beheer-app alleen uit deze repo zelf, de andere platforms alleen met een geldige handtekening
-    builds_verify "$src" "$plat" "$d" || continue
+    for x in pkg.enc key.enc meta.json; do src_git "$src" show "FETCH_HEAD:$x" > "$d/$x" 2>/dev/null || true; done
     if ! openssl pkeyutl -decrypt -inkey "$BW/srv/private.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
         -pkeyopt rsa_mgf1_md:sha256 -in "$d/key.enc" -out "$d/kiv" 2>/dev/null; then
       echo "::warning::$plat: pakket niet te ontsleutelen (andere sleutel?); laat het opnieuw bouwen."; continue

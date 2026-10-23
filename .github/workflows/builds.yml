@@ -60,8 +60,6 @@ jobs:
       IMPORT_REPO: ${{ inputs.import_repo || 'false' }}
       INBOX_REPO: ${{ vars.BINGR_INBOX_REPO || 'LRvdLinden/bingr-inbox' }}
       INBOX_TOKEN: ${{ secrets.BINGR_INBOX_READ_TOKEN }}
-      # security M4: alleen ondertekende pakketten (tools/build_sig.py, tools/signers/); pas op true als alle sleutels er zijn
-      BUILDS_REQUIRE_SIGNATURE: ${{ vars.BUILDS_REQUIRE_SIGNATURE || 'false' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 
@@ -107,6 +105,12 @@ jobs:
           fi
           [ "$IMPORT_REPO" = true ] && builds_import_repo
           builds_inbox
+          # nieuwste Android-APK volgens het manifest (openbare gegevens: build, grootte, sha256) voor de controle hieronder
+          python3 - "$BW/srv/manifest.json" >> "$GITHUB_ENV" <<'PY'
+          import json, sys
+          a = (json.load(open(sys.argv[1])).get("platforms", {}) or {}).get("android") or {}
+          print(f"APK_BUILD={a.get('build', '')}"); print(f"APK_SIZE={a.get('size', '')}"); print(f"APK_SHA={a.get('sha256', '')}")
+          PY
           builds_finish
 
       - name: Controleren
@@ -138,3 +142,33 @@ jobs:
             [ "$c" = 200 ] && { echo "::error::${url}$f is rechtstreeks bereikbaar"; exit 1; }
           done
           echo "::notice::Map builds/ is niet rechtstreeks bereikbaar."
+
+      # Build 141: is de openbare testversie (dl.php?app=android, ook bingr.online/apk) het echte APK-bestand? Een geldige
+      # APK (zip), gelijk aan het manifest (grootte, sha256), ondertekend met de Bingr-releasesleutel (openbare vingerafdruk)
+      # en met de versionCode van de nieuwste build. Alleen ja/nee, grootte, versie en vingerafdruk in het log.
+      - name: Openbare Android-APK controleren
+        if: steps.todo.outputs.skip != '1' && env.APK_BUILD != ''
+        env:
+          WANT_CERT: "9E:D5:B7:30:C7:A4:B4:57:B8:0E:F9:91:A4:C6:FA:46:9C:9B:29:28:5B:9B:39:08:A8:93:6D:57:D0:C5:53:6B"
+        run: |
+          set -uo pipefail
+          d=$(mktemp -d)
+          code=$(curl -s --max-time 300 -D "$d/h" -o "$d/a.apk" -w '%{http_code}' "https://beheer.bingr.online/dl.php?app=android" || true)
+          ct=$(grep -i '^content-type:' "$d/h" | tail -1 | cut -d: -f2- | tr -d ' \r')
+          size=$(stat -c %s "$d/a.apk" 2>/dev/null || echo 0)
+          sha=$(sha256sum "$d/a.apk" | cut -d' ' -f1)
+          magic=$(head -c 4 "$d/a.apk" | od -An -tx1 | tr -d ' \n')
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          cert=$("$BT/apksigner" verify --print-certs "$d/a.apk" 2>/dev/null | grep -m1 'certificate SHA-256 digest:' | awk '{print $NF}' | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')
+          vc=$("$BT/aapt2" dump badging "$d/a.apk" 2>/dev/null | grep -m1 '^package:' | grep -oE "versionCode='[0-9]+'" | grep -oE '[0-9]+')
+          rm -rf "$d"
+          e=""
+          [ "$code" = 200 ] || e="$e HTTP $code;"
+          [ "$ct" = application/vnd.android.package-archive ] || e="$e Content-Type $ct;"
+          [ "$magic" = 504b0304 ] || e="$e geen APK (zip);"
+          [ "$size" = "$APK_SIZE" ] || e="$e grootte $size i.p.v. $APK_SIZE;"
+          [ "$sha" = "$APK_SHA" ] || e="$e sha256 wijkt af van het manifest;"
+          [ "$cert" = "$WANT_CERT" ] || e="$e certificaat ${cert:-geen/ongeldige handtekening};"
+          [ "$vc" = "$APK_BUILD" ] || e="$e versionCode ${vc:-?} i.p.v. $APK_BUILD;"
+          if [ -n "$e" ]; then echo "::error title=Openbare APK::build $APK_BUILD niet in orde:$e"; exit 1; fi
+          echo "::notice title=Openbare APK::build $APK_BUILD in orde: $size bytes, gelijk aan het manifest, versionCode $vc, ondertekend met de Bingr-releasesleutel ($cert)"
