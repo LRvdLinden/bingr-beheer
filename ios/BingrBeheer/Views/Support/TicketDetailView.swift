@@ -114,8 +114,13 @@ struct TicketDetailView: View {
             }
             InfoRow("Categorie", [Labels.category(t.category), t.platform.map { Labels.supportPlatform($0) },
                                   t.appVersion.map { "Bingr \($0)" }].compactMap { $0 }.joined(separator: " · "))
-            if t.deviceName != nil || t.osVersion != nil {
-                InfoRow("Apparaat", [t.deviceName, t.osVersion].compactMap { $0 }.joined(separator: " · "))
+            if let dev = t.deviceLine {
+                InfoRow(label: "Apparaat") {
+                    HStack(spacing: 6) {
+                        Text(dev)
+                        if t.source == "app" { Chip(text: "via de app", icon: "app") }
+                    }
+                }
             }
             InfoRow(label: "Taal") {
                 HStack(spacing: 8) {
@@ -249,11 +254,14 @@ struct TicketDetailView: View {
                 session.show("Notitie opgeslagen.")
             } else {
                 let x = try await session.call("support_reply", ["number": t.number, "message": text, "status": after])
+                // build 146: pushmelding naar de apparaten van de klant (ticket met account)
+                let n = x["push_devices"].int ?? 0
+                let push = n > 0 ? " Pushmelding naar \(Fmt.plural(n, "apparaat", "apparaten"))." : ""
                 if x["email_sent"].bool == true {
-                    session.show("Antwoord verstuurd naar \(t.email).")
+                    session.show("Antwoord verstuurd naar \(t.email).\(push)")
                 } else {
                     let why = x["email_error"].text.map { " (\($0))" } ?? ""
-                    session.show("Antwoord opgeslagen, maar de mail is niet verstuurd\(why).", bad: true)
+                    session.show("Antwoord opgeslagen, maar de mail is niet verstuurd\(why).\(push)", bad: true)
                 }
             }
             message = ""
@@ -320,11 +328,13 @@ struct MessageBubble: View {
                     }
                     HStack(spacing: 4) {
                         if m.source == "email" { Chip(text: "per e-mail", icon: "envelope") }
+                        if m.source == "app" { Chip(text: "via de app", icon: "app") }
                         if isSupport {
                             if m.emailSent == true { Chip(text: "gemaild") } else { Chip(text: "niet gemaild", tone: .warn) }
                         }
                     }
                     Text(m.body).font(.subheadline).textSelection(.enabled)
+                    if let d = m.diagnostics { DiagnosticsCard(diag: d) }
                     if isSupport, m.emailSent != true, let e = m.emailError {
                         Text(e).font(.caption2).foregroundStyle(Color.warn)
                     }

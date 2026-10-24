@@ -122,7 +122,10 @@
 //   support_counts      {token}           -> {new, open, pending, resolved, closed, active, unread, total, last_7d, smtp}
 //   support_list        {token, status?: active|all|new|open|pending|resolved|closed, q?, page?, page_size?} -> {total, items:[…], counts}
 //   support_get         {token, number}   -> {ticket, messages (ook interne notities), account}
-//   support_reply       {token, number, message, status?} -> {ok, status, email_sent}  (mail aan de klant vanaf support@bingr.online)
+//   support_reply       {token, number, message, status?} -> {ok, status, email_sent, push_devices}  (mail aan de klant vanaf
+//                       support@bingr.online; build 146: bij een ticket met account ook een pushmelding naar de apparaten)
+//   support_get         build 146: berichten met `diagnostics` (diagnose-bijlage uit de app, ontsleuteld door support) en bij
+//                       het ticket device_type, device_model en source ("app"); het beheer toont ze als kaart, nooit als JSON
 //   support_status      {token, number, status?, priority?, notify?} -> {ok, status, email_sent}  (opgelost/gesloten: mail aan de klant)
 //   support_note        {token, number, message} -> {ok}  (interne notitie, de klant ziet hem nooit)
 //   support_inbox       {token}           -> {configured, agents, state, log}  (inbox-import: laatste ronde, fout, logboek)

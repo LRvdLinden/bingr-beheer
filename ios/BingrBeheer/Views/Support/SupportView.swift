@@ -224,6 +224,7 @@ struct TicketRowView: View {
             HStack(spacing: 4) {
                 Text(Labels.category(t.category))
                 if let p = t.platform { Chip(text: Labels.supportPlatform(p)) }
+                if t.source == "app" { Chip(text: "app", icon: "app") }
                 Spacer()
                 Text(Fmt.ago(t.lastReplyAt))
             }

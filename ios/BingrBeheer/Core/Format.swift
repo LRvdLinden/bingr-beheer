@@ -124,7 +124,23 @@ enum Labels {
 
     static func supportPlatform(_ k: String) -> String {
         ["ios": "iPhone/iPad", "tvos": "Apple TV", "macos": "Mac", "android": "Android", "androidtv": "Android TV",
-         "tizen": "Samsung TV", "web": "Browser"][k] ?? k
+         "tizen": "Samsung TV", "web": "Browser", "windows": "Windows"][k] ?? k
+    }
+
+    // build 146: diagnose-bijlage van tickets uit de app
+    static func diagPlatform(_ k: String) -> String {
+        ["ios": "iPhone", "ipados": "iPad"][k] ?? supportPlatform(k)
+    }
+    static func deviceType(_ k: String) -> String {
+        ["phone": "Telefoon", "tablet": "Tablet", "tv": "Tv", "desktop": "Computer", "browser": "Browser"][k] ?? k
+    }
+    static func netType(_ k: String) -> String {
+        ["wifi": "wifi", "ethernet": "kabel", "cellular": "mobiel", "none": "geen", "other": "anders", "unknown": "onbekend"][k] ?? k
+    }
+    /// Uitkomst van een netwerkcheck: label en toon.
+    static func check(_ k: String) -> (String, Tone) {
+        ["ok": ("ok", Tone.good), "slow": ("traag", .warn), "fail": ("mislukt", .bad), "skipped": ("overgeslagen", .neutral),
+         "unknown": ("onbekend", .neutral)][k] ?? (k, .neutral)
     }
 
     /// Resultaten van de inbox-import: label en toon (good / bad / neutraal).

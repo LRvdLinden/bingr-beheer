@@ -2126,7 +2126,56 @@
   const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };
   const SUP_FILTERS = [["active", "Actief"], ["new", "Nieuw"], ["open", "In behandeling"], ["pending", "Wacht op klant"], ["resolved", "Opgelost"], ["closed", "Gesloten"], ["all", "Alles"]];
   const SUP_CAT = { account: "Account", afspelen: "Afspelen", apps: "Apps", website: "Website", overig: "Overig" };
-  const SUP_PLAT = { ios: "iPhone/iPad", tvos: "Apple TV", macos: "Mac", android: "Android", androidtv: "Android TV", tizen: "Samsung TV", web: "Browser" };
+  const SUP_PLAT = { ios: "iPhone/iPad", tvos: "Apple TV", macos: "Mac", android: "Android", androidtv: "Android TV", tizen: "Samsung TV", web: "Browser", windows: "Windows" };
+  // build 146: apparaat en diagnose-bijlage van tickets uit de app (contract: docs/ACCOUNT.md "Build 146" in iptv-ios-appletv)
+  const DEV_TYPE = { phone: "Telefoon", tablet: "Tablet", tv: "Tv", desktop: "Computer", browser: "Browser" };
+  const DIAG_PLAT = { ...SUP_PLAT, ios: "iPhone", ipados: "iPad" };
+  const DIAG_KIND = { start: "Startdiagnose", app: "App-diagnose" };
+  const NET_TYPE = { wifi: "wifi", ethernet: "kabel", cellular: "mobiel", none: "geen", other: "anders", unknown: "onbekend" };
+  const CHECK = { ok: ["ok", "good"], slow: ["traag", "warn"], fail: ["mislukt", "bad"], skipped: ["overgeslagen", ""], unknown: ["onbekend", ""] };
+  const yesNo = (v) => (v === true ? "ja" : v === false ? "nee" : null);
+  const mb = (v) => (typeof v === "number" ? (v >= 1024 ? `${nf.format(Math.round(v / 102.4) / 10)} GB` : `${nf.format(Math.round(v))} MB`) : null);
+  const msTxt = (v) => (typeof v === "number" ? (v >= 1000 ? `${nf.format(Math.round(v / 100) / 10)} s` : `${nf.format(v)} ms`) : null);
+  /** Apparaat van een ticket in één regel: soort, model, systeem, naam. */
+  function ticketDevice(t) {
+    return [t.device_type ? DEV_TYPE[t.device_type] || t.device_type : "", t.device_model || "", t.os_version || "", t.device_name || ""].filter(Boolean).join(" · ");
+  }
+  function diagRows(rows) {
+    const list = rows.filter(([, v]) => v != null && v !== "");
+    return list.length ? `<dl class="dl diag-dl">${list.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join("")}</dl>` : "";
+  }
+  function checkChip(v, ms) {
+    if (!v) return null;
+    const [label, tone] = CHECK[v] || [v, ""];
+    return `<span class="chip ${tone}">${esc(label)}</span>${ms != null ? ` <span class="sub">${esc(msTxt(ms))}</span>` : ""}`;
+  }
+  /** Diagnose-bijlage (schema 1) als kaart: samenvatting, apparaat, app-status, netwerk, opslag, mijlpalen en crash. */
+  function diagHtml(d) {
+    if (!d || typeof d !== "object") return "";
+    const a = d.app || {}, dv = d.device || {}, st = d.state || {}, net = st.network || {}, sto = st.storage || {}, mem = d.memory || {};
+    const app = [DIAG_PLAT[a.platform] || a.platform, a.version ? `Bingr ${a.version}${a.build ? ` (${a.build})` : ""}` : ""].filter(Boolean).join(" · ");
+    const head = [DIAG_KIND[d.kind] || d.kind, dv.model || (DEV_TYPE[dv.type] || ""), [dv.os, dv.osVersion].filter(Boolean).join(" "), app].filter(Boolean).join(" · ");
+    const sec = (title, body) => (body ? `<section><h4>${esc(title)}</h4>${body}</section>` : "");
+    const miles = (d.milestones || []).map((m) => `<li><span>${esc(m.name)}</span><span class="r">${esc(msTxt(m.ms) || "")}${m.ok === false ? ' <span class="chip bad">mislukt</span>' : ""}</span></li>`).join("");
+    const crash = d.crash ? diagRows([["Wanneer", d.crash.at ? fmtDateTime(d.crash.at) : null], ["Soort", d.crash.type], ["Reden", d.crash.reason],
+      ["Build", d.crash.build != null ? String(d.crash.build) : null]]) + ((d.crash.stack || []).length ? `<pre class="diag-stack">${esc(d.crash.stack.join("\n"))}</pre>` : "") : "";
+    return `<details class="diag"${d.crash ? " open" : ""}><summary><span class="chip diag-chip">Diagnose</span> ${esc(head)}${d.crash ? ' <span class="chip bad">crash</span>' : ""}</summary>
+      <div class="diag-grid">
+        ${sec("Apparaat", diagRows([["Soort", DEV_TYPE[dv.type] || dv.type], ["Model", dv.model], ["Fabrikant", dv.manufacturer], ["Systeem", [dv.os, dv.osVersion].filter(Boolean).join(" ") || null],
+          ["Taal", dv.language], ["Browser", dv.browser], ["Scherm", dv.screen], ["App", app || null], ["Speler", a.engine], ["Gemaakt", d.createdAt ? fmtDateTime(d.createdAt) : null]]))}
+        ${sec("App", diagRows([["Ingelogd", yesNo(st.signedIn)], ["Abonnement", st.plan === "lifetime" ? "Lifetime" : st.plan === "free" ? "Gratis" : null],
+          ["Profielen", st.profiles != null ? nf.format(st.profiles) : null], ["Servers", st.servers != null ? nf.format(st.servers) + ((st.serverKinds || []).length ? ` (${st.serverKinds.join(", ")})` : "") : null],
+          ["Zenders / films / series", [st.channels, st.movies, st.series].some((x) => x != null) ? [st.channels, st.movies, st.series].map((x) => (x != null ? nf.format(x) : "–")).join(" / ") : null],
+          ["Laatste sync", st.lastSync ? `${ago(st.lastSync)}${st.lastSyncOk === false ? " (mislukt)" : ""}` : null], ["Pushmeldingen", yesNo(st.pushEnabled)],
+          ["Draait al", st.uptimeS != null ? msTxt(st.uptimeS * 1000) : null]]))}
+        ${sec("Netwerk", diagRows([["Online", yesNo(net.online)], ["Verbinding", net.type ? NET_TYPE[net.type] || net.type : null], ["Bingr-server", checkChip(net.backend, net.backendMs), true],
+          ["IPTV-provider", checkChip(net.provider, net.providerMs), true], ["VPN", yesNo(net.vpn)]]))}
+        ${sec("Opslag en geheugen", diagRows([["Opslag gebruikt", mb(sto.usedMB)], ["Vrij", mb(sto.freeMB)], ["Cache", mb(sto.cacheMB)], ["Database", mb(sto.dbMB)],
+          ["Geheugen", mem.usedMB != null ? `${mb(mem.usedMB)}${mem.totalMB != null ? ` van ${mb(mem.totalMB)}` : ""}` : null], ["Door Bingr", mb(mem.appMB)], ["Weinig geheugen", yesNo(mem.lowMemory)]]))}
+        ${miles ? sec("Mijlpalen bij het starten", `<ol class="diag-miles">${miles}</ol>`) : ""}
+        ${crash ? sec("Laatste crash", crash) : ""}
+      </div></details>`;
+  }
   const SUP_PRIO = { low: "Laag", normal: "Normaal", high: "Hoog", urgent: "Urgent" };
   const supBadge = (st) => `<span class="sbadge ${esc(st)}">${esc(SUP_ST[st] || st)}</span>`;
   let supCounts = null, supFilter = "active", supPageNo = 0, supTotal = 0, supSearchTimer;
@@ -2246,7 +2295,7 @@
       <td class="em num">${t.unread ? '<span class="udot" title="Klant wacht op reactie"></span>' : ""}#${t.number}</td>
       <td class="subj"><div class="st">${esc(t.subject)}</div><div class="sub">${esc(t.name || "")} · ${esc(t.email)}${t.has_account ? ' <span class="chip">account</span>' : ""}${t.priority === "high" || t.priority === "urgent" ? ` <span class="chip bad">${esc(SUP_PRIO[t.priority])}</span>` : ""}</div></td>
       <td data-l="Status">${supBadge(t.status)}</td>
-      <td data-l="Categorie">${esc(SUP_CAT[t.category] || t.category)}${t.platform ? ` <span class="chip">${esc(SUP_PLAT[t.platform] || t.platform)}</span>` : ""}</td>
+      <td data-l="Categorie">${esc(SUP_CAT[t.category] || t.category)}${t.platform ? ` <span class="chip">${esc(SUP_PLAT[t.platform] || t.platform)}</span>` : ""}${t.source === "app" ? ' <span class="chip">app</span>' : ""}</td>
       <td data-l="Laatste activiteit">${esc(ago(t.last_reply_at))}</td>
       <td data-l="Aangemaakt">${esc(ago(t.created_at))}</td>
     </tr>`).join("") || `<tr><td colspan="6" class="empty">${$("supSearch").value.trim() ? "Geen tickets gevonden." : supFilter === "active" ? "Geen open tickets. Alles is beantwoord." : "Geen tickets."}</td></tr>`;
@@ -2264,7 +2313,8 @@
     const who = { customer: "Klant", support: "Bingr Support", note: "Interne notitie" }[m.author] || m.author;
     const viaMail = m.source === "email" ? `<span class="chip mail" title="${m.author === "support" ? "Per e-mail beantwoord (antwoord op een melding aan support@)" : "Per e-mail binnengekomen"}">✉ per e-mail</span>` : "";
     const mail = viaMail + (m.author === "support" ? (m.email_sent ? '<span class="chip">gemaild</span>' : `<span class="chip warn" title="${esc(m.email_error || "")}">niet gemaild</span>`) : "");
-    return `<div class="msg ${esc(m.author)}"><div class="mh"><b>${esc(who)}</b><span class="sub">${when}</span>${mail}</div><div class="mb">${esc(m.body)}</div></div>`;
+    const viaApp = m.source === "app" ? '<span class="chip">via de app</span>' : "";
+    return `<div class="msg ${esc(m.author)}"><div class="mh"><b>${esc(who)}</b><span class="sub">${when}</span>${viaApp}${mail}</div><div class="mb">${esc(m.body)}</div>${diagHtml(m.diagnostics)}</div>`;
   }
   let supOpen = null;
   async function openTicket(n) {
@@ -2286,7 +2336,7 @@
         <dt>Klant</dt><dd>${esc(t.name || "—")}<br><a href="mailto:${esc(t.email)}">${esc(t.email)}</a></dd>
         <dt>Account</dt><dd>${acc}</dd>
         <dt>Categorie</dt><dd>${esc(SUP_CAT[t.category] || t.category)}${t.platform ? ` · ${esc(SUP_PLAT[t.platform] || t.platform)}` : ""}${t.app_version ? ` · Bingr ${esc(t.app_version)}` : ""}</dd>
-        ${t.device_name || t.os_version ? `<dt>Apparaat</dt><dd>${esc([t.device_name, t.os_version].filter(Boolean).join(" · "))}</dd>` : ""}
+        ${ticketDevice(t) ? `<dt>Apparaat</dt><dd>${esc(ticketDevice(t))}${t.source === "app" ? ' <span class="chip">via de app</span>' : ""}</dd>` : ""}
         <dt>Taal</dt><dd>${t.lang === "en" ? "Engels" : "Nederlands"} <a class="sub" href="${esc(t.customer_url)}" target="_blank" rel="noopener noreferrer">Klantweergave openen ↗</a></dd>
       </dl>
       <h3>Gesprek</h3>
@@ -2325,7 +2375,8 @@
         if (kind === "note") { await call("support_note", { number: t.number, message }); toast("Notitie opgeslagen."); }
         else {
           const x = await call("support_reply", { number: t.number, message, status: $("supAfter").value });
-          toast(x.email_sent ? `Antwoord verstuurd naar ${t.email}.` : `Antwoord opgeslagen, maar de mail is niet verstuurd${x.email_error ? ` (${x.email_error})` : ""}.`, !x.email_sent);
+          const pushTxt = x.push_devices > 0 ? ` Pushmelding naar ${nf.format(x.push_devices)} ${x.push_devices === 1 ? "apparaat" : "apparaten"}.` : "";
+          toast((x.email_sent ? `Antwoord verstuurd naar ${t.email}.` : `Antwoord opgeslagen, maar de mail is niet verstuurd${x.email_error ? ` (${x.email_error})` : ""}.`) + pushTxt, !x.email_sent);
         }
         await openTicket(t.number); loadTickets();
       } catch (err) { if (err.code !== "auth") $("supErr").textContent = errText(err); $("supSend").disabled = false; }

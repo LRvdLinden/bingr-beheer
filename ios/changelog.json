@@ -2,6 +2,16 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 32,
+   "version": "1.0.0",
+   "date": "2026-10-24",
+   "items": [
+    {"type": "new", "nl": "Support: bij een ticket uit de app staat van welk apparaat het komt (soort, model en systeem), met het label via de app"},
+    {"type": "new", "nl": "Support: de diagnose die de app meestuurt staat netjes bij het bericht (apparaat, app, netwerk, opslag, mijlpalen en de laatste crash)"},
+    {"type": "improved", "nl": "Support: berichten en het inbox-logboek worden versleuteld bewaard; het beheer toont ze gewoon"}
+   ]
+  },
+  {
    "build": 30,
    "version": "1.0.0",
    "date": "2026-10-23",

@@ -948,3 +948,19 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
   .rev-basis-act{justify-items:start}
   .head-btns .rev-mode{flex:1 1 100%}
 }
+/* build 146: diagnose-bijlage bij een ticket uit de app */
+.chip.good{background:#2fa84f1f;border-color:#2fa84f40;color:#8fe0a6}
+.chip.diag-chip{background:#8b5cf61f;border-color:#8b5cf640;color:#c4b5fd}
+.diag{margin-top:10px;border:1px solid var(--line-soft);border-radius:10px;background:#00000026}
+.diag>summary{cursor:pointer;padding:8px 10px;font-size:13px;color:#d6d6d6;list-style-position:inside}
+.diag>summary:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:10px}
+.diag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 18px;padding:4px 12px 12px}
+.diag-grid section{min-width:0}
+.diag-grid h4{margin:10px 0 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--dim)}
+.dl.diag-dl{grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px;margin:0;padding:0;background:none;border:0;border-radius:0}
+.dl.diag-dl dd{overflow-wrap:anywhere}
+.diag-miles{list-style:none;margin:0;padding:0;font-size:13px}
+.diag-miles li{display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px solid var(--line-soft)}
+.diag-miles li:last-child{border-bottom:0}
+.diag-miles .r{color:var(--dim);white-space:nowrap}
+.diag-stack{margin:6px 0 0;padding:8px 10px;max-height:240px;overflow:auto;background:#0000004d;border-radius:8px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;color:#e6e6e6}

@@ -52,6 +52,8 @@ struct TicketRow: Identifiable, Hashable {
     let lastReplyAt: Date?
     let hasAccount: Bool
     let unread: Bool
+    /// build 146: `app` voor een ticket uit de Support-tab van de app
+    let source: String?
 
     init(_ j: JSON) {
         number = j["number"].int ?? 0
@@ -66,6 +68,7 @@ struct TicketRow: Identifiable, Hashable {
         lastReplyAt = j["last_reply_at"].date
         hasAccount = j["has_account"].bool ?? false
         unread = j["unread"].bool ?? false
+        source = j["source"].text
     }
 }
 
@@ -80,6 +83,8 @@ struct TicketDetail {
         let emailSent: Bool?
         let emailError: String?
         let source: String?
+        /// build 146: diagnose-bijlage (alleen in het beheer volledig)
+        let diagnostics: TicketDiagnostics?
     }
 
     struct Account {
@@ -104,6 +109,10 @@ struct TicketDetail {
     let appVersion: String?
     let deviceName: String?
     let osVersion: String?
+    /// build 146: soort (phone, tablet, tv, desktop, browser) en model uit de diagnose-bijlage; `app` = via de app
+    let deviceType: String?
+    let deviceModel: String?
+    let source: String?
     let lang: String
     let customerURL: URL?
     let createdAt: Date?
@@ -124,12 +133,16 @@ struct TicketDetail {
         appVersion = t["app_version"].text
         deviceName = t["device_name"].text
         osVersion = t["os_version"].text
+        deviceType = t["device_type"].text
+        deviceModel = t["device_model"].text
+        source = t["source"].text
         lang = t["lang"].text ?? "nl"
         customerURL = t["customer_url"].text.flatMap(URL.init(string:))
         createdAt = t["created_at"].date
         messages = j["messages"].array.enumerated().map { i, m in
             Message(id: i, author: m["author"].text ?? "", body: m["body"].string ?? "", createdAt: m["created_at"].date,
-                    emailSent: m["email_sent"].bool, emailError: m["email_error"].text, source: m["source"].text)
+                    emailSent: m["email_sent"].bool, emailError: m["email_error"].text, source: m["source"].text,
+                    diagnostics: TicketDiagnostics(m["diagnostics"]))
         }
         let a = j["account"]
         account = a.object == nil ? nil : Account(
@@ -137,6 +150,65 @@ struct TicketDetail {
             appVersions: a["app_versions"].strings, createdAt: a["created_at"].date, lastSeenAt: a["last_seen_at"].date,
             confirmed: a["confirmed"].bool ?? true, tickets: a["tickets"].int ?? 0)
         smtp = j["smtp"].bool
+    }
+
+    /// Apparaat in één regel: soort, model, systeem, naam (zoals het web-dashboard).
+    var deviceLine: String? {
+        let s = [deviceType.map(Labels.deviceType), deviceModel, osVersion, deviceName].compactMap { $0 }.joined(separator: " · ")
+        return s.isEmpty ? nil : s
+    }
+}
+
+/// Diagnose-bijlage bij een bericht uit de app (schema 1, docs/ACCOUNT.md "Build 146" in iptv-ios-appletv). Alle velden
+/// optioneel: de server heeft de bijlage al opgeschoond; hier alleen lezen en netjes tonen.
+struct TicketDiagnostics {
+    struct Milestone: Identifiable { let id: Int; let name: String; let ms: Int?; let ok: Bool? }
+
+    let kind: String
+    let createdAt: Date?
+    let platform: String?, version: String?, build: Int?, engine: String?
+    let deviceType: String?, model: String?, manufacturer: String?, os: String?, osVersion: String?, language: String?, browser: String?, screen: String?
+    let milestones: [Milestone]
+    let memUsedMB: Double?, memTotalMB: Double?, memAppMB: Double?, lowMemory: Bool?
+    let crashAt: Date?, crashType: String?, crashReason: String?, crashStack: [String], crashBuild: Int?, hasCrash: Bool
+    let signedIn: Bool?, profiles: Int?, servers: Int?, serverKinds: [String], lastSync: Date?, lastSyncOk: Bool?, plan: String?, pushEnabled: Bool?
+    let channels: Int?, movies: Int?, series: Int?, uptimeS: Int?
+    let online: Bool?, netType: String?, backend: String?, backendMs: Int?, provider: String?, providerMs: Int?, vpn: Bool?
+    let storageUsedMB: Double?, storageFreeMB: Double?, cacheMB: Double?, dbMB: Double?
+
+    init?(_ j: JSON) {
+        guard j.object != nil, let kind = j["kind"].text else { return nil }
+        self.kind = kind
+        createdAt = j["createdAt"].date
+        let a = j["app"], d = j["device"], m = j["memory"], c = j["crash"], s = j["state"], n = s["network"], st = s["storage"]
+        platform = a["platform"].text; version = a["version"].text; build = a["build"].int; engine = a["engine"].text
+        deviceType = d["type"].text; model = d["model"].text; manufacturer = d["manufacturer"].text; os = d["os"].text
+        osVersion = d["osVersion"].text; language = d["language"].text; browser = d["browser"].text; screen = d["screen"].text
+        milestones = j["milestones"].array.enumerated().compactMap { i, x in
+            x["name"].text.map { Milestone(id: i, name: $0, ms: x["ms"].int, ok: x["ok"].bool) }
+        }
+        memUsedMB = m["usedMB"].double; memTotalMB = m["totalMB"].double; memAppMB = m["appMB"].double; lowMemory = m["lowMemory"].bool
+        hasCrash = c.object != nil
+        crashAt = c["at"].date; crashType = c["type"].text; crashReason = c["reason"].text; crashStack = c["stack"].strings; crashBuild = c["build"].int
+        signedIn = s["signedIn"].bool; profiles = s["profiles"].int; servers = s["servers"].int; serverKinds = s["serverKinds"].strings
+        lastSync = s["lastSync"].date; lastSyncOk = s["lastSyncOk"].bool; plan = s["plan"].text; pushEnabled = s["pushEnabled"].bool
+        channels = s["channels"].int; movies = s["movies"].int; series = s["series"].int; uptimeS = s["uptimeS"].int
+        online = n["online"].bool; netType = n["type"].text; backend = n["backend"].text; backendMs = n["backendMs"].int
+        provider = n["provider"].text; providerMs = n["providerMs"].int; vpn = n["vpn"].bool
+        storageUsedMB = st["usedMB"].double; storageFreeMB = st["freeMB"].double; cacheMB = st["cacheMB"].double; dbMB = st["dbMB"].double
+    }
+
+    var kindLabel: String { kind == "start" ? "Startdiagnose" : kind == "app" ? "App-diagnose" : kind }
+    var appLine: String? {
+        let p = platform.map(Labels.diagPlatform)
+        let v = version.map { "Bingr \($0)" + (build.map { " (\($0))" } ?? "") }
+        let s = [p, v].compactMap { $0 }.joined(separator: " · ")
+        return s.isEmpty ? nil : s
+    }
+    var systemLine: String? { let s = [os, osVersion].compactMap { $0 }.joined(separator: " "); return s.isEmpty ? nil : s }
+    /// Samenvatting voor de kop: soort, model, systeem, app.
+    var summary: String {
+        [kindLabel, model ?? deviceType.map(Labels.deviceType), systemLine, appLine].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
