@@ -187,7 +187,7 @@ $p = $raw === false ? null : json_decode($raw, true);
 $now = time();
 if (!is_array($p) || !is_int($p['e'] ?? null) || $p['e'] < $now || $p['e'] > $now + 900) out(403, ['error' => 'expired']);
 $f = (string)($p['f'] ?? '');
-if (!preg_match('#^(manifest\.json|presskit-stats\.json|windows-stats\.json|(apple|android|android-aab|tizen|windows|beheer|presskit)/[A-Za-z0-9][A-Za-z0-9._-]{0,150})$#', $f) || strpos($f, '..') !== false) {
+if (!preg_match('#^(manifest\.json|presskit-stats\.json|windows-stats\.json|(apple|android|android-aab|tizen|windows|webos|beheer|presskit)/[A-Za-z0-9][A-Za-z0-9._-]{0,150})$#', $f) || strpos($f, '..') !== false) {
   out(400, ['error' => 'bad_file']);
 }
 $path = $dir . '/' . $f;

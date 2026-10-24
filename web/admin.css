@@ -1024,3 +1024,11 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 @media (max-width:760px){.srv-cols{grid-template-columns:1fr}.srv-tiles{grid-template-columns:repeat(2,1fr)}}
 .watch-h{padding-right:40px}
 .srv-table td.cron-n code{white-space:nowrap;overflow-wrap:normal}
+
+/* build 147: diagnose-schema 2 (vorige start in rood, kopiëren, fetch per soort) */
+.diag-alert{margin-top:10px;padding:10px 12px;border:1px solid #ff3b4666;border-radius:10px;background:#ff3b461f;color:#ffb3b7;font-size:13px;display:grid;gap:3px}
+.diag-alert b{color:#ff8a8f;font-size:14px}
+.diag-alert .diag-stack{max-height:160px}
+.diag-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 12px 0}
+.diag-fetch{list-style:none;margin:0;padding:0;font-size:13px}
+.diag-fetch li{padding:2px 0}

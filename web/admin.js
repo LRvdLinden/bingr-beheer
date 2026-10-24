@@ -24,8 +24,8 @@
     return fmtDate(v);
   }
   // ruwe platformnamen van de apps ("iPhone", "Apple TV", "tizen", "browser", "windows") en platformgroepen van de server
-  // (ios, ipados, macos, tvos, android, androidtv, tizen, web, windows, other)
-  const PLATFORM = { browser: "Webbrowser", tizen: "Samsung TV", windows: "Windows", "?": "Onbekend", ios: "iPhone", ipados: "iPad", macos: "Mac",
+  // (ios, ipados, macos, tvos, android, androidtv, tizen, webos, web, windows, other)
+  const PLATFORM = { browser: "Webbrowser", tizen: "Samsung TV", windows: "Windows", webos: "LG TV", "lg tv": "LG TV", "lg webos": "LG TV", "?": "Onbekend", ios: "iPhone", ipados: "iPad", macos: "Mac",
     tvos: "Apple TV", android: "Android", androidtv: "Android TV", web: "Webspeler", other: "Overig" };
   const pname = (p) => PLATFORM[p] || PLATFORM[String(p || "").toLowerCase()] || p || "Onbekend";
   // landen: alleen de landcode (laatst gezien land, uit het netwerk; nooit een IP-adres). Vlag-emoji en Nederlandse naam.
@@ -2138,7 +2138,7 @@
   const LINK_PLATFORMS = [
     ["apple", "Apple", "iPhone, iPad, Apple TV en Mac. Uit: de apps tonen de vergelijking, maar geen link, knop of QR-code."],
     ["android", "Android", "Telefoons en tablets"], ["androidtv", "Android TV", "Android TV, Google TV en Fire TV"],
-    ["tizen", "Samsung TV", "Tizen"], ["web", "Web", "Webspeler, bingr.online en de Windows-app"],
+    ["tizen", "Samsung TV", "Tizen"], ["webos", "LG TV", "webOS"], ["web", "Web", "Webspeler, bingr.online en de Windows-app"],
   ];
   async function loadSettings() {
     const el = $("linkSettings");
@@ -2175,6 +2175,7 @@
     ["android-aab", "Android App Bundle (Google Play)", ".aab voor Google Play (telefoon, tablet en Google TV), getekend met de upload key"],
     ["tizen", "Samsung TV", ".wgt voor Tizen"],
     ["windows", "Windows (.exe)", "Installer voor Windows 10 en 11 (x64)"],
+    ["webos", "LG TV (webOS)", ".ipk voor LG webOS (niet openbaar)"],
     ["apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS"],
     ["beheer", "BingrBeheer", "Xcode-project (zip) van deze beheer-app voor iPhone en iPad"],
   ];
@@ -2381,7 +2382,7 @@
   const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };
   const SUP_FILTERS = [["active", "Actief"], ["new", "Nieuw"], ["open", "In behandeling"], ["pending", "Wacht op klant"], ["resolved", "Opgelost"], ["closed", "Gesloten"], ["all", "Alles"]];
   const SUP_CAT = { account: "Account", afspelen: "Afspelen", apps: "Apps", website: "Website", overig: "Overig" };
-  const SUP_PLAT = { ios: "iPhone/iPad", tvos: "Apple TV", macos: "Mac", android: "Android", androidtv: "Android TV", tizen: "Samsung TV", web: "Browser", windows: "Windows" };
+  const SUP_PLAT = { ios: "iPhone/iPad", tvos: "Apple TV", macos: "Mac", android: "Android", androidtv: "Android TV", tizen: "Samsung TV", webos: "LG TV", web: "Browser", windows: "Windows" };
   // build 146: apparaat en diagnose-bijlage van tickets uit de app (contract: docs/ACCOUNT.md "Build 146" in iptv-ios-appletv)
   const DEV_TYPE = { phone: "Telefoon", tablet: "Tablet", tv: "Tv", desktop: "Computer", browser: "Browser" };
   const DIAG_PLAT = { ...SUP_PLAT, ios: "iPhone", ipados: "iPad" };
@@ -2404,32 +2405,145 @@
     const [label, tone] = CHECK[v] || [v, ""];
     return `<span class="chip ${tone}">${esc(label)}</span>${ms != null ? ` <span class="sub">${esc(msTxt(ms))}</span>` : ""}`;
   }
-  /** Diagnose-bijlage (schema 1) als kaart: samenvatting, apparaat, app-status, netwerk, opslag, mijlpalen en crash. */
+  // build 147: diagnose-schema 2 (docs/ACCOUNT.md "Build 147" in iptv-ios-appletv): samenvatting, vorige start, fetch per soort
+  const START_SUM = { good: ["Start: goed", "good"], slow: ["Start: traag", "warn"], hung: ["Start: vastgelopen", "bad"] };
+  const PREV_PROB = { hang: "Vastgelopen", crash: "Crash", not_finished: "Niet klaar" };
+  const FETCH_KIND = { live: "zenders", movie: "films", series: "series" };
+  const MILE = { launch: "gestart", start: "gestart", session: "account", account: "account", first_frame: "eerste frame", intro: "intro klaar",
+    intro_done: "intro klaar", profiles: "profielkeuze", profile_picker: "profielkeuze", profile_chosen: "profiel gekozen", pin: "pincodescherm",
+    pin_ok: "pincode goed", servers_loaded: "servers geladen", epg: "tv-gids", ready: "klaar", splash: "opstartscherm", sources: "bronnen" };
+  const mileName = (n) => (MILE[n] ? `${MILE[n]} (${n})` : n);
+  const secTxt = (v) => (typeof v === "number" ? `${nf.format(Math.round(v * 10) / 10)} s` : null);
+  /** fetch-regel als tekst: "series: provider leverde niets", "films: mislukt (timeout)". */
+  function fetchText(f) {
+    const n = typeof f.count === "number" ? nf.format(f.count) : null;
+    const st = f.status === "ok" ? `geleverd${n != null ? ` (${n})` : ""}` : f.status === "empty" ? "provider leverde niets"
+      : f.status === "failed" ? `mislukt${f.error ? ` (${f.error})` : ""}` : f.status === "hidden" ? `alles verborgen${n != null ? ` (${n})` : ""}` : f.status;
+    return `${FETCH_KIND[f.kind] || f.kind}: ${st}`;
+  }
+  const FETCH_TONE = { ok: "good", empty: "warn", failed: "bad", hidden: "warn" };
+  /** Probleem bij de vorige start (hang, crash, niet klaar) in één regel; null als er geen is. */
+  function prevProblem(d) {
+    const p = d.start?.previous;
+    if (!p || !PREV_PROB[p.problem]) return null;
+    return [PREV_PROB[p.problem], p.milestone ? `fase ${mileName(p.milestone)}` : null, p.seconds != null ? `duur ${secTxt(p.seconds)}` : null,
+      p.foreground === true ? "op de voorgrond" : p.foreground === false ? "op de achtergrond" : null, p.task ? `taak: ${p.task}` : null,
+      p.build ? `build ${p.build}` : null, p.at ? fmtDateTime(p.at) : null].filter(Boolean).join(" · ");
+  }
+  /** De hele diagnose als nette, leesbare tekst (knop Kopiëren). Schema 1 en 2. */
+  function diagText(d) {
+    if (!d || typeof d !== "object") return "";
+    const a = d.app || {}, dv = d.device || {}, st = d.state || {}, mem = d.memory || {}, s = d.start || {}, p = s.previous || null;
+    const net = d.network || st.network || {}, sto = d.storage || null, sto1 = st.storage || {};
+    const L = [], line = (k, v) => { if (v != null && v !== "") L.push(`${k}: ${v}`); }, join = (...x) => x.filter((y) => y != null && y !== "").join(" · ");
+    L.push(`Bingr-diagnose: ${DIAG_KIND[d.kind] || d.kind || "?"} (schema ${d.schema || 1})${d.createdAt ? `, gemaakt ${fmtDateTime(d.createdAt)}` : ""}`);
+    L.push("");
+    line("Apparaat", join(DEV_TYPE[dv.type] || dv.type, dv.model, dv.manufacturer, [dv.os, dv.osVersion].filter(Boolean).join(" "), dv.language, dv.browser, dv.screen));
+    line("App", join(DIAG_PLAT[a.platform] || a.platform, a.version ? `Bingr ${a.version}${a.build ? ` (build ${a.build})` : ""}` : null, a.engine ? `speler ${a.engine}` : null));
+    if (START_SUM[s.summary]) line("Samenvatting", START_SUM[s.summary][0]);
+    const pp = prevProblem(d);
+    if (pp) line("PROBLEEM VORIGE START", pp);
+    if (d.start) {
+      L.push("", "Startdiagnose");
+      L.push(`  Deze start: ${join(s.appMs != null ? `app-tijd ${msTxt(s.appMs)}` : null, s.userWaitMs != null ? `wachten op de gebruiker ${msTxt(s.userWaitMs)}` : null,
+        s.maxHangMs != null ? `langste hang ${msTxt(s.maxHangMs)}` : null) || "—"}`);
+      L.push(`  Vorige start: ${p ? (p.problem === "none" ? "geen probleem" : pp || p.problem) : "—"}`);
+      if (p?.stack?.length) { L.push("  Stack hoofdthread:"); p.stack.forEach((x) => L.push(`    ${x}`)); }
+    }
+    if ((d.milestones || []).length) {
+      L.push("", "Mijlpalen");
+      d.milestones.forEach((m) => L.push(`  ${mileName(m.name)}: ${msTxt(m.ms) || "?"}${m.ok === false ? " (mislukt)" : ""}`));
+    }
+    if (Object.keys(mem).length) {
+      L.push("", "Geheugen");
+      L.push(`  ${join(mem.usedMB != null ? `gebruikt ${mb(mem.usedMB)}${mem.totalMB != null ? ` van ${mb(mem.totalMB)}` : ""}` : null, mem.appMB != null ? `door Bingr (piek) ${mb(mem.appMB)}` : null,
+        mem.lowMemory === true ? "weinig geheugen" : null)}`);
+    }
+    if ((d.fetch || []).length) {
+      L.push("", "Ophalen per server en soort");
+      d.fetch.forEach((f) => L.push(`  ${f.server} ${fetchText(f)}`));
+    }
+    if (Object.keys(net).length) {
+      L.push("", "Netwerk");
+      L.push(`  ${join(net.type ? `verbinding ${NET_TYPE[net.type] || net.type}` : null, net.online === true ? "online" : net.online === false ? "offline" : null,
+        net.backend ? `Bingr-server ${(CHECK[net.backend] || [net.backend])[0]}${net.backendMs != null ? ` (${msTxt(net.backendMs)})` : ""}` : null,
+        net.provider ? `IPTV-provider ${(CHECK[net.provider] || [net.provider])[0]}${net.providerMs != null ? ` (${msTxt(net.providerMs)})` : ""}` : null,
+        net.vpn === true ? "VPN aan" : null)}`);
+    }
+    if (sto && Object.keys(sto).length) {
+      L.push("", "Opslag");
+      L.push(`  ${join(sto.totalMB != null ? `totaal ${mb(sto.totalMB)}` : null, sto.cacheMB != null ? `cache ${mb(sto.cacheMB)}` : null, sto.catalogMB != null ? `catalogus ${mb(sto.catalogMB)}` : null,
+        sto.downloadsMB != null ? `downloads ${mb(sto.downloadsMB)}` : null, sto.freeMB != null ? `vrij op het apparaat ${mb(sto.freeMB)}` : null)}`);
+    } else if (Object.keys(sto1).length) {
+      L.push("", "Opslag");
+      L.push(`  ${join(sto1.usedMB != null ? `gebruikt ${mb(sto1.usedMB)}` : null, sto1.cacheMB != null ? `cache ${mb(sto1.cacheMB)}` : null, sto1.dbMB != null ? `database ${mb(sto1.dbMB)}` : null, sto1.freeMB != null ? `vrij ${mb(sto1.freeMB)}` : null)}`);
+    }
+    if (Object.keys(st).some((k) => k !== "network" && k !== "storage")) {
+      L.push("", "App-status");
+      L.push(`  ${join(st.signedIn != null ? `ingelogd ${yesNo(st.signedIn)}` : null, st.plan ? `abonnement ${st.plan === "lifetime" ? "Lifetime" : "Gratis"}` : null,
+        st.profiles != null ? `profielen ${nf.format(st.profiles)}` : null, st.servers != null ? `servers ${nf.format(st.servers)}${(st.serverKinds || []).length ? ` (${st.serverKinds.join(", ")})` : ""}` : null,
+        [st.channels, st.movies, st.series].some((x) => x != null) ? `zenders/films/series ${[st.channels, st.movies, st.series].map((x) => (x != null ? nf.format(x) : "–")).join(" / ")}` : null,
+        st.lastSync ? `laatste sync ${fmtDateTime(st.lastSync)}${st.lastSyncOk === false ? " (mislukt)" : ""}` : null, st.pushEnabled != null ? `push ${yesNo(st.pushEnabled)}` : null,
+        st.uptimeS != null ? `draait ${msTxt(st.uptimeS * 1000)}` : null)}`);
+    }
+    if (d.crash) {
+      L.push("", "Laatste crash");
+      L.push(`  ${join(d.crash.at ? fmtDateTime(d.crash.at) : null, d.crash.type, d.crash.reason, d.crash.build != null ? `build ${d.crash.build}` : null) || "—"}`);
+      (d.crash.stack || []).forEach((x) => L.push(`    ${x}`));
+    }
+    return L.join("\n");
+  }
+  const diagStore = [];
+  /** Diagnose-bijlage (schema 1 en 2) als kaart: probleem vorige start, samenvatting, apparaat, app, netwerk, opslag, fetch, mijlpalen, crash. */
   function diagHtml(d) {
     if (!d || typeof d !== "object") return "";
-    const a = d.app || {}, dv = d.device || {}, st = d.state || {}, net = st.network || {}, sto = st.storage || {}, mem = d.memory || {};
+    const a = d.app || {}, dv = d.device || {}, st = d.state || {}, mem = d.memory || {};
+    const net = d.network || st.network || {}, sto2 = d.storage || null, sto = st.storage || {}, s = d.start || {}, p = s.previous || null;
     const app = [DIAG_PLAT[a.platform] || a.platform, a.version ? `Bingr ${a.version}${a.build ? ` (${a.build})` : ""}` : ""].filter(Boolean).join(" · ");
     const head = [DIAG_KIND[d.kind] || d.kind, dv.model || (DEV_TYPE[dv.type] || ""), [dv.os, dv.osVersion].filter(Boolean).join(" "), app].filter(Boolean).join(" · ");
     const sec = (title, body) => (body ? `<section><h4>${esc(title)}</h4>${body}</section>` : "");
-    const miles = (d.milestones || []).map((m) => `<li><span>${esc(m.name)}</span><span class="r">${esc(msTxt(m.ms) || "")}${m.ok === false ? ' <span class="chip bad">mislukt</span>' : ""}</span></li>`).join("");
+    const miles = (d.milestones || []).map((m) => `<li><span>${esc(mileName(m.name))}</span><span class="r">${esc(msTxt(m.ms) || "")}${m.ok === false ? ' <span class="chip bad">mislukt</span>' : ""}</span></li>`).join("");
     const crash = d.crash ? diagRows([["Wanneer", d.crash.at ? fmtDateTime(d.crash.at) : null], ["Soort", d.crash.type], ["Reden", d.crash.reason],
       ["Build", d.crash.build != null ? String(d.crash.build) : null]]) + ((d.crash.stack || []).length ? `<pre class="diag-stack">${esc(d.crash.stack.join("\n"))}</pre>` : "") : "";
-    return `<details class="diag"${d.crash ? " open" : ""}><summary><span class="chip diag-chip">Diagnose</span> ${esc(head)}${d.crash ? ' <span class="chip bad">crash</span>' : ""}</summary>
+    const sum = START_SUM[s.summary];
+    const sumChip = sum ? ` <span class="chip ${sum[1]}">${esc(sum[0])}</span>` : "";
+    const pp = prevProblem(d);
+    const alert = pp ? `<div class="diag-alert" role="alert"><b>Probleem bij de vorige start: ${esc(PREV_PROB[p.problem])}</b><span>${esc(pp.split(" · ").slice(1).join(" · "))}</span>
+      ${(p.stack || []).length ? `<pre class="diag-stack">${esc(p.stack.join("\n"))}</pre>` : ""}</div>` : "";
+    const startSec = d.start ? diagRows([["Samenvatting", sum ? `<span class="chip ${sum[1]}">${esc(sum[0])}</span>` : null, true], ["App-tijd", msTxt(s.appMs)],
+      ["Wachten op gebruiker", msTxt(s.userWaitMs)], ["Langste hang", msTxt(s.maxHangMs)],
+      ["Vorige start", p ? (p.problem === "none" ? "geen probleem" : PREV_PROB[p.problem] || p.problem) : null]]) : "";
+    const fetchSec = (d.fetch || []).length ? `<ul class="diag-fetch">${d.fetch.map((f) => `<li><span class="chip">${esc(f.server)}</span> <span class="chip ${FETCH_TONE[f.status] || ""}">${esc(fetchText(f))}</span></li>`).join("")}</ul>` : "";
+    const idx = diagStore.push(d) - 1;
+    const open = d.crash || pp || s.summary === "hung";
+    return `${alert}<details class="diag"${open ? " open" : ""}><summary><span class="chip diag-chip">Diagnose</span>${sumChip} ${esc(head)}${d.crash ? ' <span class="chip bad">crash</span>' : ""}</summary>
+      <div class="diag-bar"><button type="button" class="btn small ghost" data-diag-copy="${idx}">Kopiëren</button><span class="sub">hele diagnose als tekst op het klembord</span></div>
       <div class="diag-grid">
         ${sec("Apparaat", diagRows([["Soort", DEV_TYPE[dv.type] || dv.type], ["Model", dv.model], ["Fabrikant", dv.manufacturer], ["Systeem", [dv.os, dv.osVersion].filter(Boolean).join(" ") || null],
           ["Taal", dv.language], ["Browser", dv.browser], ["Scherm", dv.screen], ["App", app || null], ["Speler", a.engine], ["Gemaakt", d.createdAt ? fmtDateTime(d.createdAt) : null]]))}
+        ${sec("Start", startSec)}
         ${sec("App", diagRows([["Ingelogd", yesNo(st.signedIn)], ["Abonnement", st.plan === "lifetime" ? "Lifetime" : st.plan === "free" ? "Gratis" : null],
           ["Profielen", st.profiles != null ? nf.format(st.profiles) : null], ["Servers", st.servers != null ? nf.format(st.servers) + ((st.serverKinds || []).length ? ` (${st.serverKinds.join(", ")})` : "") : null],
           ["Zenders / films / series", [st.channels, st.movies, st.series].some((x) => x != null) ? [st.channels, st.movies, st.series].map((x) => (x != null ? nf.format(x) : "–")).join(" / ") : null],
           ["Laatste sync", st.lastSync ? `${ago(st.lastSync)}${st.lastSyncOk === false ? " (mislukt)" : ""}` : null], ["Pushmeldingen", yesNo(st.pushEnabled)],
           ["Draait al", st.uptimeS != null ? msTxt(st.uptimeS * 1000) : null]]))}
+        ${fetchSec ? sec("Ophalen per server en soort", fetchSec) : ""}
         ${sec("Netwerk", diagRows([["Online", yesNo(net.online)], ["Verbinding", net.type ? NET_TYPE[net.type] || net.type : null], ["Bingr-server", checkChip(net.backend, net.backendMs), true],
           ["IPTV-provider", checkChip(net.provider, net.providerMs), true], ["VPN", yesNo(net.vpn)]]))}
-        ${sec("Opslag en geheugen", diagRows([["Opslag gebruikt", mb(sto.usedMB)], ["Vrij", mb(sto.freeMB)], ["Cache", mb(sto.cacheMB)], ["Database", mb(sto.dbMB)],
+        ${sto2 ? sec("Opslag", diagRows([["Totaal (Bingr)", mb(sto2.totalMB)], ["Cache", mb(sto2.cacheMB)], ["Catalogus", mb(sto2.catalogMB)], ["Downloads", mb(sto2.downloadsMB)], ["Vrij op het apparaat", mb(sto2.freeMB)]])) : ""}
+        ${sec(sto2 ? "Geheugen" : "Opslag en geheugen", diagRows([...(sto2 ? [] : [["Opslag gebruikt", mb(sto.usedMB)], ["Vrij", mb(sto.freeMB)], ["Cache", mb(sto.cacheMB)], ["Database", mb(sto.dbMB)]]),
           ["Geheugen", mem.usedMB != null ? `${mb(mem.usedMB)}${mem.totalMB != null ? ` van ${mb(mem.totalMB)}` : ""}` : null], ["Door Bingr", mb(mem.appMB)], ["Weinig geheugen", yesNo(mem.lowMemory)]]))}
         ${miles ? sec("Mijlpalen bij het starten", `<ol class="diag-miles">${miles}</ol>`) : ""}
         ${crash ? sec("Laatste crash", crash) : ""}
       </div></details>`;
+  }
+  /** Knoppen Kopiëren van de diagnosekaarten in een container. */
+  function bindDiagCopy(root) {
+    root.querySelectorAll("button[data-diag-copy]").forEach((b) => (b.onclick = async () => {
+      const txt = diagText(diagStore[Number(b.dataset.diagCopy)]);
+      try { await navigator.clipboard.writeText(txt); toast("Diagnose gekopieerd."); }
+      catch { toast("Kopiëren lukt niet in deze browser.", true); }
+    }));
   }
   const SUP_PRIO = { low: "Laag", normal: "Normaal", high: "Hoog", urgent: "Urgent" };
   const supBadge = (st) => `<span class="sbadge ${esc(st)}">${esc(SUP_ST[st] || st)}</span>`;
@@ -2583,6 +2697,7 @@
     catch (e) { if (e.code !== "auth") $("drawerBody").innerHTML = `<h2 id="dTitle">#${esc(n)}</h2><p class="err">${esc(errText(e))}</p>`; return; }
     if (supOpen !== n) return;
     const t = r.ticket, a = r.account;
+    diagStore.length = 0;
     const acc = a ? `${a.linked ? "Gekoppeld" : "Niet gekoppeld (account met hetzelfde e-mailadres, geen bewijs van eigendom)"} · ${nf.format(a.device_count || 0)} apparaten${(a.platforms || []).length ? ` · ${a.platforms.map((p) => esc(pname(p))).join(", ")}` : ""}${(a.app_versions || []).length ? `<br><span class="sub">Versies: ${a.app_versions.map(esc).join(", ")}</span>` : ""}<br><span class="sub">Account sinds ${esc(fmtDate(a.created_at))}${a.last_seen_at ? ` · laatst gezien ${esc(ago(a.last_seen_at))}` : ""}${a.confirmed ? "" : " · onbevestigd"} · ${nf.format(a.tickets || 0)} ticket(s)</span>` : "Geen Bingr-account met dit adres";
     $("drawerBody").innerHTML = `
       <h2 id="dTitle"><span class="tnum">#${t.number}</span> ${esc(t.subject)}</h2>
@@ -2611,6 +2726,7 @@
         <label class="switch"><input id="supNotify" type="checkbox" checked><span class="track"></span><span>Klant mailen bij opgelost of gesloten</span></label>
         <button id="supSave" class="btn ghost" type="button">Opslaan</button>
       </div>`;
+    bindDiagCopy($("drawerBody"));
     let kind = "reply";
     $("drawerBody").querySelectorAll(".composer .seg button").forEach((b) => (b.onclick = () => {
       kind = b.dataset.k;
@@ -2669,7 +2785,7 @@
     en_incomplete: "Vul bij Engels zowel titel als tekst in (of laat beide leeg).", text_too_large: "De tekst is te lang voor een pushmelding.",
     bad_link: "De link moet met https:// beginnen en naar een echte website gaan.", bad_target: "Kies een doelgroep.",
     no_accounts: "Kies minstens één account.", too_many_accounts: "Kies hoogstens 500 accounts.", bad_account: "Ongeldig account in de lijst.",
-    no_platforms: "Kies minstens één platform.", no_push_platform: "Apple TV, Android TV en Samsung TV hebben geen systeem-push.",
+    no_platforms: "Kies minstens één platform.", no_push_platform: "Apple TV, Android TV, Samsung TV en LG TV hebben geen systeem-push.",
   });
   const pushTitle = (m) => (m.kind === "release" ? `Bingr ${m.version || ""} (Build ${m.build ?? "?"}) is beschikbaar` : m.title || (m.kind === "reminder" ? "Programmaherinnering" : "—"));
 

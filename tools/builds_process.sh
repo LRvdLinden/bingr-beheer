@@ -16,7 +16,8 @@ srv_rm(){ ftps_try "rm -f \"$(srv_dir)/$1\"" >/dev/null 2>&1 || true; }
 
 # android-aab = Android App Bundle voor Google Play (zelfde build als de APK, eigen map en branch inbox-android-aab)
 # windows = installer (.exe) van Bingr voor Windows (repo bingr-windows), branch inbox-windows
-PLATS="apple android android-aab tizen windows beheer"
+# webos = LG TV-app (.ipk, repo bingr-webos), branch inbox-webos (build 147); niet openbaar, alleen via een kortgeldige link
+PLATS="apple android android-aab tizen windows webos beheer"
 
 builds_init(){
   BW=$(mktemp -d); mkdir -p "$BW/srv"

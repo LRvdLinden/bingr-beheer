@@ -137,8 +137,8 @@
 //                       -> {ok, …zoals plan_get}  (abonnement van een account; null = standaard van het abonnement;
 //                       granted_by "beheer" (niet de inlognaam: de klant kan zijn eigen rij lezen), source 'admin';
 //                       Gratis zonder eigen limieten en notitie = rij weg)
-//   app_settings_get    {token}           -> {upgrade_link:{apple, android, androidtv, tizen, web}}
-//   app_settings_set    {token, upgrade_link:{apple, android, androidtv, tizen, web}} -> {ok, upgrade_link}
+//   app_settings_get    {token}           -> {upgrade_link:{apple, android, androidtv, tizen, web, webos}}
+//   app_settings_set    {token, upgrade_link:{apple, android, androidtv, tizen, web, webos?}} -> {ok, upgrade_link}
 //                       Abonnementen: tabellen account_plans en app_settings (schema in iptv-ios-appletv, docs/ACCOUNT.md).
 //   builds              {token}           -> {ready, platforms: {android|android-aab|tizen|windows|apple|beheer: {version, build, file, path, size,
 //                       sha256, date, notes, history:[…]}} | null, updated?, reason?: "not_configured"|"no_builds"|"unreachable"}
@@ -153,7 +153,7 @@
 //   build_push          {token, platform: "apple"|"android", file? (standaard de nieuwste)} -> {ok, duplicate, devices, build,
 //                       missing_channels, push} (releasemelding van die build via push: release met PUSH_ADMIN_SECRET; één
 //                       keer per build; niet automatisch, want de stores keuren pas later goed; in admin_audit platform en build)
-//   build_link          {token, platform: "android"|"android-aab"|"tizen"|"windows"|"apple"|"beheer"|"presskit", file? (standaard de nieuwste; anders alleen
+//   build_link          {token, platform: "android"|"android-aab"|"tizen"|"windows"|"webos"|"apple"|"beheer"|"presskit", file? (standaard de nieuwste; anders alleen
 //                       een bestand uit het manifest)} -> {url, expires_at, file, size}  (https://beheer.bingr.online/dl.php?t=…,
 //                       10 minuten geldig; in admin_audit als build_link met platform en build, nooit de link of het token)
 //                       Tokens: HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY (gezet door de workflow Builds, dezelfde
@@ -229,8 +229,10 @@ const TOKEN_TTL_MS = 12 * 3600 * 1000;
 
 // ---- abonnementen (zelfde standaarden als supabase/functions/_shared/plans.ts in iptv-ios-appletv) ----
 const PLAN_DEFAULTS = { free: { streams: 1, devices: 8, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } } as const;
-const LINK_KEYS = ["apple", "android", "androidtv", "tizen", "web"] as const;
-const DEFAULT_LINK: Record<string, boolean> = { apple: false, android: true, androidtv: true, tizen: true, web: true };
+// build 147: webos (LG TV); bij app_settings_set optioneel (oudere Beheer-apps sturen hem niet mee: dan blijft de huidige)
+const LINK_KEYS = ["apple", "android", "androidtv", "tizen", "web", "webos"] as const;
+const LINK_OPTIONAL = ["webos"];
+const DEFAULT_LINK: Record<string, boolean> = { apple: false, android: true, androidtv: true, tizen: true, web: true, webos: true };
 // eigen limiet: null/leeg = standaard; anders een geheel getal binnen [1, cap]; ongeldig = undefined (fout)
 function limitInput(v: unknown, cap: number): number | null | undefined {
   if (v === null || v === undefined || v === "") return null;
@@ -1090,8 +1092,13 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const v = body.upgrade_link;
       if (!v || typeof v !== "object" || Array.isArray(v)) return json({ error: "bad_settings" }, 400);
       const o = v as Record<string, unknown>;
-      if (!LINK_KEYS.every((k) => typeof o[k] === "boolean")) return json({ error: "bad_settings" }, 400);
-      const value = Object.fromEntries(LINK_KEYS.map((k) => [k, o[k]]));
+      if (!LINK_KEYS.every((k) => typeof o[k] === "boolean" || (LINK_OPTIONAL.includes(k) && o[k] === undefined))) return json({ error: "bad_settings" }, 400);
+      let cur: Record<string, boolean> | null = null;
+      if (LINK_OPTIONAL.some((k) => o[k] === undefined)) {
+        const { data } = await admin.from("app_settings").select("value").eq("key", "upgrade_link").maybeSingle();
+        cur = linkView(data?.value);
+      }
+      const value = Object.fromEntries(LINK_KEYS.map((k) => [k, typeof o[k] === "boolean" ? o[k] : cur![k]]));
       const { error } = await admin.from("app_settings").upsert({ key: "upgrade_link", value, updated_at: new Date().toISOString() });
       if (error) throw new Error(error.message);
       await audit("app_settings_set", ip, null, { upgrade_link: value });
