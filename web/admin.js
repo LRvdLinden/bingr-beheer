@@ -3277,7 +3277,7 @@
   const ST = { up: "Werkt", degraded: "Verminderd", down: "Storing" };
   const GRP = { server: "Server", website: "Website", apps: "Apps" };
   const KIND = { http: "Website (URL)", auth: "Supabase Auth", db: "Database", fn: "Edge Function", storage: "Opslag", smtp: "SMTP",
-    tls: "TLS-certificaat", gh_asset: "GitHub-release", build: "Build in de opslag", gh_workflow: "GitHub-build", devices: "Informatie" };
+    tls: "TLS-certificaat", gh_asset: "GitHub-release", build: "Build in de opslag", gh_workflow: "GitHub-build", head: "Openbare download (HEAD)", reach: "Bereikbaarheid", push: "Pushdienst", devices: "Informatie" };
   const pctTxt = (v) => (v == null ? "—" : `${v.toLocaleString("nl-NL", { maximumFractionDigits: 2 })}%`);
   const durTxt = (s) => { const m = Math.round((s || 0) / 60); if (m < 1) return "< 1 min"; if (m < 60) return `${m} min`; const h = Math.floor(m / 60); return `${h} uur${m % 60 ? ` ${m % 60} min` : ""}`; };
   let stData = null;
