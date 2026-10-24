@@ -2,6 +2,16 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 36,
+   "version": "1.0.0",
+   "date": "2026-10-24",
+   "items": [
+    {"type": "new", "nl": "Eigen mailing: knop Afbeelding uploaden (PNG, JPG of GIF, max. 2 MB) uit de fotobibliotheek; foto's breder dan 1000 px worden verkleind en de link wordt vanzelf ingevuld"},
+    {"type": "new", "nl": "Eigen mailing: een ingevulde afbeelding-link wordt gecontroleerd, met een duidelijke melding bij een webpagina of deellink (Drive, iCloud, Dropbox), een inlog, SVG of WebP of een te groot bestand"},
+    {"type": "improved", "nl": "Eigen mailing: het voorbeeld meldt het als de afbeelding niet te laden is; testmail en versturen weigeren dan"}
+   ]
+  },
+  {
    "build": 35,
    "version": "1.0.0",
    "date": "2026-10-24",

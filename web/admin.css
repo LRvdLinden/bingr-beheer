@@ -734,6 +734,10 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .ml-langs{margin-top:4px;gap:16px}
 .ml-langs fieldset{margin-top:12px}
 .ml-help{margin-top:12px;line-height:1.7}
+.ml-img-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}
+.ml-img-row .sub{flex:1 1 180px;overflow-wrap:anywhere}
+.ml-img .err{margin-top:6px;min-height:0}
+.ml-thumb{display:block;margin-top:10px;max-width:250px;max-height:160px;width:auto;height:auto;border-radius:8px;border:1px solid var(--line)}
 .ml-help code{background:#ffffff14;border-radius:4px;padding:1px 5px;font-size:13px;color:#fff;white-space:nowrap}
 .ml-test{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
 .ml-test h3,.ml-active h3{margin:0;font-size:16px}

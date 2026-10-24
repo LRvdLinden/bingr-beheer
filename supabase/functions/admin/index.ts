@@ -186,6 +186,16 @@
 //                       recipients}  (service alleen met service_ack: true; in admin_audit id, doelgroep en aantallen)
 //   mailing_cancel      {token, id} -> {ok, cancelled}
 //                       content = {nl:{subject, body, button}, en:{…}, image, button_url}
+//                       Afbeelding (image.ts / image_test.ts): mailing_render, mailing_test en mailing_send controleren een
+//                       ingevulde afbeelding-URL server-side (https, openbare host: geen interne/private IP's, max. 3
+//                       doorverwijzingen, GET binnen 8 s, content-type image/png|jpeg|gif met passende inhoud, max. 2 MB;
+//                       SVG en WebP geweigerd). Testmail en versturen stoppen dan met de foutcode (image_*); het voorbeeld
+//                       toont de mail wel, met image_error erbij. Nooit de URL of de host in een log of in admin_audit.
+//   mailing_image_check {token, url} -> {ok, type, size} | 400 {error: image_*|bad_image_url, service?}  (service = bekende
+//                       deeldienst, bv. Google, iCloud, Dropbox; max. 120 per uur per IP)
+//   mailing_image_upload {token, data (base64 van een PNG, JPEG of GIF, max. 2 MB)} -> {url, type, size}  (openbare bucket
+//                       mail-assets, schema in iptv-ios-appletv; willekeurige naam m/<jjjj>/<mm>/<32 hex>.<ext>, schrijven
+//                       alleen met de service role; max. 30 per uur per IP; in admin_audit alleen type en grootte)
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 //   mailtest_account_mails {to, lang?}    -> {ok, sent:{deleted, blocked, unblocked}}  (alleen met header x-bingr-mailtest van de
 //                       mailtest in iptv-ios-appletv, workflow Diagnose; zie _shared/mail.ts. De drie accountmails met
@@ -219,6 +229,7 @@ import {
 import {
   cleanAudience, cleanContent as cleanMailingContent, cleanMailingId, cleanRequestId, cleanTestLang, mailingStatusView, sendAudit,
 } from "./mailing.ts";
+import { checkImageUrl, type CheckResult, cleanUpload, IMAGE_MAX, isOwnAsset, MAIL_BUCKET, objectName, publicUrl } from "./image.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -571,6 +582,31 @@ const NL_PREVIEW_MAX = 10, NL_PREVIEW_WINDOW = 3600;
 const nlCall = (action: string, payload: Record<string, unknown> = {}) =>
   newsletterCall(env("SUPABASE_URL"), env("NEWSLETTER_ADMIN_SECRET"), action, payload);
 
+// ---- afbeelding van een eigen mailing (image.ts): controle van een URL en uploaden naar de bucket mail-assets ----
+// Nooit de URL, de host of een serverantwoord loggen (alleen de naam van een fout).
+const IMG_CHECK_MAX = 120, IMG_UPLOAD_MAX = 30, IMG_WINDOW = 3600;
+// A- en AAAA-records; kan de runtime zelf geen DNS opzoeken (niet ondersteund), dan via DNS-over-HTTPS (Cloudflare)
+async function resolveHost(host: string): Promise<string[]> {
+  const kinds = ["A", "AAAA"] as const;
+  const own = await Promise.allSettled(kinds.map((k) => Deno.resolveDns(host, k)));
+  const ips = own.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  if (ips.length) return ips;
+  const notFound = own.every((r) => r.status === "rejected" && (r.reason instanceof Deno.errors.NotFound || /NotFound|no record/i.test(String((r.reason as Error)?.name ?? r.reason))));
+  if (notFound) return [];
+  console.error("admin", "image", "dns", own.map((r) => (r.status === "rejected" ? (r.reason as Error)?.name ?? "fout" : "leeg")).join(","));
+  const doh = await Promise.allSettled(kinds.map(async (k) => {
+    const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${k}`, {
+      headers: { Accept: "application/dns-json" }, redirect: "error", signal: AbortSignal.timeout(4000),
+    });
+    const j = await r.json() as { Answer?: { type: number; data: string }[] };
+    return (j.Answer ?? []).filter((a) => a.type === (k === "A" ? 1 : 28)).map((a) => a.data);
+  }));
+  return doh.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}
+const checkMailImage = (url: string): Promise<CheckResult> =>
+  checkImageUrl(url, { fetch: (u, init) => fetch(u, init), resolve: resolveHost, trusted: (u) => isOwnAsset(env("SUPABASE_URL"), u) });
+const imageFail = (r: CheckResult) => (r.ok ? null : r.service ? { error: r.error, service: r.service } : { error: r.error });
+
 // Nieuwsbrief per account (account_email_prefs.newsletter_opt_out; schema in iptv-ios-appletv). Bestaat de kolom nog
 // niet, dan is de stand onbekend (null) en geen fout.
 async function newsletterPref(id: string) {
@@ -717,9 +753,11 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown>;
   try {
     const text = await req.text();
-    if (text.length > 64 * 1024) return json({ error: "too_large" }, 413);
+    // alleen het uploaden van een mailafbeelding mag groter zijn (base64 van max. 2 MB)
+    if (text.length > Math.ceil(IMAGE_MAX / 3) * 4 + 16 * 1024) return json({ error: "too_large" }, 413);
     body = JSON.parse(text);
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
+    if (text.length > 64 * 1024 && body.action !== "mailing_image_upload") return json({ error: "too_large" }, 413);
   } catch { return json({ error: "bad_json" }, 400); }
   const action = String(body.action ?? "");
   cors = corsFor(req, action);
@@ -1373,10 +1411,36 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (!lang) return json({ error: "bad_lang" }, 400);
       const c = cleanMailingContent(body.content, [lang]);
       if (!c.ok) return json({ error: c.error }, 400);
-      const { status, out } = await nlCall("mailing_render", { content: c.content, audience, lang });
+      // afbeelding tegelijk controleren: het voorbeeld komt er wel, met de fout erbij (zoals de mail er dan uit zou zien)
+      const [{ status, out }, img] = await Promise.all([
+        nlCall("mailing_render", { content: c.content, audience, lang }),
+        c.content.image ? checkMailImage(c.content.image) : Promise.resolve(null),
+      ]);
       if (status !== 200) return json(out, status);
       const r = renderView(out);
-      return r ? json(r) : json({ error: "server_error" }, 502);
+      if (!r) return json({ error: "server_error" }, 502);
+      const bad = img ? imageFail(img) : null;
+      return json(bad ? { ...r, image_error: bad.error, image_service: bad.service ?? null } : r);
+    }
+    case "mailing_image_check": {
+      if (typeof body.url !== "string" || !body.url.trim()) return json({ error: "bad_image_url" }, 400);
+      if (!(await rateOk(`admin-mlimg:${ip}`, IMG_CHECK_MAX, IMG_WINDOW))) return json({ error: "rate_limited", retry_after: IMG_WINDOW }, 429);
+      const r = await checkMailImage(body.url.trim().slice(0, 500));
+      return r.ok ? json({ ok: true, type: r.type, size: r.size }) : json(imageFail(r), 400);
+    }
+    case "mailing_image_upload": {
+      const u = cleanUpload(body.data);
+      if (!u.ok) return json({ error: u.error }, 400);
+      if (!(await rateOk(`admin-mlup:${ip}`, IMG_UPLOAD_MAX, IMG_WINDOW))) return json({ error: "rate_limited", retry_after: IMG_WINDOW }, 429);
+      const name = objectName(u.ext);
+      const { error } = await admin.storage.from(MAIL_BUCKET).upload(name, u.bytes, { contentType: u.type, cacheControl: "31536000", upsert: false });
+      if (error) {
+        const msg = String(error.message ?? "");
+        console.error("admin", "image", "upload", /bucket/i.test(msg) && /not.?found/i.test(msg) ? "bucket ontbreekt" : (error as { statusCode?: string }).statusCode ?? "fout");
+        return json({ error: /bucket/i.test(msg) && /not.?found/i.test(msg) ? "upload_not_configured" : "upload_failed" }, /not.?found/i.test(msg) ? 503 : 502);
+      }
+      await audit("mailing_image_upload", ip, null, { type: u.type, size: u.bytes.length });
+      return json({ url: publicUrl(env("SUPABASE_URL"), name), type: u.type, size: u.bytes.length });
     }
     case "mailing_test": {
       // testmail naar één adres: nooit het adres loggen of in het logboek zetten
@@ -1388,6 +1452,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (!lang) return json({ error: "bad_lang" }, 400);
       const c = cleanMailingContent(body.content, lang === "both" ? ["nl", "en"] : [lang]);
       if (!c.ok) return json({ error: c.error }, 400);
+      if (c.content.image) { const img = await checkMailImage(c.content.image); if (!img.ok) return json(imageFail(img), 400); }
       // zelfde teller als newsletter_preview: samen max. NL_PREVIEW_MAX per uur
       if (!(await rateOk(`admin-nlpreview:${ip}`, NL_PREVIEW_MAX, NL_PREVIEW_WINDOW))) {
         return json({ error: "rate_limited", retry_after: NL_PREVIEW_WINDOW }, 429);
@@ -1406,6 +1471,8 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (!request_id) return json({ error: "bad_request_id" }, 400);
       const c = cleanMailingContent(body.content, ["nl", "en"]);
       if (!c.ok) return json({ error: c.error }, 400);
+      // nooit een mailing met een afbeelding die niet te laden is (gebroken-afbeelding-vlak bovenaan bij iedereen)
+      if (c.content.image) { const img = await checkMailImage(c.content.image); if (!img.ok) return json(imageFail(img), 400); }
       const { status, out } = await nlCall("mailing_send", { request_id, content: c.content, audience, service_ack: audience === "service" });
       if (status !== 200) return json(out, status);
       const a = sendAudit(out, audience);

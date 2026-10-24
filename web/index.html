@@ -305,7 +305,12 @@
         </div>
         <p class="sub ml-help">Opmaak: lege regel = nieuwe alinea · <code># Kop</code> · <code>## Kleinere kop</code> · <code>**vet**</code> · <code>[linktekst](https://…)</code> · <code>- punt</code> of <code>1. punt</code> voor een opsomming. Geen HTML; links en afbeeldingen alleen met https. Heeft een lid een voornaam, dan begint de mail met <i>Hoi …,</i> / <i>Hi …,</i>.</p>
         <div class="grid2">
-          <label>Afbeelding-URL <span class="sub">(optioneel, https, bovenaan)</span><input id="mlImage" type="url" inputmode="url" maxlength="500" placeholder="https://" autocomplete="off" spellcheck="false"></label>
+          <div class="ml-img">
+            <label>Afbeelding <span class="sub">(optioneel, bovenaan; PNG, JPG of GIF, max. 2 MB)</span><input id="mlImage" type="url" inputmode="url" maxlength="500" placeholder="https:// (directe link naar een PNG, JPG of GIF)" autocomplete="off" spellcheck="false"></label>
+            <div class="ml-img-row"><input id="mlImgFile" class="hidden" type="file" accept="image/png,image/jpeg,image/gif"><button id="mlImgUp" class="btn ghost small" type="button">Afbeelding uploaden</button><button id="mlImgDel" class="btn ghost small hidden" type="button">Weghalen</button><span id="mlImgInfo" class="sub" aria-live="polite"></span></div>
+            <div id="mlImgErr" class="err" role="alert"></div>
+            <img id="mlImgThumb" class="ml-thumb hidden" alt="Voorbeeld van de afbeelding">
+          </div>
           <label>Knop-URL <span class="sub">(optioneel, https)</span><input id="mlBtnUrl" type="url" inputmode="url" maxlength="500" placeholder="https://bingr.online/…" autocomplete="off" spellcheck="false"></label>
         </div>
         <div id="mlErr" class="err" role="alert"></div>

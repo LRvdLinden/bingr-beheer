@@ -3192,15 +3192,35 @@
     bad_button_text_nl: "Vul een Nederlandse knoptekst in (max. 40 tekens) of laat de knop-URL leeg.",
     bad_button_text_en: "Vul een Engelse knoptekst in (max. 40 tekens) of laat de knop-URL leeg.",
     bad_button_url: "De knop-URL moet met https:// beginnen (en met een knoptekst in beide talen).",
-    bad_image_url: "De afbeelding-URL moet met https:// beginnen.", bad_request_id: "Ongeldige verzendopdracht; probeer het opnieuw.",
+    bad_image_url: "De afbeelding-URL moet een openbare https-link zijn (zonder poort of inloggegevens).", bad_request_id: "Ongeldige verzendopdracht; probeer het opnieuw.",
     service_ack_required: "Bevestig dat het servicebericht alleen belangrijke service-informatie bevat.",
     mailing_busy: "Er wordt al een mailing verstuurd. Wacht tot die klaar is of annuleer hem.",
     no_recipients: "Er zijn geen ontvangers in deze doelgroep.", not_active: "Deze mailing is al klaar of geannuleerd.",
     send_failed: "De mail kon niet worden verstuurd.", bad_mailing_id: "Onbekende mailing.",
+    // afbeelding (mailing_image_check / mailing_image_upload; ook bij voorbeeld, testmail en versturen)
+    image_page: "Deze link is geen afbeelding (het is een webpagina). Upload de afbeelding of gebruik een directe link naar een PNG, JPG of GIF.",
+    image_share_link: "Deze link is een deelpagina, geen afbeelding. Upload de afbeelding hier of gebruik een directe link naar een PNG, JPG of GIF.",
+    image_login: "De afbeelding staat achter een inlog of is niet openbaar (toegang geweigerd). Upload de afbeelding of gebruik een openbare directe link.",
+    image_http: "Op die link staat geen afbeelding (de server gaf een fout, bijvoorbeeld niet gevonden). Controleer de link of upload de afbeelding.",
+    image_svg: "SVG wordt door veel mailprogramma's (o.a. Gmail en Outlook) niet getoond. Gebruik een PNG, JPG of GIF.",
+    image_webp: "WebP wordt niet door alle mailprogramma's getoond (o.a. Outlook). Gebruik een PNG, JPG of GIF.",
+    image_type: "Dit is geen PNG, JPG of GIF (of de server geeft een verkeerd type door). Upload de afbeelding of gebruik een directe link naar een PNG, JPG of GIF.",
+    image_too_large: "De afbeelding is groter dan 2 MB. Upload hem hier (grote foto's worden verkleind) of gebruik een kleinere afbeelding.",
+    image_empty: "Op die link staat een leeg bestand.", image_timeout: "De afbeelding laadt te traag (langer dan 8 seconden).",
+    image_unreachable: "De afbeelding is niet te bereiken (host niet gevonden of geen verbinding).",
+    image_redirects: "De link verwijst te vaak door (meer dan 3 keer). Gebruik de directe link naar de afbeelding.",
+    image_blocked_host: "Deze link wijst naar een intern of niet-openbaar adres; dat is niet toegestaan.",
+    bad_image_data: "Dit bestand kon niet worden gelezen. Kies een PNG, JPG of GIF.", image_file_type: "Kies een PNG, JPG of GIF (geen SVG, WebP of HEIC).",
+    upload_not_configured: "Uploaden is nog niet ingericht (bucket mail-assets ontbreekt: workflow Backend in iptv-ios-appletv draaien).",
+    upload_failed: "Uploaden is mislukt. Probeer het opnieuw.", too_large: "Het bestand is te groot.",
   });
+  // foutmelding bij een afbeelding, met de deeldienst erbij als die bekend is (Google, iCloud, Dropbox, …)
+  const mlImgText = (code, service) => code === "image_share_link" && service
+    ? `Deze link is een deelpagina van ${service}, geen afbeelding. Upload de afbeelding hier of gebruik een directe link naar een PNG, JPG of GIF.`
+    : ERR[code] || ERR.server_error;
   const ML_DRAFT = "bingr.beheer.mailing.draft";
   const ML_FIELDS = ["mlSubNl", "mlBodyNl", "mlBtnNl", "mlSubEn", "mlBodyEn", "mlBtnEn", "mlImage", "mlBtnUrl"];
-  let mlState = null, mlTestLang = "nl", mlPrevLang = "nl", mlTimer = null, mlBusy = false;
+  let mlState = null, mlTestLang = "nl", mlPrevLang = "nl", mlTimer = null, mlBusy = false, mlImgChecked = false;
   const mlAudience = () => document.querySelector('input[name="mlAudience"]:checked')?.value === "service" ? "service" : "newsletter";
   const mlContent = () => ({
     nl: { subject: $("mlSubNl").value, body: $("mlBodyNl").value, button: $("mlBtnNl").value },
@@ -3299,6 +3319,8 @@
       return;
     }
     renderMailing();
+    // een bewaarde afbeelding-URL uit het concept één keer controleren (pas na inloggen)
+    if (!mlImgChecked) { mlImgChecked = true; if ($("mlImage").value.trim()) mlImgCheck(); }
     // voortgang bijwerken zolang er een mailing loopt en de tab open is
     if (mlState.active) {
       mlTimer = setTimeout(() => {
@@ -3332,7 +3354,9 @@
       $("mlSubject").classList.remove("hidden");
       $("mlView").classList.remove("hidden");
       mountMail($("mlView"), r.html || "");
-    } catch (e) { if (e.code !== "auth") err(errText(e)); }
+      // de afbeelding is niet te laden: voorbeeld wel tonen, maar met de reden (testmail en versturen weigeren hem)
+      if (r.image_error) mlImgShow({ error: r.image_error, service: r.image_service });
+    } catch (e) { if (e.code !== "auth") err(e.code?.startsWith("image_") ? mlImgText(e.code, e.body?.service) : errText(e)); }
     finally { btn.disabled = false; }
   }
   $("mlPrevNl").onclick = () => mlPreview("nl");
@@ -3348,13 +3372,14 @@
     try {
       await call("mailing_test", { to, content: c, audience: mlAudience(), lang: mlTestLang });
       toast(mlTestLang === "both" ? "Twee testmails (NL en EN) verstuurd." : `Testmail (${mlTestLang.toUpperCase()}) verstuurd.`);
-    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    } catch (x) { if (x.code !== "auth") { err(mlImgText(x.code, x.body?.service)); if (x.code?.startsWith("image_")) mlImgShow({ error: x.code, service: x.body?.service }); } }
     finally { $("mlTest").disabled = false; }
   };
   $("mlClear").onclick = () => {
     if (!confirm("Alle velden van de mailing leegmaken?")) return;
     ML_FIELDS.forEach((id) => { $(id).value = ""; });
     $("mlErr").textContent = ""; $("mlView").classList.add("hidden"); $("mlSubject").classList.add("hidden");
+    mlImgShow(null);
     mlSave();
   };
   $("mlForm").oninput = () => mlSave();
@@ -3383,9 +3408,102 @@
       catch (x) { if (x.code !== "network") throw x; r = await call("mailing_send", { request_id, content: c, audience, service_ack: audience === "service" && $("mlAck").checked }); }
       toast(`Mailing gestart: ${nf.format(r.recipients?.total || 0)} ontvangers.`);
       $("mlAck").checked = false;
-    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    } catch (x) { if (x.code !== "auth") { err(mlImgText(x.code, x.body?.service)); if (x.code?.startsWith("image_")) mlImgShow({ error: x.code, service: x.body?.service }); } }
     finally { mlBusy = false; loadMailing(); }
   };
+  // ---- afbeelding: uploaden (bucket mail-assets via de functie admin) en een ingevulde link controleren ----
+  // Grote foto's worden in de browser verkleind tot 1000 px breed (2× de mailbreedte van 500 px), zonder bibliotheken
+  // (createImageBitmap + canvas). GIF blijft zoals hij is (anders is de animatie weg). Max. 2 MB na het verkleinen.
+  const IMG_MAX = 2 * 1024 * 1024, IMG_W = 1000, IMG_TYPES = ["image/png", "image/jpeg", "image/gif"];
+  let mlImgSeq = 0;
+  const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1048576).toLocaleString("nl-NL", { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
+  const TYPE_NAME = { "image/png": "PNG", "image/jpeg": "JPG", "image/gif": "GIF" };
+  // stand tonen: null = niets, {error, service} = fout, {type, size, dims?, uploaded?} = goed
+  function mlImgShow(st) {
+    const info = $("mlImgInfo"), errBox = $("mlImgErr"), thumb = $("mlImgThumb"), url = $("mlImage").value.trim();
+    $("mlImgDel").classList.toggle("hidden", !url);
+    errBox.textContent = st?.error ? mlImgText(st.error, st.service) : "";
+    info.textContent = st && !st.error && st.type
+      ? `${st.uploaded ? "Geüpload" : "Afbeelding in orde"}: ${TYPE_NAME[st.type] || st.type}, ${kb(st.size || 0)}${st.dims ? `, ${st.dims}` : ""}`
+      : st?.busy || "";
+    const show = !!(st && !st.error && st.type && url);
+    thumb.classList.toggle("hidden", !show);
+    if (show) { if (thumb.getAttribute("src") !== url) thumb.src = url; } else thumb.removeAttribute("src");
+  }
+  async function mlImgCheck() {
+    const url = $("mlImage").value.trim(), seq = ++mlImgSeq;
+    if (!url) return mlImgShow(null);
+    if (!/^https:\/\/[^\s"'<>\\`]+$/i.test(url)) return mlImgShow({ error: "bad_image_url" });
+    mlImgShow({ busy: "Afbeelding controleren…" });
+    try {
+      const r = await call("mailing_image_check", { url });
+      if (seq === mlImgSeq) mlImgShow({ type: r.type, size: r.size });
+    } catch (e) {
+      if (e.code === "auth" || seq !== mlImgSeq) return;
+      mlImgShow({ error: e.code, service: e.body?.service });
+    }
+  }
+  const blobOf = (canvas, type, q) => new Promise((res) => canvas.toBlob(res, type, q));
+  const b64Of = (blob) => new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).replace(/^data:[^,]*,/, ""));
+    fr.onerror = () => rej(fr.error);
+    fr.readAsDataURL(blob);
+  });
+  // bestand klaarmaken: {blob, dims} of {error}
+  async function mlImgPrepare(file) {
+    if (!IMG_TYPES.includes(file.type)) return { error: "image_file_type" };
+    if (file.type === "image/gif") return file.size > IMG_MAX ? { error: "image_too_large" } : { blob: file, dims: "" };
+    let bmp;
+    try { bmp = await createImageBitmap(file); } catch { return { error: "bad_image_data" }; }
+    const w = bmp.width, h = bmp.height;
+    if (w <= IMG_W && file.size <= IMG_MAX) { bmp.close?.(); return { blob: file, dims: `${w} × ${h} px` }; }
+    const scale = Math.min(1, IMG_W / w), cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, cw, ch);
+    let blob = await blobOf(canvas, file.type, file.type === "image/jpeg" ? 0.86 : undefined);
+    // nog te groot (bijv. een grote PNG-foto): als JPG op de achtergrondkleur van de mail
+    for (const q of [0.82, 0.72, 0.6]) {
+      if (blob && blob.size <= IMG_MAX) break;
+      const flat = document.createElement("canvas");
+      flat.width = cw; flat.height = ch;
+      const fx = flat.getContext("2d");
+      fx.fillStyle = "#141414"; fx.fillRect(0, 0, cw, ch); fx.drawImage(canvas, 0, 0);
+      blob = await blobOf(flat, "image/jpeg", q);
+    }
+    bmp.close?.();
+    if (!blob) return { error: "bad_image_data" };
+    if (blob.size > IMG_MAX) return { error: "image_too_large" };
+    return { blob, dims: `${cw} × ${ch} px${scale < 1 ? ` (verkleind van ${w} px breed)` : ""}` };
+  }
+  $("mlImgUp").onclick = () => $("mlImgFile").click();
+  $("mlImgFile").onchange = async () => {
+    const file = $("mlImgFile").files?.[0];
+    $("mlImgFile").value = "";
+    if (!file) return;
+    const btn = $("mlImgUp"), seq = ++mlImgSeq;
+    btn.disabled = true;
+    mlImgShow({ busy: "Afbeelding klaarmaken…" });
+    try {
+      const p = await mlImgPrepare(file);
+      if (p.error) return mlImgShow({ error: p.error });
+      mlImgShow({ busy: `Uploaden (${kb(p.blob.size)})…` });
+      const r = await call("mailing_image_upload", { data: await b64Of(p.blob) });
+      if (seq !== mlImgSeq) return;
+      $("mlImage").value = r.url || "";
+      mlSave();
+      mlImgShow({ type: r.type, size: r.size, dims: p.dims, uploaded: true });
+    } catch (e) {
+      if (e.code !== "auth") mlImgShow({ error: e.code === "network" ? "upload_failed" : e.code, service: e.body?.service });
+    } finally { btn.disabled = false; }
+  };
+  $("mlImgDel").onclick = () => { $("mlImage").value = ""; mlImgSeq++; mlImgShow(null); mlSave(); };
+  $("mlImage").onchange = () => mlImgCheck();
+  $("mlImage").oninput = () => { mlImgSeq++; mlImgShow($("mlImage").value.trim() ? {} : null); };
+
   mlRestore();
   mlAudienceUi();
 

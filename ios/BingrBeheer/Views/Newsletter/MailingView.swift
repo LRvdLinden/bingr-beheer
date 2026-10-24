@@ -1,9 +1,12 @@
+import PhotosUI
 import SwiftUI
 
 /// Eigen mailing (zoals het blok "Eigen mailing" in de tab Nieuwsbrief van web/admin.js): zelf een mail opstellen in NL en
 /// EN, doelgroep kiezen (nieuwsbrief-abonnees of servicebericht aan alle gebruikers), voorbeeld bekijken, testmail naar één
 /// adres (nooit bewaard of gelogd), versturen met bevestiging, voortgang met annuleren en de verstuurde mailings.
 /// Acties mailing_status, mailing_render, mailing_test, mailing_send en mailing_cancel (functie admin → newsletter).
+/// Afbeelding: uploaden uit de fotobibliotheek (mailing_image_upload, bucket mail-assets; grote foto's verkleind tot 1000 px
+/// breed, zie MailImage) of een link die de functie admin controleert (mailing_image_check: PNG, JPG of GIF, max. 2 MB).
 struct MailingView: View {
     @Environment(Session.self) private var session
 
@@ -24,6 +27,14 @@ struct MailingView: View {
     @State private var sending = false
     @State private var confirmCancel = false
 
+    @State private var photo: PhotosPickerItem?
+    @State private var uploading = false
+    @State private var imageInfo = ""
+    @State private var imageError = ""
+    @State private var imageSeq = 0
+    @State private var imageChecked = false
+    @State private var uploadedURL = ""
+
     private var audience: MailingAudience { MailingAudience(rawValue: draft.audience) ?? .newsletter }
 
     var body: some View {
@@ -42,10 +53,34 @@ struct MailingView: View {
                 TextField("Button text (alleen met een knop-URL)", text: $draft.buttonEn)
             } header: { Text("Engels") }
             Section {
-                urlField("Afbeelding-URL (optioneel, https)", text: $draft.image)
+                urlField("Afbeelding-URL (optioneel, directe link naar een PNG, JPG of GIF)", text: $draft.image)
+                    .onSubmit { Task { await checkImage() } }
+                HStack(spacing: 12) {
+                    PhotosPicker(selection: $photo, matching: .images, photoLibrary: .shared()) {
+                        HStack {
+                            if uploading { ProgressView() }
+                            Label("Afbeelding uploaden", systemImage: "photo.badge.plus")
+                        }
+                    }
+                    .disabled(uploading)
+                    if !draft.image.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Spacer(minLength: 0)
+                        Button("Weghalen", role: .destructive) {
+                            draft.image = ""
+                            imageSeq += 1
+                            imageInfo = ""
+                            imageError = ""
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                if !imageInfo.isEmpty { Text(imageInfo).font(.caption).foregroundStyle(Color.textSecondary) }
+                if !imageError.isEmpty { Text(imageError).font(.subheadline).foregroundStyle(Color.warn) }
                 urlField("Knop-URL (optioneel, https)", text: $draft.buttonURL)
+            } header: {
+                Text("Afbeelding en knop")
             } footer: {
-                Text("Opmaak: lege regel = nieuwe alinea · # Kop · ## Kleinere kop · **vet** · [linktekst](https://…) · - punt of 1. punt voor een opsomming. Geen HTML; links en afbeeldingen alleen met https. Heeft een lid een voornaam, dan begint de mail met Hoi …, / Hi ….")
+                Text("Afbeelding: PNG, JPG of GIF, max. 2 MB, bovenaan de mail. Uploaden zet hem in de eigen opslag (breder dan 1000 px wordt verkleind); een link moet direct naar het bestand gaan, niet naar een deelpagina van Drive, iCloud of Dropbox.\n\nOpmaak: lege regel = nieuwe alinea · # Kop · ## Kleinere kop · **vet** · [linktekst](https://…) · - punt of 1. punt voor een opsomming. Geen HTML; links en afbeeldingen alleen met https. Heeft een lid een voornaam, dan begint de mail met Hoi …, / Hi ….")
             }
             Section {
                 HStack {
@@ -75,7 +110,15 @@ struct MailingView: View {
                 if status?.active == nil { return }
             }
         }
-        .onChange(of: draft) { _, d in d.save() }
+        .onChange(of: draft) { old, d in
+            d.save()
+            // zelf ingetypt of geplakt: oude melding weg (een net geüploade URL houdt zijn melding)
+            if old.image != d.image && d.image != uploadedURL { imageSeq += 1; imageInfo = ""; imageError = "" }
+        }
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            Task { await upload(item) }
+        }
         .alert("Mailing versturen?", isPresented: $confirmSend) {
             Button("Annuleren", role: .cancel) {}
             Button("Versturen", role: audience == .service ? .destructive : nil) { Task { await send() } }
@@ -283,6 +326,11 @@ struct MailingView: View {
             let r = try await session.call("mailing_status")
             status = MailingStatus(r)
             loadError = nil
+            // een bewaarde afbeelding-URL uit het concept één keer controleren
+            if !imageChecked {
+                imageChecked = true
+                if !draft.image.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { Task { await checkImage() } }
+            }
         } catch let e as APIError {
             if e.code == "auth" { return }
             loadError = e.errorDescription
@@ -298,8 +346,65 @@ struct MailingView: View {
             let r = try await session.call("mailing_render", ["content": draft.content, "audience": audience.rawValue, "lang": lang])
             guard let html = r["html"].string, !html.isEmpty else { error = APIError.text("server_error"); return }
             rendered = RenderedMail(subject: r["subject"].string ?? "", html: html)
+            // de afbeelding is niet te laden: voorbeeld wel tonen, maar met de reden (testmail en versturen weigeren hem)
+            if let code = r["image_error"].string { imageError = MailImage.message(code, service: r["image_service"].string); imageInfo = "" }
         } catch let e as APIError {
-            if e.code != "auth" { error = e.errorDescription ?? "" }
+            if e.code != "auth" { error = MailImage.message(e.code, service: e.body["service"].string) }
+        } catch {}
+    }
+
+    /// Ingevulde afbeelding-URL laten controleren door de functie admin (zelfde controle als bij testmail en versturen).
+    private func checkImage() async {
+        let url = draft.image.trimmingCharacters(in: .whitespacesAndNewlines)
+        imageSeq += 1
+        let seq = imageSeq
+        imageInfo = ""
+        imageError = ""
+        guard !url.isEmpty else { return }
+        if draft.check([]) == "bad_image_url" { imageError = APIError.text("bad_image_url"); return }
+        imageInfo = "Afbeelding controleren…"
+        do {
+            let r = try await session.call("mailing_image_check", ["url": url])
+            guard seq == imageSeq else { return }
+            imageInfo = "Afbeelding in orde: \(MailImage.typeName(r["type"].string ?? "")), \(MailImage.size(r["size"].int ?? 0))"
+        } catch let e as APIError {
+            guard seq == imageSeq, e.code != "auth" else { return }
+            imageInfo = ""
+            imageError = MailImage.message(e.code, service: e.body["service"].string)
+        } catch {}
+    }
+
+    /// Foto uit de bibliotheek klaarmaken (MailImage) en uploaden; de openbare URL komt in het veld.
+    private func upload(_ item: PhotosPickerItem) async {
+        uploading = true
+        imageError = ""
+        imageInfo = "Afbeelding klaarmaken…"
+        defer { uploading = false; photo = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            imageInfo = ""
+            imageError = APIError.text("bad_image_data")
+            return
+        }
+        let prepared: MailImage.Prepared
+        switch await Task.detached(priority: .userInitiated, operation: { MailImage.prepare(data) }).value {
+        case .success(let p): prepared = p
+        case .failure(let e):
+            imageInfo = ""
+            imageError = e.errorDescription ?? ""
+            return
+        }
+        imageInfo = "Uploaden (\(MailImage.size(prepared.data.count)))…"
+        do {
+            let r = try await session.call("mailing_image_upload", ["data": prepared.data.base64EncodedString()])
+            guard let url = r["url"].string, !url.isEmpty else { imageInfo = ""; imageError = APIError.text("upload_failed"); return }
+            uploadedURL = url
+            draft.image = url
+            let w = Int(prepared.pixels.width), h = Int(prepared.pixels.height)
+            imageInfo = "Geüpload: \(MailImage.typeName(r["type"].string ?? "")), \(MailImage.size(r["size"].int ?? prepared.data.count)), \(w) × \(h) px"
+                + (prepared.resizedFrom.map { " (verkleind van \($0) px breed)" } ?? "")
+            imageError = ""
+        } catch let e as APIError {
+            if e.code != "auth" { imageInfo = ""; imageError = MailImage.message(e.code == "network" ? "upload_failed" : e.code, service: nil) }
         } catch {}
     }
 
@@ -314,7 +419,7 @@ struct MailingView: View {
             _ = try await session.call("mailing_test", ["to": address, "content": draft.content, "audience": audience.rawValue, "lang": testLang])
             session.show(testLang == "both" ? "Twee testmails (NL en EN) verstuurd." : "Testmail (\(testLang.uppercased())) verstuurd.")
         } catch let e as APIError {
-            if e.code != "auth" { testError = e.errorDescription ?? "" }
+            if e.code != "auth" { testError = MailImage.message(e.code, service: e.body["service"].string) }
         } catch {}
     }
 
@@ -337,7 +442,7 @@ struct MailingView: View {
             session.show("Mailing gestart: \(Fmt.plural(r["recipients"]["total"].int ?? 0, "ontvanger", "ontvangers")).")
             ack = false
         } catch let e as APIError {
-            if e.code != "auth" { error = e.errorDescription ?? "" }
+            if e.code != "auth" { error = MailImage.message(e.code, service: e.body["service"].string) }
         } catch {}
         await load()
     }
