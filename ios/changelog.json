@@ -2,6 +2,18 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 37,
+   "version": "1.0.0",
+   "date": "2026-10-25",
+   "items": [
+    {"type": "new", "nl": "Support: diagnose-schema 3 bij tickets: mijlpalen en taken als codes, vertaald naar het Nederlands (ook de oude namen)"},
+    {"type": "new", "nl": "Support: langste hang van deze start (duur, taak, mijlpaal, voorgrond) met de stack van de hoofdthread"},
+    {"type": "new", "nl": "Support: de laatste 5 keer bijwerken per server, per fase (ophalen, inlezen, indexeren, toepassen, bewaren) met duur, geheugen en een balkje"},
+    {"type": "new", "nl": "Support: per soort geleverd en zichtbaar, met het aantal verborgen door categorieën, kinderfilter of dubbel; en de app-taal"},
+    {"type": "improved", "nl": "Support: Kopiëren neemt de langste hang, het bijwerken per server, geleverd/zichtbaar en de app-taal mee"}
+   ]
+  },
+  {
    "build": 36,
    "version": "1.0.0",
    "date": "2026-10-24",

@@ -2409,10 +2409,45 @@
   const START_SUM = { good: ["Start: goed", "good"], slow: ["Start: traag", "warn"], hung: ["Start: vastgelopen", "bad"] };
   const PREV_PROB = { hang: "Vastgelopen", crash: "Crash", not_finished: "Niet klaar" };
   const FETCH_KIND = { live: "zenders", movie: "films", series: "series" };
-  const MILE = { launch: "gestart", start: "gestart", session: "account", account: "account", first_frame: "eerste frame", intro: "intro klaar",
-    intro_done: "intro klaar", profiles: "profielkeuze", profile_picker: "profielkeuze", profile_chosen: "profiel gekozen", pin: "pincodescherm",
-    pin_ok: "pincode goed", servers_loaded: "servers geladen", epg: "tv-gids", ready: "klaar", splash: "opstartscherm", sources: "bronnen" };
-  const mileName = (n) => (MILE[n] ? `${MILE[n]} (${n})` : n);
+  // build 148: codes van schema 3 (vaste lijst in docs/ACCOUNT.md "Build 148") en de oude namen van schema 1/2, in het Nederlands
+  const MILE = {
+    started: "gestart", storage: "opslag geladen", account: "account", first_frame: "eerste beeld", intro_done: "intro klaar",
+    profile_picker: "profielkeuze getoond", profile_picked: "profiel gekozen", pin_screen: "pincodescherm", pin_ok: "pincode goed",
+    profile: "profiel geladen", servers: "servers geladen", home: "startscherm", catalog: "catalogus geladen", ready: "klaar",
+    fetch: "ophalen", parse: "inlezen", index: "indexeren", apply: "toepassen", save: "bewaren", sync_apply: "sync toepassen",
+    catalog_filter: "catalogus filteren", catalog_sort: "catalogus sorteren", catalog_meta: "catalogusgegevens", pin_migrate: "pincode migreren",
+    rows_build: "rijen opbouwen", guide_parse: "tv-gids inlezen",
+    // schema 1/2
+    launch: "gestart", start: "gestart", session: "account", intro: "intro klaar", profiles: "profielkeuze getoond", profile_chosen: "profiel gekozen",
+    pin: "pincodescherm", servers_loaded: "servers geladen", epg: "tv-gids", splash: "opstartscherm", sources: "bronnen", keychain: "sleutelhanger",
+    ophalen_open_server: "ophalen (open server)", bewaard: "bewaard", klaar: "klaar",
+  };
+  const codeNl = (n) => (n ? MILE[n] || String(n).replace(/_/g, " ") : null);
+  const mileName = (n) => (n == null ? "?" : MILE[n] ? `${MILE[n]} (${n})` : n);
+  const mKey = (m) => m.code || m.name;
+  const LANG_NL = { nl: "Nederlands", en: "Engels", de: "Duits", fr: "Frans", es: "Spaans", it: "Italiaans", pt: "Portugees", pl: "Pools", tr: "Turks", ar: "Arabisch" };
+  const langTxt = (l) => (l ? `${LANG_NL[String(l).split("-")[0]] || l} (${l})` : null);
+  const UPD_RES = { ok: ["gelukt", "good"], failed: ["mislukt", "bad"], cancelled: ["afgebroken", "warn"] };
+  const HIDDEN_NL = { categories: "categorieën", kids: "kinderfilter", duplicates: "dubbel", other: "overig" };
+  /** "36.593 geleverd · 10.286 zichtbaar (26.307 verborgen door categorieën)" (schema 3); null zonder delivered/visible. */
+  function deliveredText(f) {
+    if (typeof f.delivered !== "number" && typeof f.visible !== "number") return null;
+    const why = Object.entries(f.hidden || {}).filter(([, n]) => typeof n === "number" && n > 0)
+      .map(([k, n]) => (k === "categories" || k === "kids" ? `${nf.format(n)} verborgen door ${HIDDEN_NL[k]}` : `${nf.format(n)} ${HIDDEN_NL[k] || k}`));
+    return [typeof f.delivered === "number" ? `${nf.format(f.delivered)} geleverd` : null, typeof f.visible === "number" ? `${nf.format(f.visible)} zichtbaar` : null]
+      .filter(Boolean).join(" · ") + (why.length ? ` (${why.join(", ")})` : "");
+  }
+  /** Langste hang van deze start (schema 3) in één regel. */
+  function hangText(h) {
+    if (!h) return null;
+    return [h.ms != null ? msTxt(h.ms) : null, h.task ? `taak ${mileName(h.task)}` : null, h.milestone ? `na ${mileName(h.milestone)}` : null,
+      h.foreground === true ? "op de voorgrond" : h.foreground === false ? "op de achtergrond" : null].filter(Boolean).join(" · ") || null;
+  }
+  /** Eén keer bijwerken als tekst: "s1 · 24-10 14:04 · gelukt · totaal 21,5 s · piek 455 MB". */
+  function updHead(u) {
+    return [u.server, u.at ? fmtDateTime(u.at) : null, u.result ? (UPD_RES[u.result] || [u.result])[0] : null, u.totalMs != null ? `totaal ${msTxt(u.totalMs)}` : null,
+      u.peakMB != null ? `piek ${mb(u.peakMB)}` : null].filter(Boolean).join(" · ");
+  }
   const secTxt = (v) => (typeof v === "number" ? `${nf.format(Math.round(v * 10) / 10)} s` : null);
   /** fetch-regel als tekst: "series: provider leverde niets", "films: mislukt (timeout)". */
   function fetchText(f) {
@@ -2427,10 +2462,10 @@
     const p = d.start?.previous;
     if (!p || !PREV_PROB[p.problem]) return null;
     return [PREV_PROB[p.problem], p.milestone ? `fase ${mileName(p.milestone)}` : null, p.seconds != null ? `duur ${secTxt(p.seconds)}` : null,
-      p.foreground === true ? "op de voorgrond" : p.foreground === false ? "op de achtergrond" : null, p.task ? `taak: ${p.task}` : null,
+      p.foreground === true ? "op de voorgrond" : p.foreground === false ? "op de achtergrond" : null, p.task ? `taak: ${MILE[p.task] ? mileName(p.task) : p.task}` : null,
       p.build ? `build ${p.build}` : null, p.at ? fmtDateTime(p.at) : null].filter(Boolean).join(" · ");
   }
-  /** De hele diagnose als nette, leesbare tekst (knop Kopiëren). Schema 1 en 2. */
+  /** De hele diagnose als nette, leesbare tekst (knop Kopiëren). Schema 1, 2 en 3. */
   function diagText(d) {
     if (!d || typeof d !== "object") return "";
     const a = d.app || {}, dv = d.device || {}, st = d.state || {}, mem = d.memory || {}, s = d.start || {}, p = s.previous || null;
@@ -2439,7 +2474,8 @@
     L.push(`Bingr-diagnose: ${DIAG_KIND[d.kind] || d.kind || "?"} (schema ${d.schema || 1})${d.createdAt ? `, gemaakt ${fmtDateTime(d.createdAt)}` : ""}`);
     L.push("");
     line("Apparaat", join(DEV_TYPE[dv.type] || dv.type, dv.model, dv.manufacturer, [dv.os, dv.osVersion].filter(Boolean).join(" "), dv.language, dv.browser, dv.screen));
-    line("App", join(DIAG_PLAT[a.platform] || a.platform, a.version ? `Bingr ${a.version}${a.build ? ` (build ${a.build})` : ""}` : null, a.engine ? `speler ${a.engine}` : null));
+    line("App", join(DIAG_PLAT[a.platform] || a.platform, a.version ? `Bingr ${a.version}${a.build ? ` (build ${a.build})` : ""}` : null, a.engine ? `speler ${a.engine}` : null,
+      a.lang ? `app-taal ${langTxt(a.lang)}` : null));
     if (START_SUM[s.summary]) line("Samenvatting", START_SUM[s.summary][0]);
     const pp = prevProblem(d);
     if (pp) line("PROBLEEM VORIGE START", pp);
@@ -2447,12 +2483,23 @@
       L.push("", "Startdiagnose");
       L.push(`  Deze start: ${join(s.appMs != null ? `app-tijd ${msTxt(s.appMs)}` : null, s.userWaitMs != null ? `wachten op de gebruiker ${msTxt(s.userWaitMs)}` : null,
         s.maxHangMs != null ? `langste hang ${msTxt(s.maxHangMs)}` : null) || "—"}`);
+      if (s.longestHang) {
+        L.push(`  Langste hang deze start: ${hangText(s.longestHang) || "—"}`);
+        if (s.longestHang.stack?.length) { L.push("  Stack hoofdthread (deze start):"); s.longestHang.stack.forEach((x) => L.push(`    ${x}`)); }
+      }
       L.push(`  Vorige start: ${p ? (p.problem === "none" ? "geen probleem" : pp || p.problem) : "—"}`);
       if (p?.stack?.length) { L.push("  Stack hoofdthread:"); p.stack.forEach((x) => L.push(`    ${x}`)); }
     }
     if ((d.milestones || []).length) {
       L.push("", "Mijlpalen");
-      d.milestones.forEach((m) => L.push(`  ${mileName(m.name)}: ${msTxt(m.ms) || "?"}${m.ok === false ? " (mislukt)" : ""}`));
+      d.milestones.forEach((m) => L.push(`  ${mileName(mKey(m))}: ${msTxt(m.ms) || "?"}${m.ok === false ? " (mislukt)" : ""}`));
+    }
+    if ((d.updates || []).length) {
+      L.push("", "Bijwerken per server (laatste 5)");
+      d.updates.forEach((u) => {
+        L.push(`  ${updHead(u)}`);
+        (u.phases || []).forEach((ph) => L.push(`    ${codeNl(ph.code)}: ${[msTxt(ph.ms), ph.memMB != null ? mb(ph.memMB) : null].filter(Boolean).join(", ") || "?"}`));
+      });
     }
     if (Object.keys(mem).length) {
       L.push("", "Geheugen");
@@ -2461,7 +2508,8 @@
     }
     if ((d.fetch || []).length) {
       L.push("", "Ophalen per server en soort");
-      d.fetch.forEach((f) => L.push(`  ${f.server} ${fetchText(f)}`));
+      d.fetch.forEach((f) => { const dt = deliveredText(f);
+        L.push(`  ${f.server} ${dt && f.status === "ok" ? `${FETCH_KIND[f.kind] || f.kind}: ${dt}` : `${fetchText(f)}${dt ? ` – ${dt}` : ""}`}`); });
     }
     if (Object.keys(net).length) {
       L.push("", "Netwerk");
@@ -2494,7 +2542,7 @@
     return L.join("\n");
   }
   const diagStore = [];
-  /** Diagnose-bijlage (schema 1 en 2) als kaart: probleem vorige start, samenvatting, apparaat, app, netwerk, opslag, fetch, mijlpalen, crash. */
+  /** Diagnose-bijlage (schema 1, 2 en 3) als kaart: probleem vorige start, samenvatting, apparaat, app, netwerk, opslag, fetch, mijlpalen, crash. */
   function diagHtml(d) {
     if (!d || typeof d !== "object") return "";
     const a = d.app || {}, dv = d.device || {}, st = d.state || {}, mem = d.memory || {};
@@ -2502,7 +2550,7 @@
     const app = [DIAG_PLAT[a.platform] || a.platform, a.version ? `Bingr ${a.version}${a.build ? ` (${a.build})` : ""}` : ""].filter(Boolean).join(" · ");
     const head = [DIAG_KIND[d.kind] || d.kind, dv.model || (DEV_TYPE[dv.type] || ""), [dv.os, dv.osVersion].filter(Boolean).join(" "), app].filter(Boolean).join(" · ");
     const sec = (title, body) => (body ? `<section><h4>${esc(title)}</h4>${body}</section>` : "");
-    const miles = (d.milestones || []).map((m) => `<li><span>${esc(mileName(m.name))}</span><span class="r">${esc(msTxt(m.ms) || "")}${m.ok === false ? ' <span class="chip bad">mislukt</span>' : ""}</span></li>`).join("");
+    const miles = (d.milestones || []).map((m) => `<li><span>${esc(mileName(mKey(m)))}</span><span class="r">${esc(msTxt(m.ms) || "")}${m.ok === false ? ' <span class="chip bad">mislukt</span>' : ""}</span></li>`).join("");
     const crash = d.crash ? diagRows([["Wanneer", d.crash.at ? fmtDateTime(d.crash.at) : null], ["Soort", d.crash.type], ["Reden", d.crash.reason],
       ["Build", d.crash.build != null ? String(d.crash.build) : null]]) + ((d.crash.stack || []).length ? `<pre class="diag-stack">${esc(d.crash.stack.join("\n"))}</pre>` : "") : "";
     const sum = START_SUM[s.summary];
@@ -2511,17 +2559,26 @@
     const alert = pp ? `<div class="diag-alert" role="alert"><b>Probleem bij de vorige start: ${esc(PREV_PROB[p.problem])}</b><span>${esc(pp.split(" · ").slice(1).join(" · "))}</span>
       ${(p.stack || []).length ? `<pre class="diag-stack">${esc(p.stack.join("\n"))}</pre>` : ""}</div>` : "";
     const startSec = d.start ? diagRows([["Samenvatting", sum ? `<span class="chip ${sum[1]}">${esc(sum[0])}</span>` : null, true], ["App-tijd", msTxt(s.appMs)],
-      ["Wachten op gebruiker", msTxt(s.userWaitMs)], ["Langste hang", msTxt(s.maxHangMs)],
+      ["Wachten op gebruiker", msTxt(s.userWaitMs)], ["Langste hang", s.longestHang ? hangText(s.longestHang) : msTxt(s.maxHangMs)],
       ["Vorige start", p ? (p.problem === "none" ? "geen probleem" : PREV_PROB[p.problem] || p.problem) : null]]) : "";
-    const fetchSec = (d.fetch || []).length ? `<ul class="diag-fetch">${d.fetch.map((f) => `<li><span class="chip">${esc(f.server)}</span> <span class="chip ${FETCH_TONE[f.status] || ""}">${esc(fetchText(f))}</span></li>`).join("")}</ul>` : "";
+    const fetchSec = (d.fetch || []).length ? `<ul class="diag-fetch">${d.fetch.map((f) => { const dt = deliveredText(f);
+      return `<li><span class="chip">${esc(f.server)}</span> <span class="chip ${FETCH_TONE[f.status] || ""}">${esc(fetchText(f))}</span>${dt ? `<div class="sub">${esc(dt)}</div>` : ""}</li>`; }).join("")}</ul>` : "";
+    const hangStack = s.longestHang?.stack?.length ? `<pre class="diag-stack">${esc(s.longestHang.stack.join("\n"))}</pre>` : "";
+    // laatste 5 keer bijwerken: per fase ms en MB, met een balkje (breedte via element.style in bindDiagCopy, CSP)
+    const updSec = (d.updates || []).length ? d.updates.map((u) => {
+      const tot = Math.max(1, ...(u.phases || []).map((ph) => ph.ms || 0));
+      const tone = (UPD_RES[u.result] || [])[1] || "";
+      return `<div class="diag-upd"><div class="diag-upd-h"><span class="chip ${tone}">${esc(updHead(u))}</span></div><ul class="diag-phases">${(u.phases || []).map((ph) =>
+        `<li><span class="ph">${esc(codeNl(ph.code))}</span><span class="pbar"><span class="pfill" data-w="${Math.round(((ph.ms || 0) / tot) * 100)}"></span></span><span class="r">${esc([msTxt(ph.ms), ph.memMB != null ? mb(ph.memMB) : null].filter(Boolean).join(" · "))}</span></li>`).join("")}</ul></div>`;
+    }).join("") : "";
     const idx = diagStore.push(d) - 1;
     const open = d.crash || pp || s.summary === "hung";
     return `${alert}<details class="diag"${open ? " open" : ""}><summary><span class="chip diag-chip">Diagnose</span>${sumChip} ${esc(head)}${d.crash ? ' <span class="chip bad">crash</span>' : ""}</summary>
       <div class="diag-bar"><button type="button" class="btn small ghost" data-diag-copy="${idx}">Kopiëren</button><span class="sub">hele diagnose als tekst op het klembord</span></div>
       <div class="diag-grid">
         ${sec("Apparaat", diagRows([["Soort", DEV_TYPE[dv.type] || dv.type], ["Model", dv.model], ["Fabrikant", dv.manufacturer], ["Systeem", [dv.os, dv.osVersion].filter(Boolean).join(" ") || null],
-          ["Taal", dv.language], ["Browser", dv.browser], ["Scherm", dv.screen], ["App", app || null], ["Speler", a.engine], ["Gemaakt", d.createdAt ? fmtDateTime(d.createdAt) : null]]))}
-        ${sec("Start", startSec)}
+          ["Taal", dv.language], ["App-taal", langTxt(a.lang)], ["Browser", dv.browser], ["Scherm", dv.screen], ["App", app || null], ["Speler", a.engine], ["Gemaakt", d.createdAt ? fmtDateTime(d.createdAt) : null]]))}
+        ${sec("Start", startSec + (hangStack ? `<div class="sub">Stack bij de langste hang</div>${hangStack}` : ""))}
         ${sec("App", diagRows([["Ingelogd", yesNo(st.signedIn)], ["Abonnement", st.plan === "lifetime" ? "Lifetime" : st.plan === "free" ? "Gratis" : null],
           ["Profielen", st.profiles != null ? nf.format(st.profiles) : null], ["Servers", st.servers != null ? nf.format(st.servers) + ((st.serverKinds || []).length ? ` (${st.serverKinds.join(", ")})` : "") : null],
           ["Zenders / films / series", [st.channels, st.movies, st.series].some((x) => x != null) ? [st.channels, st.movies, st.series].map((x) => (x != null ? nf.format(x) : "–")).join(" / ") : null],
@@ -2534,11 +2591,13 @@
         ${sec(sto2 ? "Geheugen" : "Opslag en geheugen", diagRows([...(sto2 ? [] : [["Opslag gebruikt", mb(sto.usedMB)], ["Vrij", mb(sto.freeMB)], ["Cache", mb(sto.cacheMB)], ["Database", mb(sto.dbMB)]]),
           ["Geheugen", mem.usedMB != null ? `${mb(mem.usedMB)}${mem.totalMB != null ? ` van ${mb(mem.totalMB)}` : ""}` : null], ["Door Bingr", mb(mem.appMB)], ["Weinig geheugen", yesNo(mem.lowMemory)]]))}
         ${miles ? sec("Mijlpalen bij het starten", `<ol class="diag-miles">${miles}</ol>`) : ""}
+        ${updSec ? sec("Bijwerken per server (laatste 5)", updSec) : ""}
         ${crash ? sec("Laatste crash", crash) : ""}
       </div></details>`;
   }
   /** Knoppen Kopiëren van de diagnosekaarten in een container. */
   function bindDiagCopy(root) {
+    root.querySelectorAll(".pfill[data-w]").forEach((el) => { el.style.width = `${Math.min(100, Math.max(2, Number(el.dataset.w) || 0))}%`; });
     root.querySelectorAll("button[data-diag-copy]").forEach((b) => (b.onclick = async () => {
       const txt = diagText(diagStore[Number(b.dataset.diagCopy)]);
       try { await navigator.clipboard.writeText(txt); toast("Diagnose gekopieerd."); }

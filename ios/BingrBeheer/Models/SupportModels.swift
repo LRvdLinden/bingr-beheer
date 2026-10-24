@@ -159,12 +159,20 @@ struct TicketDetail {
     }
 }
 
-/// Diagnose-bijlage bij een bericht uit de app (schema 1 en 2, docs/ACCOUNT.md "Build 146" en "Build 147" in iptv-ios-appletv).
+/// Diagnose-bijlage bij een bericht uit de app (schema 1, 2 en 3, docs/ACCOUNT.md "Build 146", "Build 147" en "Build 148" in iptv-ios-appletv).
 /// Alle velden optioneel: de server heeft de bijlage al opgeschoond; hier alleen lezen en netjes tonen.
 struct TicketDiagnostics {
     struct Milestone: Identifiable { let id: Int; let name: String; let ms: Int?; let ok: Bool? }
     /// build 147: ophalen per server en soort (live, movie, series): ok, empty, failed, hidden
-    struct Fetch: Identifiable { let id: Int; let server: String; let kind: String; let status: String; let count: Int?; let error: String? }
+    struct Fetch: Identifiable {
+        let id: Int; let server: String; let kind: String; let status: String; let count: Int?; let error: String?
+        // build 148 (schema 3): geleverd, zichtbaar en waarom verborgen
+        var delivered: Int? = nil; var visible: Int? = nil
+        var hiddenCategories: Int? = nil; var hiddenKids: Int? = nil; var hiddenDuplicates: Int? = nil; var hiddenOther: Int? = nil
+    }
+    /// build 148: één keer bijwerken van een server, met fasen (fetch, parse, index, apply, save)
+    struct Phase: Identifiable { let id: Int; let code: String; let ms: Int?; let memMB: Double? }
+    struct Update: Identifiable { let id: Int; let server: String; let at: Date?; let phases: [Phase]; let totalMs: Int?; let peakMB: Double?; let result: String? }
 
     let kind: String
     let createdAt: Date?
@@ -184,6 +192,10 @@ struct TicketDiagnostics {
     let prevAt: Date?, prevBuild: Int?, prevStack: [String]
     let fetch: [Fetch]
     let totalMB: Double?, catalogMB: Double?, downloadsMB: Double?, hasStorage2: Bool
+    // build 148 (schema 3)
+    let appLang: String?
+    let hangMs: Int?, hangTask: String?, hangMilestone: String?, hangForeground: Bool?, hangStack: [String], hasLongestHang: Bool
+    let updates: [Update]
 
     init?(_ j: JSON) {
         guard j.object != nil, let kind = j["kind"].text else { return nil }
@@ -202,7 +214,22 @@ struct TicketDiagnostics {
         prevStack = p["stack"].strings
         fetch = j["fetch"].array.enumerated().compactMap { i, x in
             guard let server = x["server"].text, let kind = x["kind"].text, let status = x["status"].text else { return nil }
-            return Fetch(id: i, server: server, kind: kind, status: status, count: x["count"].int, error: x["error"].text)
+            let h = x["hidden"]
+            return Fetch(id: i, server: server, kind: kind, status: status, count: x["count"].int, error: x["error"].text,
+                         delivered: x["delivered"].int, visible: x["visible"].int, hiddenCategories: h["categories"].int, hiddenKids: h["kids"].int,
+                         hiddenDuplicates: h["duplicates"].int, hiddenOther: h["other"].int)
+        }
+        let lh = sp["longestHang"]
+        hasLongestHang = lh.object != nil
+        hangMs = lh["ms"].int; hangTask = lh["task"].text; hangMilestone = lh["milestone"].text; hangForeground = lh["foreground"].bool
+        hangStack = lh["stack"].strings
+        appLang = j["app"]["lang"].text
+        updates = j["updates"].array.enumerated().compactMap { i, u in
+            guard let server = u["server"].text else { return nil }
+            let phases: [Phase] = u["phases"].array.enumerated().compactMap { k, ph in
+                ph["code"].text.map { Phase(id: k, code: $0, ms: ph["ms"].int, memMB: ph["memMB"].double) }
+            }
+            return Update(id: i, server: server, at: u["at"].date, phases: phases, totalMs: u["totalMs"].int, peakMB: u["peakMB"].double, result: u["result"].text)
         }
         hasStorage2 = st2.object != nil
         totalMB = st2["totalMB"].double; catalogMB = st2["catalogMB"].double; downloadsMB = st2["downloadsMB"].double
@@ -210,7 +237,7 @@ struct TicketDiagnostics {
         deviceType = d["type"].text; model = d["model"].text; manufacturer = d["manufacturer"].text; os = d["os"].text
         osVersion = d["osVersion"].text; language = d["language"].text; browser = d["browser"].text; screen = d["screen"].text
         milestones = j["milestones"].array.enumerated().compactMap { i, x in
-            x["name"].text.map { Milestone(id: i, name: $0, ms: x["ms"].int, ok: x["ok"].bool) }
+            (x["code"].text ?? x["name"].text).map { Milestone(id: i, name: $0, ms: x["ms"].int, ok: x["ok"].bool) }
         }
         memUsedMB = m["usedMB"].double; memTotalMB = m["totalMB"].double; memAppMB = m["appMB"].double; lowMemory = m["lowMemory"].bool
         hasCrash = c.object != nil
@@ -246,19 +273,73 @@ struct TicketDiagnostics {
         guard Self.problemLabel(prevProblem) != nil else { return nil }
         let parts: [String?] = [
             prevMilestone.map { "fase " + Self.milestoneName($0) }, prevSeconds.map { "duur " + Self.sec($0) },
-            prevForeground.map { $0 ? "op de voorgrond" : "op de achtergrond" }, prevTask.map { "taak: " + $0 },
+            prevForeground.map { $0 ? "op de voorgrond" : "op de achtergrond" }, prevTask.map { "taak: " + (Self.codes[$0] != nil ? Self.milestoneName($0) : $0) },
             prevBuild.map { "build \($0)" }, prevAt.map { Fmt.dateTime($0) },
         ]
         return parts.compactMap { $0 }.joined(separator: " · ")
     }
     var hasPreviousProblem: Bool { Self.problemLabel(prevProblem) != nil }
 
+    /// build 148: codes van schema 3 (vaste lijst in docs/ACCOUNT.md "Build 148") en de oude namen van schema 1/2, in het Nederlands
+    /// (gelijk aan MILE in web/admin.js)
+    static let codes: [String: String] = [
+        "started": "gestart", "storage": "opslag geladen", "account": "account", "first_frame": "eerste beeld", "intro_done": "intro klaar",
+        "profile_picker": "profielkeuze getoond", "profile_picked": "profiel gekozen", "pin_screen": "pincodescherm", "pin_ok": "pincode goed",
+        "profile": "profiel geladen", "servers": "servers geladen", "home": "startscherm", "catalog": "catalogus geladen", "ready": "klaar",
+        "fetch": "ophalen", "parse": "inlezen", "index": "indexeren", "apply": "toepassen", "save": "bewaren", "sync_apply": "sync toepassen",
+        "catalog_filter": "catalogus filteren", "catalog_sort": "catalogus sorteren", "catalog_meta": "catalogusgegevens", "pin_migrate": "pincode migreren",
+        "rows_build": "rijen opbouwen", "guide_parse": "tv-gids inlezen",
+        // schema 1/2
+        "launch": "gestart", "start": "gestart", "session": "account", "intro": "intro klaar", "profiles": "profielkeuze getoond",
+        "profile_chosen": "profiel gekozen", "pin": "pincodescherm", "servers_loaded": "servers geladen", "epg": "tv-gids", "splash": "opstartscherm",
+        "sources": "bronnen", "keychain": "sleutelhanger", "ophalen_open_server": "ophalen (open server)", "bewaard": "bewaard", "klaar": "klaar",
+    ]
     static func milestoneName(_ n: String) -> String {
-        let m: [String: String] = ["launch": "gestart", "start": "gestart", "session": "account", "account": "account", "first_frame": "eerste frame",
-                 "intro": "intro klaar", "intro_done": "intro klaar", "profiles": "profielkeuze", "profile_picker": "profielkeuze",
-                 "profile_chosen": "profiel gekozen", "pin": "pincodescherm", "pin_ok": "pincode goed", "servers_loaded": "servers geladen",
-                 "epg": "tv-gids", "ready": "klaar", "splash": "opstartscherm", "sources": "bronnen"]
-        return m[n].map { "\($0) (\(n))" } ?? n
+        codes[n].map { "\($0) (\(n))" } ?? n
+    }
+    /// Alleen de Nederlandse naam (fasen): "toepassen"
+    static func codeName(_ n: String) -> String { codes[n] ?? n.replacingOccurrences(of: "_", with: " ") }
+    static func langName(_ l: String) -> String {
+        let names: [String: String] = ["nl": "Nederlands", "en": "Engels", "de": "Duits", "fr": "Frans", "es": "Spaans", "it": "Italiaans",
+                                       "pt": "Portugees", "pl": "Pools", "tr": "Turks", "ar": "Arabisch"]
+        let base = String(l.split(separator: "-").first ?? Substring(l))
+        return (names[base] ?? l) + " (\(l))"
+    }
+    static func resultLabel(_ r: String?) -> (String, Tone)? {
+        switch r {
+        case "ok": return ("gelukt", .good)
+        case "failed": return ("mislukt", .bad)
+        case "cancelled": return ("afgebroken", .warn)
+        default: return nil
+        }
+    }
+    /// Langste hang van deze start: "5,5 s · taak toepassen (apply) · na klaar (ready) · op de voorgrond"
+    var longestHangText: String? {
+        guard hasLongestHang else { return nil }
+        let parts: [String?] = [hangMs.map { Self.ms($0) }, hangTask.map { "taak " + Self.milestoneName($0) },
+                                hangMilestone.map { "na " + Self.milestoneName($0) }, hangForeground.map { $0 ? "op de voorgrond" : "op de achtergrond" }]
+        let s = parts.compactMap { $0 }.joined(separator: " · ")
+        return s.isEmpty ? nil : s
+    }
+    /// "s1 · 24-10 14:04 · gelukt · totaal 21,5 s · piek 455 MB"
+    static func updateHead(_ u: Update) -> String {
+        let parts: [String?] = [u.server, u.at.map { Fmt.dateTime($0) }, resultLabel(u.result)?.0 ?? u.result,
+                                u.totalMs.map { "totaal " + ms($0) }, mb(u.peakMB).map { "piek " + $0 }]
+        return parts.compactMap { $0 }.joined(separator: " · ")
+    }
+    static func phaseText(_ p: Phase) -> String {
+        [p.ms.map { ms($0) }, mb(p.memMB)].compactMap { $0 }.joined(separator: " · ")
+    }
+    /// "36.593 geleverd · 10.286 zichtbaar (26.307 verborgen door categorieën)"; nil zonder delivered/visible (schema 1/2)
+    static func deliveredText(_ f: Fetch) -> String? {
+        guard f.delivered != nil || f.visible != nil else { return nil }
+        let main = [f.delivered.map { Fmt.num($0) + " geleverd" }, f.visible.map { Fmt.num($0) + " zichtbaar" }].compactMap { $0 }.joined(separator: " · ")
+        var why: [String] = []
+        if let n = f.hiddenCategories, n > 0 { why.append(Fmt.num(n) + " verborgen door categorieën") }
+        if let n = f.hiddenKids, n > 0 { why.append(Fmt.num(n) + " verborgen door kinderfilter") }
+        if let n = f.hiddenDuplicates, n > 0 { why.append(Fmt.num(n) + " dubbel") }
+        if let n = f.hiddenOther, n > 0 { why.append(Fmt.num(n) + " overig") }
+        return main + (why.isEmpty ? "" : " (" + why.joined(separator: ", ") + ")")
     }
     /// "series: provider leverde niets", "films: mislukt (timeout)"
     static func fetchText(_ f: Fetch) -> String {
@@ -302,7 +383,7 @@ struct TicketDiagnostics {
         line("Apparaat", join(devParts))
         let buildText: String = build.map { " (build \($0))" } ?? ""
         let appVersion: String? = version.map { "Bingr " + $0 + buildText }
-        line("App", join([platform.map(Labels.diagPlatform), appVersion, engine.map { "speler " + $0 }]))
+        line("App", join([platform.map(Labels.diagPlatform), appVersion, engine.map { "speler " + $0 }, appLang.map { "app-taal " + Self.langName($0) }]))
         line("Samenvatting", startLabel?.0)
         if let label = Self.problemLabel(prevProblem) { line("PROBLEEM VORIGE START", join([label, previousProblemDetail])) }
         if hasStart {
@@ -311,6 +392,8 @@ struct TicketDiagnostics {
                                        maxHangMs.map { "langste hang " + Self.ms($0) }]
             let cur = join(curParts)
             L.append("  Deze start: " + (cur.isEmpty ? "—" : cur))
+            if let h = longestHangText { L.append("  Langste hang deze start: " + h) }
+            if !hangStack.isEmpty { L.append("  Stack hoofdthread (deze start):"); L += hangStack.map { "    " + $0 } }
             var prev: String = prevProblem ?? "—"
             if prevProblem == "none" { prev = "geen probleem" } else if let label = Self.problemLabel(prevProblem) { prev = join([label, previousProblemDetail]) }
             L.append("  Vorige start: " + prev)
@@ -321,6 +404,16 @@ struct TicketDiagnostics {
             for m in milestones {
                 let t: String = m.ms.map { Self.ms($0) } ?? "?"
                 L.append("  " + Self.milestoneName(m.name) + ": " + t + (m.ok == false ? " (mislukt)" : ""))
+            }
+        }
+        if !updates.isEmpty {
+            L += ["", "Bijwerken per server (laatste 5)"]
+            for u in updates {
+                L.append("  " + Self.updateHead(u))
+                for p in u.phases {
+                    let t = Self.phaseText(p)
+                    L.append("    " + Self.codeName(p.code) + ": " + (t.isEmpty ? "?" : t.replacingOccurrences(of: " · ", with: ", ")))
+                }
             }
         }
         var memParts: [String?] = []
@@ -334,7 +427,14 @@ struct TicketDiagnostics {
         if !mem.isEmpty { L += ["", "Geheugen", "  " + mem] }
         if !fetch.isEmpty {
             L += ["", "Ophalen per server en soort"]
-            for f in fetch { L.append("  " + f.server + " " + Self.fetchText(f)) }
+            for f in fetch {
+                if let dt = Self.deliveredText(f) {
+                    let kinds: [String: String] = ["live": "zenders", "movie": "films", "series": "series"]
+                    L.append("  " + f.server + " " + (f.status == "ok" ? (kinds[f.kind] ?? f.kind) + ": " + dt : Self.fetchText(f) + " – " + dt))
+                } else {
+                    L.append("  " + f.server + " " + Self.fetchText(f))
+                }
+            }
         }
         var netParts: [String?] = []
         if let t = netType { netParts.append("verbinding " + Labels.netType(t)) }

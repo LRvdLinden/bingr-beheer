@@ -4,6 +4,8 @@ import SwiftUI
 /// netwerk, opslag en geheugen, mijlpalen bij het starten en de laatste crash. Nooit als ruwe JSON.
 /// Build 147 (schema 2): probleem bij de vorige start bovenaan in rood, de start als gekleurd label, ophalen per server en
 /// soort, opslag met totaal en een knop Kopiëren (hele diagnose als tekst). Schema 1 blijft zoals in build 146.
+/// Build 148 (schema 3): codes in het Nederlands, langste hang van deze start met stack, de laatste 5 keer bijwerken per
+/// server met per fase ms en MB (balkje), geleverd · zichtbaar per soort en de app-taal.
 struct DiagnosticsCard: View {
     let diag: TicketDiagnostics
     @Environment(Session.self) private var session
@@ -59,6 +61,12 @@ struct DiagnosticsCard: View {
                 .controlSize(.small)
                 block("Apparaat", deviceRows)
                 if diag.hasStart { block("Start", startRows) }
+                if !diag.hangStack.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        header("Stack bij de langste hang")
+                        stackText(diag.hangStack)
+                    }
+                }
                 block("App", appRows)
                 if !diag.fetch.isEmpty { fetchView }
                 block("Netwerk", networkRows)
@@ -69,6 +77,7 @@ struct DiagnosticsCard: View {
                     block("Opslag en geheugen", storageRows)
                 }
                 if !diag.milestones.isEmpty { milestonesView }
+                if !diag.updates.isEmpty { updatesView }
                 if diag.hasCrash { crashView }
             }
             .padding(.top, 8)
@@ -94,6 +103,7 @@ struct DiagnosticsCard: View {
         add(&r, "Fabrikant", diag.manufacturer)
         add(&r, "Systeem", diag.systemLine)
         add(&r, "Taal", diag.language)
+        add(&r, "App-taal", diag.appLang.map(TicketDiagnostics.langName))
         add(&r, "Browser", diag.browser)
         add(&r, "Scherm", diag.screen)
         add(&r, "App", diag.appLine)
@@ -152,7 +162,7 @@ struct DiagnosticsCard: View {
         if let s = diag.startLabel { r.append(Row(id: "Samenvatting", value: s.0, tone: s.1)) }
         add(&r, "App-tijd", diag.appMs.map { ms($0) })
         add(&r, "Wachten op gebruiker", diag.userWaitMs.map { ms($0) })
-        add(&r, "Langste hang", diag.maxHangMs.map { ms($0) })
+        add(&r, "Langste hang", diag.longestHangText ?? diag.maxHangMs.map { ms($0) })
         if let p = diag.prevProblem {
             add(&r, "Vorige start", p == "none" ? "geen probleem" : (TicketDiagnostics.problemLabel(p) ?? p))
         }
@@ -184,9 +194,42 @@ struct DiagnosticsCard: View {
         VStack(alignment: .leading, spacing: 4) {
             header("Ophalen per server en soort")
             ForEach(diag.fetch) { f in
-                HStack(spacing: 6) {
-                    Chip(text: f.server)
-                    Chip(text: TicketDiagnostics.fetchText(f), tone: TicketDiagnostics.fetchTone(f.status))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Chip(text: f.server)
+                        Chip(text: TicketDiagnostics.fetchText(f), tone: TicketDiagnostics.fetchTone(f.status))
+                    }
+                    if let dt = TicketDiagnostics.deliveredText(f) {
+                        Text(dt).font(.caption).foregroundStyle(Color.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    /// build 148: laatste 5 keer bijwerken per server, per fase duur en geheugen met een balkje (relatief aan de langste fase).
+    private var updatesView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header("Bijwerken per server (laatste 5)")
+            ForEach(diag.updates) { u in
+                VStack(alignment: .leading, spacing: 3) {
+                    Chip(text: TicketDiagnostics.updateHead(u), tone: TicketDiagnostics.resultLabel(u.result)?.1 ?? .neutral)
+                    let longest = max(1, u.phases.map { $0.ms ?? 0 }.max() ?? 1)
+                    ForEach(u.phases) { p in
+                        HStack(spacing: 8) {
+                            Text(TicketDiagnostics.codeName(p.code)).font(.caption).frame(width: 84, alignment: .leading)
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.white.opacity(0.08))
+                                    Capsule().fill(Color.purple.opacity(0.8))
+                                        .frame(width: max(2, g.size.width * CGFloat(p.ms ?? 0) / CGFloat(longest)))
+                                }
+                            }
+                            .frame(height: 6)
+                            Text(TicketDiagnostics.phaseText(p)).font(.caption.monospacedDigit()).foregroundStyle(Color.textDim)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
                 }
             }
         }

@@ -1036,3 +1036,12 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .diag-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 12px 0}
 .diag-fetch{list-style:none;margin:0;padding:0;font-size:13px}
 .diag-fetch li{padding:2px 0}
+/* build 148: diagnose-schema 3 (bijwerken per server met fasen) */
+.diag-upd{margin:4px 0 8px}
+.diag-upd-h{margin-bottom:3px}
+.diag-phases{list-style:none;margin:0;padding:0;font-size:13px}
+.diag-phases li{display:grid;grid-template-columns:110px 1fr auto;align-items:center;gap:8px;padding:1px 0}
+.diag-phases .r{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.diag-phases .pbar{height:6px;border-radius:3px;background:#ffffff14;overflow:hidden}
+.diag-phases .pfill{display:block;height:100%;width:0;background:#8b5cf6;border-radius:3px}
+.diag-fetch .sub{margin:1px 0 3px 4px}
