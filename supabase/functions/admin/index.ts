@@ -28,6 +28,18 @@
 //                       offset?: 0, -1, …, events?: bool} -> {step, edges:[…], now_index, has_prev, has_next, series:[{key, label,
 //                       agg, available, values:[n|null], prev_values, summary}], events?:[{kind, name, from, to}]}
 //                       (alleen aantallen per tijdvak, plus storingen/onderhoud van de statuspagina; insights.ts)
+//   streams_now         {token}           -> {total, accounts, by_kind, by_platform, items:[{user_id, email (gemaskeerd), name, plan,
+//                       country, device_name, platform, platform_group, app_version, profile_name, title, series_title,
+//                       kind: live|movie|episode, started_at, last_ping}]}  (tegel Kijkt nu; ping in de laatste 90 s; titels en
+//                       profielnamen in het geheugen ontsleuteld (streams.ts). Nooit gelogd; in admin_audit alleen het aantal)
+//   countries           {token}           -> {accounts, known, items:[{country, accounts, active_30d}]}  (laatst gezien land per
+//                       account: alleen de landcode uit cf-ipcountry, gezet door device-auth; nooit een IP-adres)
+//   server              {token, period: 7d|30d|90d|1y, offset?: 0, -1, …, now?: bool} -> {period, step, edges, now_index,
+//                       has_prev, has_next, functions, sources:{database|storage|rows|accounts_total|accounts|devices|streams|
+//                       auth|proxy|proxy_bytes|push|mail|fn_calls|fn_errors|fn_ms: {label, desc, series:[…zoals insights]}},
+//                       now?: {db, today, counts, tables, devices, storage, cron, queues, proxy_30d}}  (tab Server; alleen
+//                       aantallen en groottes uit admin_server_daily en bingr_admin_server_now; server.ts)
+//   (landen) users: filter ook "country:NL" of "country:?" (onbekend); items[].country; user_detail.country en devices[].country
 //   revenue             {token, period: day|week|month|year|7d|30d, offset?: 0, -1, …, bucket?: auto|hour|day|week|month,
 //                       mode?: live|test|all (standaard de modus van STRIPE_SECRET_KEY, zonder sleutel all)}
 //                       -> {step, edges, now_index, has_prev, has_next, series:[{key: gross|net|proceeds|vat|fees|refunds|count|
@@ -182,6 +194,8 @@ import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
 import { serversFromRow } from "./servers.ts";
+import { streamsView } from "./streams.ts";
+import { buildServer, nowView, parseServer, planRange, serverPlan } from "./server.ts";
 import { build as buildInsights, parseQuery as parseInsights, plan as planInsights } from "./insights.ts";
 import {
   buildRevenue, cleanRate, cleanRows, defaultMode, detailsFromPaymentIntent, detailsPatch, isPaymentIntent, parseRevenue, revenueCsv,
@@ -419,6 +433,24 @@ async function unsubUser(t: unknown): Promise<string | null> {
   try {
     return sameBytes(unb64u(sig), (await hmac(unsubMaterial(), `unsub:${id}`)).subarray(0, 18)) ? id.toLowerCase() : null;
   } catch { return null; }
+}
+
+// ---- landen (account_country en account_devices.country, schema in iptv-ios-appletv): alleen landcodes ----
+const CC = /^[A-Z]{2}$/;
+async function accountCountries(ids: string[]): Promise<Record<string, string>> {
+  if (!ids.length) return {};
+  const { data, error } = await admin.from("account_country").select("user_id,country").in("user_id", ids.slice(0, 100));
+  if (error) { if (error.code !== "42P01" && error.code !== "PGRST205") console.error("admin", "countries", error.code ?? "fout"); return {}; }
+  return Object.fromEntries((data ?? []).filter((r) => CC.test(String(r.country))).map((r) => [String(r.user_id).toLowerCase(), String(r.country)]));
+}
+async function userCountry(id: string): Promise<{ account: string | null; devices: { name: unknown; created_at: unknown; country: string | null }[] }> {
+  const [a, d] = await Promise.all([
+    admin.from("account_country").select("country").eq("user_id", id).maybeSingle(),
+    admin.from("account_devices").select("name,created_at,country").eq("user_id", id).limit(200),
+  ]);
+  const account = !a.error && CC.test(String(a.data?.country ?? "")) ? String(a.data!.country) : null;
+  const devices = d.error ? [] : (d.data ?? []).map((x) => ({ name: x.name, created_at: x.created_at, country: CC.test(String(x.country ?? "")) ? String(x.country) : null }));
+  return { account, devices };
 }
 
 // ---- hulpjes ----
@@ -811,6 +843,37 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (guard.error && guard.error.code !== "PGRST202") console.error("admin", "signup_guard", guard.error.message);
       return json({ ...data, signup_guard: guard.error ? null : guard.data ?? null, smtp: smtpConfigured() });
     }
+    case "streams_now": {
+      // tegel Kijkt nu: persoonsgegevens alleen in dit antwoord (e-mail gemaskeerd); in het logboek alleen het aantal
+      const { data, error } = await admin.rpc("bingr_admin_streams_now");
+      if (error?.code === "PGRST202") return json({ error: "server_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      const out = await streamsView(data, maskEmail, env("BINGR_SOURCES_KEY"));
+      await audit("streams_view", ip, null, { streams: out.total });
+      return json(out);
+    }
+    case "countries": {
+      const { data, error } = await admin.rpc("bingr_admin_countries");
+      if (error?.code === "PGRST202") return json({ error: "server_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      const items = (Array.isArray(data?.items) ? data.items : []).filter((x: { country?: unknown }) => typeof x?.country === "string" && /^[A-Z]{2}$/.test(x.country))
+        .slice(0, 250).map((x: Record<string, unknown>) => ({ country: x.country, accounts: Number(x.accounts) || 0, active_30d: Number(x.active_30d) || 0 }));
+      return json({ accounts: Number(data?.accounts) || 0, known: Number(data?.known) || 0, items });
+    }
+    case "server": {
+      // tab Server: dagrijen (admin_server_daily) als Insights-reeksen, plus desgevraagd de actuele stand
+      const q = parseServer(body);
+      if ("error" in q) return json({ error: q.error }, 400);
+      const now = Date.now(), p = serverPlan(q, now), r = planRange(p);
+      const [days, cur] = await Promise.all([
+        admin.rpc("bingr_admin_server_days", { p_from: r.from, p_to: r.to }),
+        body.now === true ? admin.rpc("bingr_admin_server_now") : null,
+      ]);
+      if (days.error?.code === "PGRST202") return json({ error: "server_not_configured" }, 503);
+      if (days.error) throw new Error(days.error.message);
+      if (cur?.error) console.error("admin", "server now", cur.error.code ?? "fout");
+      return json({ ...buildServer(p, days.data, now), ...(cur ? { now: cur.error ? null : nowView(cur.data) } : {}) });
+    }
     case "insights": {
       // grafieken van het overzicht (zoals Homey Insights): aantallen per tijdvak, nooit gegevens per persoon (insights.ts)
       const q = parseInsights(body);
@@ -892,16 +955,19 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // filter alleen meesturen als hij gekozen is (zo werkt de lijst ook met een ouder schema)
       const { data, error } = await admin.rpc("bingr_admin_users", {
         p_search: q, p_limit: size, p_offset: page * size,
-        ...(["blocked", "free", "lifetime", "custom"].includes(String(body.filter)) ? { p_filter: String(body.filter) } : {}),
+        ...(["blocked", "free", "lifetime", "custom"].includes(String(body.filter)) || /^country:([A-Z]{2}|\?)$/.test(String(body.filter))
+          ? { p_filter: String(body.filter) } : {}),
       });
       if (error) throw new Error(error.message);
       // build 97: zoeken in accounts (op e-mailadres of naam) in het logboek; alleen lengte van de zoekterm, niet de term zelf
       if (q) await audit("users_search", ip, null, { q_length: q.length, filter: body.filter || undefined, page, results: data?.total ?? 0 });
       const rows = (data?.items ?? []) as Record<string, unknown>[];
       // nieuwsbrief per account (true/false; null = onbekend, bv. kolom nog niet aangemaakt)
-      const nl = await newsletterPrefs(rows.map((u) => String(u.id ?? "")).filter(isUuid).map((id) => id.toLowerCase()));
+      const ids = rows.map((u) => String(u.id ?? "")).filter(isUuid).map((id) => id.toLowerCase());
+      const [nl, cc] = await Promise.all([newsletterPrefs(ids), accountCountries(ids)]);
       const items = rows.map((u) => ({
         ...u, email: maskEmail(u.email), newsletter: nl && isUuid(u.id) ? nl[String(u.id).toLowerCase()] ?? null : null,
+        country: isUuid(u.id) ? cc[String(u.id).toLowerCase()] ?? null : null,
       }));
       return json({
         total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null,
@@ -916,7 +982,10 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // build 97: inzage van een account in het logboek (wie, geen inhoud)
       await audit("user_view", ip, String(body.id).toLowerCase());
       const uid = String(body.id).toLowerCase();
-      return json({ ...data, email: maskEmail(data.email), newsletter: await newsletterPref(uid), servers: await accountServers(uid) });
+      const [newsletter, servers, country] = await Promise.all([newsletterPref(uid), accountServers(uid), userCountry(uid)]);
+      const devices = Array.isArray(data.devices) ? data.devices.map((d: Record<string, unknown>) =>
+        ({ ...d, country: country.devices.find((x) => Date.parse(String(x.created_at)) === Date.parse(String(d.created_at)) && x.name === d.name)?.country ?? null })) : data.devices;
+      return json({ ...data, devices, email: maskEmail(data.email), newsletter, servers, country: country.account });
     }
     case "user_email": {
       // het volledige e-mailadres (oog naast het gemaskeerde adres); in het logboek alleen dat het bekeken is
