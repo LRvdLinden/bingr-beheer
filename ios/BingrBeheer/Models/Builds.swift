@@ -62,6 +62,7 @@ struct BuildPlatform: Identifiable {
         ("android-aab", "Android App Bundle (Google Play)", ".aab voor Google Play (telefoon, tablet en Google TV), getekend met de upload key", "shippingbox"),
         ("tizen", "Samsung TV", ".wgt voor Tizen", "tv"),
         ("windows", "Windows (.exe)", "Installer voor Windows 10 en 11 (x64)", "pc"),
+        ("webos", "LG TV (webOS)", ".ipk voor LG webOS (niet openbaar)", "tv"),
         ("apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS", "apple.logo"),
         ("beheer", "BingrBeheer", "Xcode-project (zip) van deze app voor iPhone en iPad", "wrench.and.screwdriver"),
     ]

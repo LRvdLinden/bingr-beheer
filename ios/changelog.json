@@ -2,6 +2,17 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 35,
+   "version": "1.0.0",
+   "date": "2026-10-24",
+   "items": [
+    {"type": "new", "nl": "Support: knop Kopiëren bij de diagnose van een ticket; de hele diagnose staat dan als leesbare tekst op het klembord"},
+    {"type": "new", "nl": "Support: een probleem bij de vorige start (vastgelopen, crash of niet klaar) staat bovenaan in rood, met fase, duur, voorgrond en taak"},
+    {"type": "improved", "nl": "Support: diagnose-schema 2 met de start als gekleurd label (goed, traag, vastgelopen), app-tijd en wachten op de gebruiker, ophalen per server en soort en de opslag met totaal; oude diagnoses blijven zoals ze waren"},
+    {"type": "new", "nl": "LG TV (webOS) als platform: bij apparaten, streams, statistieken, support, upgrade-link en Downloads (.ipk)"}
+   ]
+  },
+  {
    "build": 34,
    "version": "1.0.0",
    "date": "2026-10-24",

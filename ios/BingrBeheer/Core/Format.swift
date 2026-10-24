@@ -96,6 +96,7 @@ enum Labels {
         switch p ?? "" {
         case "browser": return "Webbrowser"
         case "tizen": return "Samsung TV"
+        case "webos", "LG TV", "LG webOS": return "LG TV"
         case "windows", "Windows": return "Windows"
         // platformgroepen van de server (tab Server, Kijkt nu)
         case "ios": return "iPhone"
@@ -143,7 +144,7 @@ enum Labels {
 
     static func supportPlatform(_ k: String) -> String {
         ["ios": "iPhone/iPad", "tvos": "Apple TV", "macos": "Mac", "android": "Android", "androidtv": "Android TV",
-         "tizen": "Samsung TV", "web": "Browser", "windows": "Windows"][k] ?? k
+         "tizen": "Samsung TV", "webos": "LG TV", "web": "Browser", "windows": "Windows"][k] ?? k
     }
 
     // build 146: diagnose-bijlage van tickets uit de app

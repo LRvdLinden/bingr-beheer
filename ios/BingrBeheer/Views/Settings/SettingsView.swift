@@ -30,6 +30,7 @@ struct SettingsView: View {
         .init(key: "android", label: "Android", hint: "Telefoons en tablets"),
         .init(key: "androidtv", label: "Android TV", hint: "Android TV, Google TV en Fire TV"),
         .init(key: "tizen", label: "Samsung TV", hint: "Tizen"),
+        .init(key: "webos", label: "LG TV", hint: "webOS"),
         .init(key: "web", label: "Web", hint: "Webspeler en bingr.online"),
     ]
 

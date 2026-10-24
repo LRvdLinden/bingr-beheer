@@ -2,13 +2,16 @@ import SwiftUI
 
 /// Diagnose-bijlage bij een bericht uit de app (build 146): samenvatting als kop, uitklapbaar met apparaat, app-status,
 /// netwerk, opslag en geheugen, mijlpalen bij het starten en de laatste crash. Nooit als ruwe JSON.
+/// Build 147 (schema 2): probleem bij de vorige start bovenaan in rood, de start als gekleurd label, ophalen per server en
+/// soort, opslag met totaal en een knop Kopiëren (hele diagnose als tekst). Schema 1 blijft zoals in build 146.
 struct DiagnosticsCard: View {
     let diag: TicketDiagnostics
+    @Environment(Session.self) private var session
     @State private var open: Bool
 
     init(diag: TicketDiagnostics) {
         self.diag = diag
-        _open = State(initialValue: diag.hasCrash)
+        _open = State(initialValue: diag.hasCrash || diag.hasPreviousProblem || diag.startSummary == "hung")
     }
 
     /// Eén regel label/waarde (alleen als er een waarde is).
@@ -19,12 +22,52 @@ struct DiagnosticsCard: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if diag.hasPreviousProblem { previousAlert }
+            card
+        }
+    }
+
+    /// Probleem bij de vorige start (hang, crash, niet klaar) in rood, met fase, duur, voorgrond en taak.
+    private var previousAlert: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Probleem bij de vorige start: " + (TicketDiagnostics.problemLabel(diag.prevProblem) ?? ""), systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.stateDown)
+            if let d = diag.previousProblemDetail, !d.isEmpty {
+                Text(d).font(.caption).foregroundStyle(Color.bad)
+            }
+            if !diag.prevStack.isEmpty { stackText(diag.prevStack) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.stateDown.opacity(0.14)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.stateDown.opacity(0.45)))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var card: some View {
         DisclosureGroup(isExpanded: $open) {
             VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    UIPasteboard.general.string = diag.plainText
+                    session.show("Diagnose gekopieerd.")
+                } label: {
+                    Label("Kopiëren", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 block("Apparaat", deviceRows)
+                if diag.hasStart { block("Start", startRows) }
                 block("App", appRows)
+                if !diag.fetch.isEmpty { fetchView }
                 block("Netwerk", networkRows)
-                block("Opslag en geheugen", storageRows)
+                if diag.hasStorage2 {
+                    block("Opslag", storage2Rows)
+                    block("Geheugen", memoryRows)
+                } else {
+                    block("Opslag en geheugen", storageRows)
+                }
                 if !diag.milestones.isEmpty { milestonesView }
                 if diag.hasCrash { crashView }
             }
@@ -32,6 +75,7 @@ struct DiagnosticsCard: View {
         } label: {
             HStack(spacing: 6) {
                 Chip(text: "Diagnose", icon: "stethoscope")
+                if let s = diag.startLabel { Chip(text: s.0, tone: s.1) }
                 Text(diag.summary).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2)
                 if diag.hasCrash { Chip(text: "crash", tone: .bad) }
             }
@@ -102,6 +146,62 @@ struct DiagnosticsCard: View {
         return r
     }
 
+    // build 147
+    private var startRows: [Row] {
+        var r: [Row] = []
+        if let s = diag.startLabel { r.append(Row(id: "Samenvatting", value: s.0, tone: s.1)) }
+        add(&r, "App-tijd", diag.appMs.map { ms($0) })
+        add(&r, "Wachten op gebruiker", diag.userWaitMs.map { ms($0) })
+        add(&r, "Langste hang", diag.maxHangMs.map { ms($0) })
+        if let p = diag.prevProblem {
+            add(&r, "Vorige start", p == "none" ? "geen probleem" : (TicketDiagnostics.problemLabel(p) ?? p))
+        }
+        return r
+    }
+
+    private var storage2Rows: [Row] {
+        var r: [Row] = []
+        add(&r, "Totaal (Bingr)", mb(diag.totalMB))
+        add(&r, "Cache", mb(diag.cacheMB))
+        add(&r, "Catalogus", mb(diag.catalogMB))
+        add(&r, "Downloads", mb(diag.downloadsMB))
+        add(&r, "Vrij op het apparaat", mb(diag.storageFreeMB))
+        return r
+    }
+
+    private var memoryRows: [Row] {
+        var r: [Row] = []
+        if let used = mb(diag.memUsedMB) {
+            let total = mb(diag.memTotalMB).map { " van " + $0 } ?? ""
+            add(&r, "Geheugen", used + total)
+        }
+        add(&r, "Door Bingr", mb(diag.memAppMB))
+        add(&r, "Weinig geheugen", yesNo(diag.lowMemory))
+        return r
+    }
+
+    private var fetchView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            header("Ophalen per server en soort")
+            ForEach(diag.fetch) { f in
+                HStack(spacing: 6) {
+                    Chip(text: f.server)
+                    Chip(text: TicketDiagnostics.fetchText(f), tone: TicketDiagnostics.fetchTone(f.status))
+                }
+            }
+        }
+    }
+
+    private func stackText(_ lines: [String]) -> some View {
+        ScrollView(.horizontal) {
+            Text(lines.joined(separator: "\n"))
+                .font(.caption2.monospaced())
+                .textSelection(.enabled)
+                .padding(8)
+        }
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
+    }
+
     private func add(_ rows: inout [Row], _ label: String, _ value: String?) {
         if let value, !value.isEmpty { rows.append(Row(id: label, value: value)) }
     }
@@ -135,7 +235,7 @@ struct DiagnosticsCard: View {
             header("Mijlpalen bij het starten")
             ForEach(diag.milestones) { m in
                 HStack {
-                    Text(m.name).font(.caption.monospaced())
+                    Text(TicketDiagnostics.milestoneName(m.name)).font(.caption.monospaced())
                     Spacer()
                     if m.ok == false { Chip(text: "mislukt", tone: .bad) }
                     Text(m.ms.map { ms($0) } ?? "").font(.caption).foregroundStyle(Color.textDim)
