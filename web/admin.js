@@ -23,8 +23,16 @@
     if (d < 30) return `${d} dagen geleden`;
     return fmtDate(v);
   }
-  const PLATFORM = { browser: "Webbrowser", tizen: "Samsung TV", "?": "Onbekend" };
-  const pname = (p) => PLATFORM[p] || p || "Onbekend";
+  // ruwe platformnamen van de apps ("iPhone", "Apple TV", "tizen", "browser", "windows") en platformgroepen van de server
+  // (ios, ipados, macos, tvos, android, androidtv, tizen, web, windows, other)
+  const PLATFORM = { browser: "Webbrowser", tizen: "Samsung TV", windows: "Windows", "?": "Onbekend", ios: "iPhone", ipados: "iPad", macos: "Mac",
+    tvos: "Apple TV", android: "Android", androidtv: "Android TV", web: "Webspeler", other: "Overig" };
+  const pname = (p) => PLATFORM[p] || PLATFORM[String(p || "").toLowerCase()] || p || "Onbekend";
+  // landen: alleen de landcode (laatst gezien land, uit het netwerk; nooit een IP-adres). Vlag-emoji en Nederlandse naam.
+  const flag = (cc) => (/^[A-Z]{2}$/.test(cc || "") ? String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "");
+  const REGION = (() => { try { return new Intl.DisplayNames(["nl"], { type: "region" }); } catch { return null; } })();
+  const cname = (cc) => { if (!cc) return "Onbekend"; try { return REGION?.of(cc) || cc; } catch { return cc; } };
+  const ccChip = (cc) => (cc ? `<span class="cc" title="${esc(cname(cc))}"><span class="flag" aria-hidden="true">${flag(cc)}</span>${esc(cc)}</span>` : '<span class="sub">—</span>');
 
   // ---- sessie ----
   function session() {
@@ -54,6 +62,7 @@
   }
   const ERR = {
     network: "Geen verbinding met de server.", server_error: "Er ging iets mis op de server.", not_found: "Niet gevonden.",
+    server_not_configured: "Nog niet ingericht: draai de workflow Backend in iptv-ios-appletv.", bad_period: "Ongeldige periode.", bad_offset: "Ongeldige periode.",
     too_soon: "Er is net al een reset-mail gestuurd. Probeer het over een minuut opnieuw.", reset_failed: "De reset-mail kon niet worden verstuurd.",
     confirm_failed: "Het e-mailadres kon niet worden bevestigd.", resend_failed: "De bevestigingsmail kon niet worden verstuurd.",
     already_confirmed: "Dit e-mailadres is al bevestigd.", confirm_too_soon: "Er is net al een bevestigingsmail gestuurd. Probeer het over een minuut opnieuw.",
@@ -215,7 +224,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -226,7 +235,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "insights", "revenue", "users", "support", "messages", "newsletter", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "revenue", "users", "support", "messages", "newsletter", "server", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -245,7 +254,8 @@
     active_today: { label: "Actief vandaag", v: (s) => s.active_today, h: () => "accounts" },
     active_30d: { label: "Actief (30 dagen)", v: (s) => s.active_30d, h: () => "accounts" },
     devices: { label: "Apparaten", v: (s) => s.devices_total, h: () => "gekoppeld" },
-    watching_now: { label: "Kijkt nu", v: (s) => s.watching_now, h: () => "streams", cls: () => "live" },
+    // klikbaar: lijst van wie er nu kijkt (actie streams_now), net als Lifetime de gebruikers toont
+    watching_now: { label: "Kijkt nu", v: (s) => s.watching_now, h: () => "streams", cls: () => "live", open: "watching" },
     blocked: { label: "Geblokkeerd", v: (s) => s.blocked_users, h: () => "accounts", cls: (s) => (s.blocked_users ? "blocked" : ""), filter: "blocked" },
     plan_free: { label: "Gratis", v: (s) => s.plan_free, h: () => "accounts", filter: "free" },
     plan_lifetime: { label: "Lifetime", v: (s) => s.plan_lifetime, h: (s) => (s.plan_custom ? `${nf.format(s.plan_custom)} met eigen limieten` : "accounts"), cls: () => "life", filter: "lifetime" },
@@ -299,6 +309,9 @@
       opts: { push_platforms: ["set", PUSH_PFS, PUSH_PFS], show_new: ["bool", null, true] } },
     newsletter: { name: "Nieuwsbrief", desc: "Abonnees van de nieuwsbrief (bevestigd e-mailadres) ten opzichte van alle leden", sizes: ["s", "m"], size: "s",
       opts: { show_langs: ["bool", null, true] } },
+    // landen: laatst gezien land per account (alleen de landcode, uit het netwerk bij gebruik van de apps)
+    countries: { name: "Landen", desc: "Uit welke landen de gebruikers komen: vlag, land en aantal accounts", sizes: ["m", "l"], size: "l",
+      opts: { show_active: ["bool", null, true] } },
   };
   const OPT_LABEL = {
     metric: ["Getal", Object.fromEntries(Object.entries(METRICS).map(([k, m]) => [k, m.label]))],
@@ -317,6 +330,7 @@
     show_incidents: ["Storingen tonen"],
     show_notices: ["Meldingen tonen (lopend en gepland)"],
     show_langs: ["Nederlands en Engels apart tonen"],
+    show_active: ["Actief in de laatste 30 dagen tonen"],
     events: ["Storingen en onderhoud op de tijdas tonen"],
   };
   // standaardindeling: lijkt op het vroegere vaste overzicht
@@ -331,7 +345,7 @@
     ["status", "status", "m", {}],
     ["chart_new", "insights", "l", { insight: "accounts", period: "30d" }], ["chart_streams", "insights", "l", { insight: "streams", period: "7d" }],
     ["chart_push", "insights", "l", { insight: "push", period: "30d" }],
-    ["platforms", "platforms", "l", {}], ["versions", "versions", "l", {}],
+    ["platforms", "platforms", "l", {}], ["versions", "versions", "l", {}], ["countries", "countries", "l", {}],
   ];
   const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
   function normOptions(type, raw) {
@@ -381,14 +395,14 @@
   function saveLayout() { try { localStorage.setItem(DASH_KEY, JSON.stringify(dash)); } catch { /* privé-venster: alleen deze sessie */ } }
 
   let dash = loadLayout(), dashEdit = false, dashLoading = false, dashCharts = [], dragId = null;
-  const dd = { stats: null, statsErr: null, status: null, statusErr: null, hist: null, histErr: null, subs: null, subsErr: null, nl: null, nlErr: null };
+  const dd = { stats: null, statsErr: null, status: null, statusErr: null, hist: null, histErr: null, subs: null, subsErr: null, nl: null, nlErr: null, cc: null, ccErr: null };
   const visible = () => dash.widgets.filter((w) => !w.hidden);
   const needs = () => {
     const v = visible();
     return {
       status: v.some((w) => w.type === "status" || (w.type === "platforms" && w.options.source === "live")),
       hist: v.some((w) => w.type === "announcements"), subs: v.some((w) => w.type === "push_subscribers"),
-      nl: v.some((w) => w.type === "newsletter"),
+      nl: v.some((w) => w.type === "newsletter"), cc: v.some((w) => w.type === "countries"),
     };
   };
 
@@ -412,14 +426,15 @@
     if (dashLoading) return;
     dashLoading = true; $("refresh").disabled = true;
     const n = needs();
-    const [s, st, ph, sb, nl] = await Promise.allSettled([
+    const [s, st, ph, sb, nl, cc] = await Promise.allSettled([
       call("stats"), n.status ? call("status", { op: "overview" }) : Promise.resolve(null),
       n.hist ? call("push_history", { page: 0 }) : Promise.resolve(null), n.subs ? call("push_subscribers") : Promise.resolve(null),
-      n.nl ? call("newsletter_status") : Promise.resolve(null),
+      n.nl ? call("newsletter_status") : Promise.resolve(null), n.cc ? call("countries") : Promise.resolve(null),
     ]);
     dashLoading = false; $("refresh").disabled = false;
     if (n.nl) { if (nl.status === "fulfilled") { dd.nl = nl.value; dd.nlErr = null; } else dd.nlErr = errText(nl.reason); }
-    if ([s, st, ph, sb, nl].some((r) => r.status === "rejected" && r.reason?.code === "auth")) return;
+    if (n.cc) { if (cc.status === "fulfilled") { dd.cc = cc.value; dd.ccErr = null; ccList = cc.value; } else dd.ccErr = errText(cc.reason); }
+    if ([s, st, ph, sb, nl, cc].some((r) => r.status === "rejected" && r.reason?.code === "auth")) return;
     if (s.status === "fulfilled") { dd.stats = s.value; dd.statsErr = null; smtpOk = !!s.value.smtp; }
     else { dd.statsErr = errText(s.reason); toast(dd.statsErr, true); }
     if (n.status) { if (st.status === "fulfilled") { dd.status = st.value; dd.statusErr = null; } else dd.statusErr = errText(st.reason); }
@@ -434,7 +449,7 @@
   function ensureDashData() {
     const n = needs();
     if ((n.status && !dd.status && !dd.statusErr) || (n.hist && !dd.hist && !dd.histErr) || (n.subs && !dd.subs && !dd.subsErr) || (n.nl && !dd.nl && !dd.nlErr)
-      || (!dd.stats && !dd.statsErr)) loadStats();
+      || (n.cc && !dd.cc && !dd.ccErr) || (!dd.stats && !dd.statsErr)) loadStats();
   }
   function dashSupportChanged() {
     if (!$("tab-overview").classList.contains("hidden") && dash.widgets.some((w) => w.type === "support" && !w.hidden)) {
@@ -455,6 +470,7 @@
       case "announcements": return "Laatste pushmeldingen";
       case "push_subscribers": return "Pushabonnees";
       case "newsletter": return "Nieuwsbrief";
+      case "countries": return "Landen";
     }
     return WTYPES[w.type].name;
   }
@@ -511,13 +527,30 @@
     const fail = (msg) => `${head()}<p class="empty">${esc(msg)}</p>`;
     const wait = () => `${head()}<p class="empty">Laden…</p>`;
     let onGo = null;
-    const needStats = !["support", "status", "announcements", "push_subscribers", "insights"].includes(w.type) && !(w.type === "platforms" && o.source === "live");
+    const needStats = !["support", "status", "announcements", "push_subscribers", "insights", "countries"].includes(w.type) && !(w.type === "platforms" && o.source === "live");
     if (needStats && !s) { body.innerHTML = dd.statsErr ? fail(dd.statsErr) : wait(); return; }
     switch (w.type) {
       case "metric": {
         const m = METRICS[o.metric], v = m.v(s);
         body.innerHTML = v == null ? tile(title, "—", "niet beschikbaar") : tile(title, m.f ? m.f(v) : nf.format(v), esc(m.h(s)), m.cls ? m.cls(s) : "");
         if (m.filter && v != null) onGo = go(() => goUsers(m.filter));
+        if (m.open === "watching" && v != null) onGo = go(() => openWatching());
+        break;
+      }
+      case "countries": {
+        if (!dd.cc) { body.innerHTML = dd.ccErr ? fail(dd.ccErr) : wait(); return; }
+        const d = dd.cc, items = d.items || [], unknown = Math.max(0, (d.accounts || 0) - (d.known || 0));
+        const lim = w.size === "l" ? 8 : 4, max = Math.max(1, ...items.map((x) => x.accounts));
+        const pct = (n) => (d.accounts ? `${Math.round((n / d.accounts) * 100)}%` : "");
+        body.innerHTML = `${head(`${nf.format(items.length)} ${items.length === 1 ? "land" : "landen"} · land bekend van ${nf.format(d.known || 0)} van ${nf.format(d.accounts || 0)} accounts`, "Gebruikers")}
+          ${items.length ? `<div class="w-rows cc-rows">${items.slice(0, lim).map((x) => `<button type="button" class="w-row cc-row" data-cc="${esc(x.country)}" title="${esc(cname(x.country))}: ${nf.format(x.accounts)} accounts${o.show_active ? `, ${nf.format(x.active_30d)} actief in 30 dagen` : ""}">
+            <span class="cc-n"><span class="flag" aria-hidden="true">${flag(x.country)}</span>${esc(cname(x.country))}</span><span class="w-bar"><i data-w="${((x.accounts / max) * 100).toFixed(1)}"></i></span>
+            <b>${nf.format(x.accounts)}<small> ${esc(pct(x.accounts))}${o.show_active ? ` · ${nf.format(x.active_30d)} actief` : ""}</small></b></button>`).join("")}</div>
+            ${items.length > lim || unknown ? `<p class="sub w-facts">${items.length > lim ? `+ ${nf.format(items.length - lim)} ${items.length - lim === 1 ? "land" : "landen"}` : ""}${items.length > lim && unknown ? " · " : ""}${unknown ? `${nf.format(unknown)} nog onbekend` : ""}</p>` : ""}`
+            : '<p class="empty">Nog geen landen bekend. Het land komt erbij zodra een account de app gebruikt.</p>'}`;
+        body.querySelectorAll("i[data-w]").forEach((b) => { b.style.width = `${Math.max(2, Number(b.dataset.w))}%`; });
+        body.querySelectorAll("[data-cc]").forEach((b) => { b.disabled = dashEdit; b.onclick = () => goUsers(`country:${b.dataset.cc}`); });
+        const more = body.querySelector("[data-go]"); if (more) more.onclick = () => goUsers("");
         break;
       }
       case "insights": fillInsights(w, el, body); return;
@@ -794,8 +827,8 @@
   // pijltjestoetsen), series aan/uit (de samenvattingsknoppen zijn de legenda), samenvatting met verandering t.o.v. de vorige
   // periode. Alleen aantallen per tijdvak uit de functie admin; tijden in Nederlandse tijd. Zelf getekend als SVG (geen CDN).
   const INS_TZ = "Europe/Amsterdam";
-  const INS_PERIOD_TAB = { hour: "Uur", day: "Dag", week: "Week", month: "Maand", year: "Jaar", "24h": "24 uur", "7d": "7 dagen", "30d": "30 dagen" };
-  const INS_PREV = { hour: "vorig uur", day: "gisteren", week: "vorige week", month: "vorige maand", year: "vorig jaar", "24h": "24 uur ervoor", "7d": "7 dagen ervoor", "30d": "30 dagen ervoor" };
+  const INS_PERIOD_TAB = { hour: "Uur", day: "Dag", week: "Week", month: "Maand", year: "Jaar", "24h": "24 uur", "7d": "7 dagen", "30d": "30 dagen", "90d": "90 dagen", "1y": "1 jaar" };
+  const INS_PREV = { hour: "vorig uur", day: "gisteren", week: "vorige week", month: "vorige maand", year: "vorig jaar", "24h": "24 uur ervoor", "7d": "7 dagen ervoor", "30d": "30 dagen ervoor", "90d": "90 dagen ervoor", "1y": "52 weken ervoor" };
   // series waarvoor minder beter is (pijl omlaag = goed)
   const INS_DOWN_GOOD = new Set(["failed"]);
   const insCache = new Map(), insOffset = new Map(), insSeq = new Map();
@@ -810,9 +843,10 @@
   const compact = (v) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}M` : Math.abs(v) >= 1e4 ? `${(v / 1e3).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}K` : v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }));
   const n1 = (v) => (v == null ? "—" : v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }));
   // bedragen (tab Omzet: series met money = centen) of aantallen
-  const fmtVal = (s, v) => (v == null ? "—" : s?.money ? euro(v) : nf.format(v));
-  const sumVal = (s, v) => (v == null ? "—" : s?.money ? euro(v) : n1(v));
-  const axisVal = (money, v) => (money ? `€ ${compact(v / 100)}` : compact(v));
+  // tab Server: series met bytes (groottes, verkeer) of ms (duur)
+  const fmtVal = (s, v) => (v == null ? "—" : s?.money ? euro(v) : s?.bytes ? fmtSize(v) : s?.ms ? `${n1(v)} ms` : nf.format(v));
+  const sumVal = (s, v) => (v == null ? "—" : s?.money ? euro(v) : s?.bytes ? fmtSize(v) : s?.ms ? `${n1(v)} ms` : n1(v));
+  const axisVal = (money, v) => (money === "bytes" ? fmtSize(v).replace(" ", "") : money ? `€ ${compact(v / 100)}` : compact(v));
 
   /** Tekst van de periode boven de grafiek, bv. "Deze week · 12–18 okt" of "Oktober 2026". */
   function insRangeText(d) {
@@ -825,7 +859,8 @@
       case "month": { const t = F.monYear.format(a); return (cur ? "Deze maand · " : "") + t.charAt(0).toUpperCase() + t.slice(1); }
       case "year": return `${cur ? "Dit jaar · " : ""}${F.year.format(a)}`;
       case "24h": return cur ? "Laatste 24 uur" : `${F.dayMon.format(a)} ${F.time.format(a)} – ${F.dayMon.format(new Date(d.to))} ${F.time.format(new Date(d.to))}`;
-      default: return `${cur ? `Laatste ${d.period === "7d" ? 7 : 30} dagen · ` : ""}${span()}`;
+      case "1y": return `${cur ? "Laatste 52 weken · " : ""}${span()}`;
+      default: return `${cur ? `Laatste ${({ "7d": 7, "30d": 30, "90d": 90 })[d.period] || 30} dagen · ` : ""}${span()}`;
     }
   }
   /** Tijd van één tijdvak in de tooltip. */
@@ -1360,9 +1395,9 @@
       return none;
     }
     const W = Math.max(260, Math.round(el.clientWidth || 560)), H = Math.max(120, Math.round(el.clientHeight || 200));
-    const yw = 34, L = yw, R = 6, T = 10, B = 24, iw = W - L - R, ih = H - T - B, bw = iw / n;
+    const vals = shown.flatMap((s) => s.values.filter((v) => v != null)), money = shown.every((s) => s.money) || (shown.every((s) => s.bytes) ? "bytes" : false);
+    const yw = money === "bytes" ? 52 : 34, L = yw, R = 6, T = 10, B = 24, iw = W - L - R, ih = H - T - B, bw = iw / n;
     // ook negatieve waarden (tab Omzet: opbrengst in een tijdvak met alleen een terugbetaling); bedragen in centen
-    const vals = shown.flatMap((s) => s.values.filter((v) => v != null)), money = shown.every((s) => s.money);
     const max = Math.max(1, ...vals), lo = Math.min(0, ...vals);
     const step = niceStep(max - lo), top = Math.ceil(max / step) * step, bot = lo < 0 ? -Math.ceil(-lo / step) * step : 0;
     const y = (v) => T + ih - ((v - bot) / (top - bot)) * ih, cx = (i) => L + (i + 0.5) * bw, y0 = y(0);
@@ -1482,6 +1517,206 @@
     el.querySelectorAll("span[data-w]").forEach((b) => { b.style.width = `${b.dataset.w}%`; });
   }
 
+  // ---- Kijkt nu: wie kijkt er nu (actie streams_now; ping in de laatste 90 s). Persoonsgegevens alleen hier in het scherm,
+  // via de functie admin (e-mail gemaskeerd); klik op een account opent het account. Ververst elke 30 s zolang het open is.
+  const KIND_NAME = { live: "Live", movie: "Film", episode: "Aflevering" };
+  let watchTimer = null;
+  const durText = (from) => {
+    const m = Math.max(0, Math.round((Date.now() - Date.parse(from)) / 60000));
+    return m < 1 ? "net begonnen" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} u ${m % 60} min`;
+  };
+  const pingText = (v) => { const s = Math.max(0, Math.round((Date.now() - Date.parse(v)) / 1000)); return s < 60 ? `${s} s geleden` : `${Math.round(s / 60)} min geleden`; };
+  const timeText = (v) => new Date(v).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+  async function openWatching() {
+    $("drawerBody").innerHTML = '<h2 id="dTitle">Kijkt nu</h2><p class="sub">Laden…</p>';
+    openDrawer(true);
+    await loadWatching();
+    clearInterval(watchTimer);
+    watchTimer = setInterval(() => {
+      if (!$("drawer").classList.contains("open") || !$("drawerBody").querySelector(".watch")) { clearInterval(watchTimer); return; }
+      if (!document.hidden) loadWatching(true);
+    }, 30000);
+  }
+  async function loadWatching(quiet = false) {
+    let r;
+    try { r = await call("streams_now"); } catch (e) {
+      if (e.code === "auth" || quiet) return;
+      $("drawerBody").innerHTML = `<h2 id="dTitle">Kijkt nu</h2><p class="err">${esc(errText(e))}</p>`;
+      return;
+    }
+    if (!$("drawer").classList.contains("open")) return;
+    const items = r.items || [], k = r.by_kind || {};
+    const facts = [`${nf.format(r.total || 0)} ${r.total === 1 ? "stream" : "streams"}`, `${nf.format(r.accounts || 0)} ${r.accounts === 1 ? "account" : "accounts"}`,
+      ...["live", "movie", "episode"].filter((x) => k[x]).map((x) => `${nf.format(k[x])} ${KIND_NAME[x].toLowerCase()}`)];
+    const what = (s) => {
+      const t = s.title || "", st = s.series_title || "";
+      return s.kind === "episode" && st && !t.toLowerCase().startsWith(st.toLowerCase()) ? `${st} · ${t}` : t || st || "Onbekende titel";
+    };
+    $("drawerBody").innerHTML = `<div class="watch">
+      <div class="watch-h"><h2 id="dTitle">Kijkt nu</h2><button id="watchRefresh" class="btn ghost small" type="button">Vernieuwen</button></div>
+      <p class="sub">${esc(facts.join(" · "))} · ping in de laatste 90 seconden · ververst elke 30 s</p>
+      ${items.length ? `<ul class="watch-list">${items.map((s) => `<li class="watch-it">
+        <div class="ic" title="${esc(pname(s.platform_group))}">${icon(s.platform_group === "other" ? s.platform : s.platform_group)}</div>
+        <div class="watch-main">
+          <div class="watch-t"><b>${esc(what(s))}</b>${s.kind ? ` <span class="chip kind-${esc(s.kind)}">${esc(KIND_NAME[s.kind])}</span>` : ""}</div>
+          <div class="meta"><button type="button" class="watch-acc" data-u="${esc(s.user_id)}" title="Account openen">${esc(s.name || s.email)}</button>${s.name ? ` <span class="sub">${esc(s.email)}</span>` : ""} ${planChip({ plan: s.plan })}${s.country ? ` <span title="${esc(cname(s.country))}">${flag(s.country)}</span>` : ""}</div>
+          <div class="meta">${s.profile_name ? `Profiel <b>${esc(s.profile_name)}</b> · ` : ""}${esc(s.device_name || pname(s.platform))} · ${esc(pname(s.platform_group === "other" ? s.platform : s.platform_group))}${s.app_version ? ` · Bingr ${esc(s.app_version)}` : ""}</div>
+          <div class="meta">${s.started_at ? `Sinds ${esc(timeText(s.started_at))} (${esc(durText(s.started_at))})` : ""}${s.last_ping ? ` · laatste ping ${esc(pingText(s.last_ping))}` : ""}</div>
+        </div></li>`).join("")}</ul>` : '<p class="empty">Er kijkt nu niemand.</p>'}</div>`;
+    $("watchRefresh").onclick = () => loadWatching();
+    $("drawerBody").querySelectorAll("[data-u]").forEach((b) => (b.onclick = () => { clearInterval(watchTimer); openUser(b.dataset.u); }));
+  }
+
+  // ---- tab Server: Supabase- en servergegevens (actie server). Zelfde bediening en grafieken als Insights: reeksen
+  // aanvinken, één periode, bladeren. Eén meetpunt per dag (admin_server_daily, UTC); de actuele stand erboven en eronder.
+  const SRV_KEY = KEY + ".server";
+  const SRV_PERIODS = ["7d", "30d", "90d", "1y"];
+  const SRV_SOURCES = {
+    database: "Database", storage: "Opslag", rows: "Rijen", accounts_total: "Accounts", accounts: "Nieuw en actief", devices: "Apparaten per platform",
+    streams: "Streams", auth: "Inloggen", proxy: "Webproxy: verzoeken", proxy_bytes: "Webproxy: verkeer", push: "Push-afleveringen", mail: "Mail",
+    fn_calls: "Functies: aanroepen", fn_errors: "Functies: fouten", fn_ms: "Functies: duur",
+  };
+  const srvp = (() => {
+    const def = { sources: ["database", "accounts", "streams", "devices"], period: "30d", off: {} };
+    try {
+      const r = JSON.parse(localStorage.getItem(SRV_KEY) || "null");
+      if (!isObj(r)) return def;
+      const off = {};
+      if (isObj(r.off)) for (const k of Object.keys(SRV_SOURCES)) if (Array.isArray(r.off[k])) off[k] = r.off[k].filter((x) => typeof x === "string" && x.length <= 60).slice(0, 20);
+      return { sources: Array.isArray(r.sources) ? Object.keys(SRV_SOURCES).filter((k) => r.sources.includes(k)) : def.sources, period: SRV_PERIODS.includes(r.period) ? r.period : def.period, off };
+    } catch { return def; }
+  })();
+  const srvSave = () => { try { localStorage.setItem(SRV_KEY, JSON.stringify(srvp)); } catch { /* privé-venster */ } };
+  let srvOffset = 0, srvSeq = 0, srvNowData = null, srvCtl = {}, srvLast = null;
+  const srvCache = new Map(), srvDraws = new Map();
+
+  function renderSrvControls() {
+    $("srvSources").innerHTML = Object.entries(SRV_SOURCES).map(([k, l]) => `<label class="ins-src-it"><input type="checkbox" value="${k}" ${srvp.sources.includes(k) ? "checked" : ""}>
+      <span class="ins-src-box" aria-hidden="true"></span><span><b>${esc(l)}</b></span></label>`).join("");
+    $("srvSources").querySelectorAll("input").forEach((c) => (c.onchange = () => {
+      srvp.sources = [...$("srvSources").querySelectorAll("input:checked")].map((x) => x.value); srvSave(); paintServer();
+    }));
+    $("srvPeriods").innerHTML = SRV_PERIODS.map((p) => `<button type="button" role="radio" data-p="${p}" aria-checked="${p === srvp.period}" class="${p === srvp.period ? "on" : ""}">${INS_PERIOD_TAB[p]}</button>`).join("");
+    $("srvPeriods").querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => {
+      if (b.dataset.p === srvp.period) return;
+      srvp.period = b.dataset.p; srvOffset = 0; srvSave(); renderSrvControls(); loadServer();
+      $("srvPeriods").querySelector(`[data-p="${srvp.period}"]`)?.focus();
+    }));
+  }
+  $("srvPrev").onclick = () => { srvOffset--; loadServer(); };
+  $("srvNext").onclick = () => { srvOffset = Math.min(0, srvOffset + 1); loadServer(); if ($("srvNext").disabled) $("srvPrev").focus(); };
+  $("srvNow").onclick = () => { srvOffset = 0; loadServer(); $("srvPrev").focus(); };
+  $("srvRefresh").onclick = () => { srvCache.clear(); srvNowData = null; loadServer(); };
+  window.addEventListener("resize", () => { clearTimeout(srvResize); srvResize = setTimeout(() => { if (!$("tab-server").classList.contains("hidden")) srvDraws.forEach((f) => f()); }, 150); });
+  let srvResize;
+
+  async function loadServer() {
+    if (!$("srvSources").childElementCount) renderSrvControls();
+    const seq = ++srvSeq, key = `${srvp.period}|${srvOffset}`;
+    $("srvNow").disabled = srvOffset === 0; $("srvNext").disabled = srvOffset === 0;
+    if (!srvNowData) $("srvTiles").innerHTML = ["Database", "Accounts", "Kijkt nu", "Apparaten", "Opslag", "Webproxy (30 d)"].map((l) => `<div class="kpi"><div class="l">${l}</div><div class="v"><span class="skel skel-num"></span></div><div class="h">&nbsp;</div></div>`).join("");
+    $("srvCharts").querySelectorAll(".ins-chart").forEach((c) => c.classList.add("stale"));
+    try {
+      const d = srvCache.get(key) || await call("server", { period: srvp.period, offset: srvOffset, now: !srvNowData });
+      if (d.now) srvNowData = d.now;
+      srvCache.set(key, d);
+      if (seq !== srvSeq) return;
+      srvLast = d;
+      paintServer();
+      paintServerNow();
+    } catch (e) {
+      if (e.code === "auth" || seq !== srvSeq) return;
+      $("srvTiles").innerHTML = "";
+      $("srvCharts").innerHTML = `<div class="panel ins-none"><h2>Servergegevens niet beschikbaar</h2><p class="sub">${esc(errText(e))}</p></div>`;
+    }
+  }
+  function paintServer() {
+    const d = srvLast, host = $("srvCharts");
+    if (!d) return;
+    $("srvRange").textContent = insRangeText(d);
+    $("srvRes").textContent = d.step === "week" ? "Per week" : "Per dag (UTC)";
+    $("srvPrev").disabled = !d.has_prev;
+    srvDraws.clear(); srvCtl = {};
+    host.querySelector(".ins-none")?.remove();
+    if (!srvp.sources.length) {
+      host.innerHTML = '<div class="panel ins-none"><h2>Geen reeksen gekozen</h2><p class="sub">Vink links één of meer reeksen aan.</p></div>';
+      return;
+    }
+    host.querySelectorAll(".ins-card").forEach((c) => { if (!srvp.sources.includes(c.dataset.m)) c.remove(); });
+    for (const k of srvp.sources) {
+      const src = d.sources?.[k];
+      let card = host.querySelector(`.ins-card[data-m="${k}"]`);
+      if (!card) {
+        card = document.createElement("article");
+        card.className = "panel ins-card"; card.dataset.m = k;
+        card.innerHTML = `<div class="ins-card-h"><h2>${esc(SRV_SOURCES[k])}</h2><span class="sub ins-card-res"></span></div><div class="ins-series"></div><div class="ins-chart chart"></div>`;
+      }
+      host.appendChild(card);
+      card.querySelector(".ins-card-res").textContent = src?.desc || "";
+      // series zonder enig meetpunt in deze periode (bv. een platform zonder apparaten) weglaten
+      const series = (src?.series || []).filter((s) => s.available);
+      if (!series.length) {
+        card.querySelector(".ins-series").innerHTML = "";
+        const c = card.querySelector(".ins-chart"); c.classList.remove("stale");
+        c.innerHTML = `<p class="empty">${k.startsWith("fn_") ? "Nog geen gegevens van de Edge Functions (workflow Serverstatistieken in iptv-ios-appletv; zie onderaan)." : "Geen gegevens."}</p>`;
+        continue;
+      }
+      const keys = series.map((s) => s.key);
+      const sub = { ...d, events: [], series };
+      const kind = ["accounts", "push", "mail", "auth", "proxy", "proxy_bytes", "fn_calls", "fn_errors"].includes(k) && d.step === "day" ? "bar" : "line";
+      const paint = () => insBody(card, sub, {
+        keys, off: (srvp.off[k] || []).filter((x) => keys.includes(x)), big: true, kind, gid: `srv-${k}`,
+        setOff: (arr) => { srvp.off[k] = arr; srvSave(); srvDraws.set(k, paint()); },
+        hooks: { onShow: (t) => Object.entries(srvCtl).forEach(([m, c]) => { if (m !== k) c.showTime(t); }), onHide: () => Object.entries(srvCtl).forEach(([m, c]) => { if (m !== k) c.hide(); }) },
+        onCtl: (ctl) => { srvCtl[k] = ctl; },
+      });
+      srvDraws.set(k, paint());
+    }
+    $("srvLive").textContent = `${$("srvRange").textContent}: ${srvp.sources.length} grafieken`;
+  }
+  function paintServerNow() {
+    const n = srvNowData;
+    if (!n) {
+      $("srvTiles").innerHTML = "";
+      ["srvTables", "srvDevices", "srvCron", "srvStorage", "srvQueues", "srvPeak"].forEach((id) => { $(id).innerHTML = '<p class="empty">Niet beschikbaar.</p>'; });
+      return;
+    }
+    const c = n.counts, t = n.today;
+    const tile = (l, v, h, cls = "") => `<div class="kpi${cls ? " " + cls : ""}"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="h">${esc(h)}</div></div>`;
+    $("srvTiles").innerHTML = tile("Database", fmtSize(n.db.bytes), `${nf.format(n.db.connections)} verbindingen · Postgres ${Math.floor(n.db.version / 10000) || "?"}`)
+      + tile("Accounts", nf.format(c.accounts), `${nf.format(c.active_7d)} actief (7 d) · ${nf.format(c.active_30d)} (30 d) · +${nf.format(t.new_users)} vandaag`)
+      + tile("Kijkt nu", nf.format(c.streams_now), `piek vandaag ${nf.format(t.streams_peak)} · ${nf.format(t.streams_started)} gestart`, "live")
+      + tile("Apparaten", nf.format(c.devices), `${nf.format(c.push_devices)} met push`)
+      + tile("Opslag", fmtSize(t.storage_bytes), `${nf.format(t.storage_objects)} bestanden`)
+      + tile("Webproxy (30 d)", fmtSize(n.proxy_30d.bytes), `${nf.format(n.proxy_30d.requests)} verzoeken · ${nf.format(n.proxy_30d.accounts)} accounts`)
+      + tile("Inloggen vandaag", nf.format(t.signins), `${nf.format(t.login_failures)} fout wachtwoord · ${nf.format(c.locked_now)} nu dicht · ${nf.format(c.blocked)} geblokkeerd`, c.locked_now ? "blocked" : "")
+      + tile("Push en mail vandaag", nf.format(t.push_sent + t.mail_sent), `${nf.format(t.push_sent)} push (${nf.format(t.push_failed)} mislukt) · ${nf.format(t.mail_sent)} mail (${nf.format(t.mail_failed)} mislukt)`, t.push_failed + t.mail_failed ? "alert" : "");
+    const table = (head, rows) => `<div class="table-wrap srv-table"><table><thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ""}>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+    $("srvTables").innerHTML = n.tables.length ? table(["Tabel", "Grootte", "Rijen"], n.tables.slice(0, 12).map((x) =>
+      `<tr><td><code>${esc(x.name)}</code></td><td class="num">${esc(fmtSize(x.bytes))}</td><td class="num">${x.rows == null ? "—" : `≈ ${esc(compact(x.rows))}`}</td></tr>`)) : '<p class="empty">Geen tabellen.</p>';
+    $("srvDevices").innerHTML = n.devices.length ? table(["Platform", "Totaal", "30 d", "Nu"], n.devices.map((x) =>
+      `<tr><td>${esc(pname(x.platform))}</td><td class="num">${nf.format(x.devices)}</td><td class="num">${nf.format(x.active_30d)}</td><td class="num">${nf.format(x.live)}</td></tr>`)) : '<p class="empty">Geen apparaten.</p>';
+    const CRON_ST = { succeeded: ["ok", "geslaagd"], failed: ["bad", "mislukt"], running: ["warn", "bezig"], starting: ["warn", "start"] };
+    $("srvCron").innerHTML = n.cron.length ? table(["Taak", "Laatste", "Fouten 24 u"], n.cron.map((x) => {
+      const [cls, txt] = CRON_ST[x.last_status] || ["", x.last_status || "nog niet"];
+      return `<tr${x.active ? "" : ' class="off"'}><td class="cron-n"><code>${esc(x.name)}</code>${x.active ? "" : ' <span class="chip">uit</span>'}<br><span class="sub"><code>${esc(x.schedule || "")}</code></span></td>
+        <td class="num"><span class="chip ${cls}">${esc(txt)}</span> <span class="sub">${esc(x.last_start ? ago(x.last_start) : "")}</span></td><td class="num${x.failed_24h ? " bad" : ""}">${nf.format(x.failed_24h)} / ${nf.format(x.runs_24h)}</td></tr>`;
+    })) : '<p class="empty">Geen cron-jobs gevonden (pg_cron niet beschikbaar).</p>';
+    $("srvStorage").innerHTML = n.storage.length ? table(["Bucket", "Bestanden", "Grootte"], n.storage.map((x) =>
+      `<tr><td><code>${esc(x.bucket)}</code>${x.public ? ' <span class="chip">openbaar</span>' : ""}</td><td class="num">${nf.format(x.objects)}</td><td class="num">${esc(fmtSize(x.bytes))}</td></tr>`)) : '<p class="empty">Geen buckets.</p>';
+    const q = n.queues;
+    $("srvQueues").innerHTML = table(["Wachtrij", "Aantal"], [["Push-afleveringen", q.push], ["Nieuwsbrief", q.newsletter], ["Eigen mailing", q.mailing], ["Statusmails", q.status_mail]].map(([l, v]) =>
+      `<tr><td>${esc(l)}</td><td class="num${v ? " warn" : ""}">${nf.format(v)}</td></tr>`).concat([
+      `<tr><td>Webproxy: verzoeken (30 d)</td><td class="num">${nf.format(n.proxy_30d.requests)}</td></tr>`,
+      `<tr><td>Webproxy: verkeer (30 d)</td><td class="num">${esc(fmtSize(n.proxy_30d.bytes))}</td></tr>`]));
+    const hours = [...Array(24).keys()].map((h) => ({ label: `${String(h).padStart(2, "0")}:00`, n: t.peak_h[String(h)] ?? 0 })).filter((x, i, a) => x.n || a.slice(i).some((y) => y.n));
+    hbars($("srvPeak"), hours.filter((x) => x.n || hours.length < 24), 24);
+    $("srvNote").innerHTML = `<h2>Waar komen de gegevens vandaan?</h2>
+      <p class="sub">Alles komt uit de database zelf (functies <code>bingr_admin_server_*</code>, alleen voor de service role): groottes met <code>pg_database_size</code> en <code>pg_total_relation_size</code>, tellingen uit de tabellen, opslag uit <code>storage.objects</code>, cron uit <code>cron.job_run_details</code>. Elk uur schrijft pg_cron de stand van de dag in <code>admin_server_daily</code>; elke 5 minuten de piek van gelijktijdige streams.${n.first_day ? ` Meetpunten sinds ${esc(fmtDate(n.first_day))}.` : ""}</p>
+      <p class="sub">Aanroepen, fouten en duur per Edge Function staan alleen in de logs van Supabase (Management API). Die vult de workflow <b>Serverstatistieken</b> in iptv-ios-appletv, met het token dat al als GitHub-secret bestaat; de functies zelf krijgen geen token.</p>`;
+  }
+
+
   // ---- gebruikers ----
   let page = 0, total = 0, searchTimer, userFilter = "", blockedTotal = null, freeTotal = null, lifetimeTotal = null;
   const PAGE = 25;
@@ -1500,12 +1735,13 @@
     $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0"${u.blocked ? ' class="is-blocked"' : ""}>
       <td class="em">${fullName(u) ? `<span class="u-name">${esc(fullName(u))}</span><span class="u-mail">${esc(u.email)}</span>` : esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.newsletter === false ? ' <span class="chip" title="Krijgt de nieuwsbrief niet (afgemeld of alle mail uit)">Geen nieuwsbrief</span>' : ""}${u.blocked
         ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""} ${planChip(u.plan)}</td>
+      <td data-l="Land">${ccChip(u.country)}</td>
       <td data-l="Aangemaakt">${esc(fmtDate(u.created_at))}</td>
       <td data-l="Laatst ingelogd">${esc(ago(u.last_sign_in_at))}</td>
       <td data-l="Apparaten">${nf.format(u.device_count || 0)} ${(u.platforms || []).map((p) => `<span class="chip">${esc(pname(p))}</span>`).join("")}</td>
       <td data-l="Profielen">${nf.format(u.profile_count || 0)}</td>
       <td data-l="Versies">${(u.app_versions || []).map((v) => `<span class="chip">${esc(v)}</span>`).join("") || '<span class="sub">—</span>'}</td>
-    </tr>`).join("") || `<tr><td colspan="6" class="empty">${({ blocked: "Geen geblokkeerde accounts.", free: "Geen Gratis-accounts gevonden.", lifetime: "Geen Lifetime-accounts gevonden.", custom: "Geen accounts met eigen limieten." })[userFilter] || "Geen accounts gevonden."}</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="7" class="empty">${({ blocked: "Geen geblokkeerde accounts.", free: "Geen Gratis-accounts gevonden.", lifetime: "Geen Lifetime-accounts gevonden.", custom: "Geen accounts met eigen limieten." })[userFilter] || (userFilter.startsWith("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden.")}</td></tr>`;
     $("userRows").querySelectorAll("tr[data-id]").forEach((tr) => {
       tr.onclick = () => openUser(tr.dataset.id);
       tr.onkeydown = (e) => { if (e.key === "Enter") openUser(tr.dataset.id); };
@@ -1519,7 +1755,23 @@
     const f = [["", "Alle accounts", null], ["free", "Gratis", freeTotal], ["lifetime", "Lifetime", lifetimeTotal], ["custom", "Eigen limieten", null], ["blocked", "Geblokkeerd", blockedTotal]];
     $("userFilters").innerHTML = f.map(([k, l, n]) => `<button type="button" data-f="${k}" class="${k === userFilter ? "on" : ""}" aria-pressed="${k === userFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`).join("");
     $("userFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => { userFilter = b.dataset.f; page = 0; loadUsers(); }));
+    renderCountryFilter();
   }
+  // filter op land (laatst gezien land): één filter tegelijk, dus naast de knoppen hierboven; lijst uit de actie countries
+  let ccList = null, ccLoading = false;
+  function renderCountryFilter() {
+    const sel = $("userCountry"), cur = userFilter.startsWith("country:") ? userFilter.slice(8) : "";
+    const items = ccList?.items || [], unknown = ccList ? Math.max(0, (ccList.accounts || 0) - (ccList.known || 0)) : 0;
+    const opts = [["", "Alle landen"], ...items.map((x) => [x.country, `${flag(x.country)} ${cname(x.country)} (${nf.format(x.accounts)})`]),
+      ...(unknown || cur === "?" ? [["?", `Onbekend (${nf.format(unknown)})`]] : [])];
+    if (cur && !opts.some(([k]) => k === cur)) opts.push([cur, `${flag(cur)} ${cname(cur)}`]);
+    sel.innerHTML = opts.map(([k, l]) => `<option value="${esc(k)}"${k === cur ? " selected" : ""}>${esc(l)}</option>`).join("");
+    if (!ccList && !ccLoading) {
+      ccLoading = true;
+      call("countries").then((r) => { ccList = r; renderCountryFilter(); }).catch(() => { /* filter zonder lijst */ }).finally(() => { ccLoading = false; });
+    }
+  }
+  $("userCountry").onchange = () => { const v = $("userCountry").value; userFilter = v ? `country:${v}` : ""; page = 0; loadUsers(); };
 
   const ICON = {
     phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
@@ -1529,9 +1781,11 @@
     // Apple TV: het appletv-symbool uit de apps (gevuld)
     appletv: '<g fill="currentColor" stroke="none" transform="translate(2.25 2.28) scale(1.0)"><path d="M5.20687 19.4314L14.2907 19.4314C15.949 19.4314 17.3557 19.2815 18.3579 18.2793C19.3476 17.2792 19.4976 15.8974 19.4976 14.2246L19.4976 5.22355C19.4976 3.55067 19.3476 2.1668 18.3579 1.16882C17.3536 0.176964 15.949 0.0166814 14.2907 0.0166814L5.18577 0.0166814C3.55067 0.0166814 2.14188 0.179074 1.14179 1.17093C0.149932 2.17102 0 3.55489 0 5.1921L0 14.2246C0 15.8974 0.147822 17.2917 1.13968 18.2793C2.14188 19.2815 3.5361 19.4314 5.20687 19.4314ZM4.93695 17.8607C3.93656 17.8607 2.87758 17.7212 2.2877 17.1313C1.69781 16.5414 1.57069 15.497 1.57069 14.4945L1.57069 4.98508C1.57069 3.95535 1.69781 2.90461 2.28559 2.31473C2.87547 1.72274 3.94078 1.58737 4.9684 1.58737L14.5606 1.58737C15.561 1.58737 16.6179 1.72696 17.2078 2.31684C17.7997 2.90672 17.9269 3.95113 17.9269 4.95363L17.9269 14.4945C17.9269 15.497 17.7976 16.5414 17.2078 17.1313C16.6179 17.7233 15.561 17.8607 14.5606 17.8607Z"/><path d="M4.85163 12.6004C5.26284 12.6004 5.4373 12.3138 5.94819 12.3138C6.47155 12.3138 6.59616 12.6004 7.04476 12.6004C7.49335 12.6004 7.79241 12.1768 8.09148 11.7655C8.39054 11.3045 8.54007 10.8434 8.54007 10.8185C8.52761 10.8185 7.64288 10.4571 7.64288 9.46027C7.64288 8.61293 8.32823 8.22664 8.36562 8.18925C7.92948 7.56621 7.23167 7.54128 7.04476 7.54128C6.53386 7.54128 6.12265 7.82789 5.86097 7.82789C5.58683 7.82789 5.22546 7.56621 4.77687 7.56621C3.95444 7.56621 3.1071 8.2391 3.1071 9.53503C3.1071 10.345 3.40616 11.1923 3.79245 11.7406C4.14136 12.2141 4.42796 12.6004 4.85163 12.6004ZM5.89835 7.45406C6.5214 7.45406 7.16937 6.78117 7.15691 6.04597C7.16937 6.00859 7.15691 5.95875 7.14444 5.92136C6.48402 5.94628 5.81112 6.60671 5.81112 7.32945C5.81112 7.36683 5.81112 7.42914 5.82359 7.4416C5.83605 7.45406 5.86097 7.45406 5.89835 7.45406ZM11.0073 12.5755C11.2192 12.5755 11.4435 12.563 11.5556 12.5381L11.5805 12.5257L11.5805 11.7157L11.5432 11.7157C11.4809 11.7282 11.3313 11.7406 11.2316 11.7406C10.8578 11.7406 10.6958 11.5662 10.6958 11.1799L10.6958 8.60046L11.593 8.60046L11.593 7.77804L10.6958 7.77804L10.6958 6.65656L9.68648 6.65656L9.68648 7.77804L9.00112 7.77804L9.00112 8.60046L9.68648 8.60046L9.68648 11.292C9.68648 12.2017 10.0728 12.5755 11.0073 12.5755ZM13.6864 12.5381L14.7332 12.5381L16.4029 7.77804L15.3562 7.77804L14.2223 11.4914L13.0759 7.77804L11.9917 7.77804Z"/></g>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    // Windows-app (bingr-windows): vier vensters
+    win: '<path d="M3.5 5.2l7-1v7.3h-7zM12.5 3.9l8-1.2v8.8h-8zM3.5 12.5h7v7.3l-7-1zM12.5 12.5h8v8.8l-8-1.2z"/>',
   };
   function icon(p) {
-    const k = /^(apple ?tv|tvos)$/i.test(p || "") ? "appletv" : /iphone|^android$/i.test(p) ? "phone" : /ipad|tablet/i.test(p) ? "tablet" : /mac/i.test(p) ? "mac" : p === "browser" ? "globe" : "tv";
+    const k = /^(apple ?tv|tvos)$/i.test(p || "") ? "appletv" : /^windows$/i.test(p || "") ? "win" : /iphone|^ios$|^android$/i.test(p) ? "phone" : /ipad|tablet/i.test(p) ? "tablet" : /mac/i.test(p) ? "mac" : /^(browser|web)$/.test(p) ? "globe" : "tv";
     return `<svg viewBox="0 0 24 24">${ICON[k]}</svg>`;
   }
   // einde van een blokkade als tekst ("tot 21 okt. 2026 14:00" of "voor onbepaalde tijd")
@@ -1570,6 +1824,7 @@
         <dt>Laatst ingelogd</dt><dd>${esc(u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : "nooit")}</dd>
         <dt>Bevestigd</dt><dd>${u.confirmed ? "Ja" : `Nee <span class="chip warn">onbevestigd</span>`}</dd>
         <dt>Taal</dt><dd>${esc(u.lang || "—")}</dd>
+        <dt>Land</dt><dd>${u.country ? `<span class="flag" aria-hidden="true">${flag(u.country)}</span> ${esc(cname(u.country))} <span class="sub">(laatst gezien)</span>` : '<span class="sub">Onbekend</span>'}</dd>
         <dt>Profielen</dt><dd>${nf.format(u.profile_count || 0)}</dd>
         <dt>Actief (30 d)</dt><dd>${nf.format(u.active_days_30d || 0)} dagen</dd>
         <dt>Kijkt nu</dt><dd>${nf.format(u.watching_now || 0)}</dd>
@@ -1590,7 +1845,7 @@
       <h3>Apparaten (${(u.devices || []).length})</h3>
       ${(u.devices || []).map((d) => `<div class="dev"><div class="ic">${icon(d.platform)}</div><div>
         <div class="nm">${esc(d.name || pname(d.platform))}</div>
-        <div class="meta">${esc(pname(d.platform))}${d.app_version ? " · Bingr " + esc(d.app_version) : ""}${d.os_version ? " · " + esc(d.os_version) : ""}</div>
+        <div class="meta">${esc(pname(d.platform))}${d.app_version ? " · Bingr " + esc(d.app_version) : ""}${d.os_version ? " · " + esc(d.os_version) : ""}${d.country ? ` · <span title="${esc(cname(d.country))}">${flag(d.country)} ${esc(d.country)}</span>` : ""}</div>
         <div class="meta">Laatst gezien ${esc(ago(d.last_seen_at))} · gekoppeld ${esc(fmtDate(d.created_at))}</div></div></div>`).join("") || '<p class="empty">Geen apparaten.</p>'}
       ${serversSection(u.servers)}
       <div class="actions">
@@ -1883,7 +2138,7 @@
   const LINK_PLATFORMS = [
     ["apple", "Apple", "iPhone, iPad, Apple TV en Mac. Uit: de apps tonen de vergelijking, maar geen link, knop of QR-code."],
     ["android", "Android", "Telefoons en tablets"], ["androidtv", "Android TV", "Android TV, Google TV en Fire TV"],
-    ["tizen", "Samsung TV", "Tizen"], ["web", "Web", "Webspeler en bingr.online"],
+    ["tizen", "Samsung TV", "Tizen"], ["web", "Web", "Webspeler, bingr.online en de Windows-app"],
   ];
   async function loadSettings() {
     const el = $("linkSettings");

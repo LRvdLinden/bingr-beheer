@@ -43,6 +43,7 @@
       <button class="menu-it" type="button" role="menuitem" data-go="support"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg><span>Support</span><span id="menuSupBadge" class="tab-badge hidden"></span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="messages"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Pushmeldingen</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="newsletter"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg><span>Nieuwsbrief</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="server"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg><span>Server</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2.5-6 4 12 2.5-6H22"/></svg><span>Status</span></button>
       <div class="menu-sep" role="separator"></div>
       <button class="menu-it" type="button" role="menuitem" data-go="downloads"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v9M8 12.5l4 4 4-4"/></svg><span>Downloads</span></button>
@@ -94,6 +95,40 @@
         </div>
       </div>
     </section>
+    <section id="tab-server" class="tab hidden">
+      <div class="row-head"><h1>Server</h1>
+        <div class="head-btns"><button id="srvRefresh" class="btn ghost small" type="button">Vernieuwen</button></div></div>
+      <div id="srvTiles" class="kpis srv-tiles" aria-live="polite"></div>
+      <div class="ins-page">
+        <aside class="panel ins-src" aria-labelledby="srvSrcTitle">
+          <h2 id="srvSrcTitle">Reeksen</h2>
+          <p class="sub">Vink aan wat je wilt zien; alle grafieken volgen dezelfde periode. Eén meetpunt per dag (UTC), elk uur bijgewerkt.</p>
+          <div id="srvSources" class="ins-src-list" role="group" aria-label="Reeksen"></div>
+        </aside>
+        <div class="ins-main">
+          <div class="panel ins-bar">
+            <div class="ins-head"><div class="w-ht"><h2 id="srvRange">&nbsp;</h2><p class="sub" id="srvRes">&nbsp;</p></div>
+              <div class="ins-nav" role="group" aria-label="Periode bladeren">
+                <button id="srvPrev" type="button" class="ins-ic" aria-label="Vorige periode" title="Vorige periode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <button id="srvNow" type="button" class="ins-now" aria-label="Terug naar nu" disabled>Nu</button>
+                <button id="srvNext" type="button" class="ins-ic" aria-label="Volgende periode" title="Volgende periode" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+            <div id="srvPeriods" class="ins-periods" role="radiogroup" aria-label="Periode"></div>
+          </div>
+          <div id="srvCharts" class="ins-charts"></div>
+          <p id="srvLive" class="sr" aria-live="polite"></p>
+        </div>
+      </div>
+      <div class="srv-cols">
+        <article class="panel"><h2>Tabellen</h2><p class="sub">Grootste tabellen, met indexen; rijen zijn een schatting van Postgres</p><div id="srvTables"></div></article>
+        <article class="panel"><h2>Apparaten per platform</h2><p class="sub">Totaal · actief in 30 dagen · nu (15 min)</p><div id="srvDevices"></div></article>
+        <article class="panel"><h2>Cron-jobs</h2><p class="sub">pg_cron: laatste uitvoering en fouten in 24 uur</p><div id="srvCron"></div></article>
+        <article class="panel"><h2>Opslag</h2><p class="sub">Storage-buckets</p><div id="srvStorage"></div></article>
+        <article class="panel"><h2>Wachtrijen en webproxy</h2><p class="sub">Nu in de wachtrij · webproxy laatste 30 dagen</p><div id="srvQueues"></div></article>
+        <article class="panel"><h2>Piek per uur</h2><p class="sub">Gelijktijdige streams vandaag (UTC, elke 5 minuten gemeten)</p><div id="srvPeak" class="hbars"></div></article>
+      </div>
+      <div id="srvNote" class="panel srv-note"></div>
+    </section>
+
     <section id="tab-revenue" class="tab hidden">
       <div class="row-head"><h1>Omzet</h1>
         <div class="head-btns"><label class="sr" for="revMode">Welke aankopen</label><select id="revMode" class="rev-mode"></select>
@@ -131,11 +166,12 @@
       <div class="row-head"><h1>Gebruikers</h1><span id="userCount" class="sub"></span></div>
       <div class="sup-bar">
         <div id="userFilters" class="sup-filters" role="group" aria-label="Filter op accountstatus"></div>
+        <label class="sr" for="userCountry">Land</label><select id="userCountry" class="rev-mode user-cc"><option value="">Alle landen</option></select>
         <input id="search" class="search" type="search" placeholder="Zoek op naam of begin van e-mailadres" aria-label="Zoek op naam of begin van e-mailadres" autocomplete="off">
       </div>
       <div class="table-wrap">
         <table class="users">
-          <thead><tr><th>Naam en e-mail</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
+          <thead><tr><th>Naam en e-mail</th><th>Land</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
           <tbody id="userRows"></tbody>
         </table>
       </div>
