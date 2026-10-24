@@ -172,6 +172,8 @@ struct TicketDiagnostics {
     }
     /// build 148: één keer bijwerken van een server, met fasen (fetch, parse, index, apply, save)
     struct Phase: Identifiable { let id: Int; let code: String; let ms: Int?; let memMB: Double? }
+    /// build 148: hapering tijdens het afspelen (playback.stalls, code playback_stall)
+    struct Stall: Identifiable { let id: Int; let atMs: Int; let ms: Int; let engine: String?; let format: String? }
     struct Update: Identifiable { let id: Int; let server: String; let at: Date?; let phases: [Phase]; let totalMs: Int?; let peakMB: Double?; let result: String? }
 
     let kind: String
@@ -196,6 +198,7 @@ struct TicketDiagnostics {
     let appLang: String?
     let hangMs: Int?, hangTask: String?, hangMilestone: String?, hangForeground: Bool?, hangStack: [String], hasLongestHang: Bool
     let updates: [Update]
+    let stalls: [Stall]
 
     init?(_ j: JSON) {
         guard j.object != nil, let kind = j["kind"].text else { return nil }
@@ -224,6 +227,10 @@ struct TicketDiagnostics {
         hangMs = lh["ms"].int; hangTask = lh["task"].text; hangMilestone = lh["milestone"].text; hangForeground = lh["foreground"].bool
         hangStack = lh["stack"].strings
         appLang = j["app"]["lang"].text
+        stalls = j["playback"]["stalls"].array.enumerated().compactMap { i, x in
+            guard let at = x["atMs"].int, let ms = x["ms"].int else { return nil }
+            return Stall(id: i, atMs: at, ms: ms, engine: x["engine"].text, format: x["format"].text)
+        }
         updates = j["updates"].array.enumerated().compactMap { i, u in
             guard let server = u["server"].text else { return nil }
             let phases: [Phase] = u["phases"].array.enumerated().compactMap { k, ph in
@@ -288,7 +295,7 @@ struct TicketDiagnostics {
         "profile": "profiel geladen", "servers": "servers geladen", "home": "startscherm", "catalog": "catalogus geladen", "ready": "klaar",
         "fetch": "ophalen", "parse": "inlezen", "index": "indexeren", "apply": "toepassen", "save": "bewaren", "sync_apply": "sync toepassen",
         "catalog_filter": "catalogus filteren", "catalog_sort": "catalogus sorteren", "catalog_meta": "catalogusgegevens", "pin_migrate": "pincode migreren",
-        "rows_build": "rijen opbouwen", "guide_parse": "tv-gids inlezen",
+        "rows_build": "rijen opbouwen", "guide_parse": "tv-gids inlezen", "playback_stall": "hapering tijdens afspelen",
         // schema 1/2
         "launch": "gestart", "start": "gestart", "session": "account", "intro": "intro klaar", "profiles": "profielkeuze getoond",
         "profile_chosen": "profiel gekozen", "pin": "pincodescherm", "servers_loaded": "servers geladen", "epg": "tv-gids", "splash": "opstartscherm",
@@ -320,6 +327,19 @@ struct TicketDiagnostics {
                                 hangMilestone.map { "na " + Self.milestoneName($0) }, hangForeground.map { $0 ? "op de voorgrond" : "op de achtergrond" }]
         let s = parts.compactMap { $0 }.joined(separator: " · ")
         return s.isEmpty ? nil : s
+    }
+    static func afterStart(_ v: Int) -> String {
+        v >= 60000 ? "na " + String(format: "%.1f min", Double(v) / 60000).replacingOccurrences(of: ".", with: ",") : "na " + ms(v)
+    }
+    /// "3 haperingen · langste 2,3 s (na 2,1 min) · samen 3,4 s"
+    var stallsText: String? {
+        guard let longest = stalls.max(by: { $0.ms < $1.ms }) else { return nil }
+        let total = stalls.reduce(0) { $0 + $1.ms }
+        return Fmt.num(stalls.count) + (stalls.count == 1 ? " hapering" : " haperingen") + " · langste " + Self.ms(longest.ms)
+            + " (" + Self.afterStart(longest.atMs) + ") · samen " + Self.ms(total)
+    }
+    static func stallLine(_ x: Stall) -> String {
+        [afterStart(x.atMs), ms(x.ms), x.engine.map { "speler " + $0 }, x.format].compactMap { $0 }.joined(separator: " · ")
     }
     /// "s1 · 24-10 14:04 · gelukt · totaal 21,5 s · piek 455 MB"
     static func updateHead(_ u: Update) -> String {
@@ -405,6 +425,10 @@ struct TicketDiagnostics {
                 let t: String = m.ms.map { Self.ms($0) } ?? "?"
                 L.append("  " + Self.milestoneName(m.name) + ": " + t + (m.ok == false ? " (mislukt)" : ""))
             }
+        }
+        if let t = stallsText {
+            L += ["", "Haperingen tijdens het afspelen", "  " + t]
+            L += stalls.map { "    " + Self.stallLine($0) }
         }
         if !updates.isEmpty {
             L += ["", "Bijwerken per server (laatste 5)"]

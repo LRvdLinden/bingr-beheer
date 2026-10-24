@@ -2416,7 +2416,7 @@
     profile: "profiel geladen", servers: "servers geladen", home: "startscherm", catalog: "catalogus geladen", ready: "klaar",
     fetch: "ophalen", parse: "inlezen", index: "indexeren", apply: "toepassen", save: "bewaren", sync_apply: "sync toepassen",
     catalog_filter: "catalogus filteren", catalog_sort: "catalogus sorteren", catalog_meta: "catalogusgegevens", pin_migrate: "pincode migreren",
-    rows_build: "rijen opbouwen", guide_parse: "tv-gids inlezen",
+    rows_build: "rijen opbouwen", guide_parse: "tv-gids inlezen", playback_stall: "hapering tijdens afspelen",
     // schema 1/2
     launch: "gestart", start: "gestart", session: "account", intro: "intro klaar", profiles: "profielkeuze getoond", profile_chosen: "profiel gekozen",
     pin: "pincodescherm", servers_loaded: "servers geladen", epg: "tv-gids", splash: "opstartscherm", sources: "bronnen", keychain: "sleutelhanger",
@@ -2437,6 +2437,15 @@
     return [typeof f.delivered === "number" ? `${nf.format(f.delivered)} geleverd` : null, typeof f.visible === "number" ? `${nf.format(f.visible)} zichtbaar` : null]
       .filter(Boolean).join(" · ") + (why.length ? ` (${why.join(", ")})` : "");
   }
+  /** Haperingen tijdens het afspelen (schema 3, playback.stalls): "3 haperingen · langste 2,3 s (na 2,1 min) · samen 3,4 s". */
+  function stallsText(st) {
+    if (!(st || []).length) return null;
+    const longest = st.reduce((a, b) => ((b.ms || 0) > (a.ms || 0) ? b : a));
+    const total = st.reduce((n, x) => n + (x.ms || 0), 0);
+    return `${nf.format(st.length)} ${st.length === 1 ? "hapering" : "haperingen"} · langste ${msTxt(longest.ms)} (${afterStart(longest.atMs)}) · samen ${msTxt(total)}`;
+  }
+  const afterStart = (v) => (typeof v !== "number" ? "?" : v >= 60000 ? `na ${nf.format(Math.round(v / 6000) / 10)} min` : `na ${msTxt(v)}`);
+  const stallLine = (x) => [afterStart(x.atMs), msTxt(x.ms), x.engine ? `speler ${x.engine}` : null, x.format || null].filter(Boolean).join(" · ");
   /** Langste hang van deze start (schema 3) in één regel. */
   function hangText(h) {
     if (!h) return null;
@@ -2493,6 +2502,11 @@
     if ((d.milestones || []).length) {
       L.push("", "Mijlpalen");
       d.milestones.forEach((m) => L.push(`  ${mileName(mKey(m))}: ${msTxt(m.ms) || "?"}${m.ok === false ? " (mislukt)" : ""}`));
+    }
+    if ((d.playback?.stalls || []).length) {
+      L.push("", "Haperingen tijdens het afspelen");
+      L.push(`  ${stallsText(d.playback.stalls)}`);
+      d.playback.stalls.forEach((x) => L.push(`    ${stallLine(x)}`));
     }
     if ((d.updates || []).length) {
       L.push("", "Bijwerken per server (laatste 5)");
@@ -2592,6 +2606,8 @@
           ["Geheugen", mem.usedMB != null ? `${mb(mem.usedMB)}${mem.totalMB != null ? ` van ${mb(mem.totalMB)}` : ""}` : null], ["Door Bingr", mb(mem.appMB)], ["Weinig geheugen", yesNo(mem.lowMemory)]]))}
         ${miles ? sec("Mijlpalen bij het starten", `<ol class="diag-miles">${miles}</ol>`) : ""}
         ${updSec ? sec("Bijwerken per server (laatste 5)", updSec) : ""}
+        ${(d.playback?.stalls || []).length ? sec("Haperingen tijdens het afspelen", `<div class="sub">${esc(stallsText(d.playback.stalls))}</div><ol class="diag-miles">${d.playback.stalls.map((x) =>
+          `<li><span>${esc(afterStart(x.atMs))}</span><span class="r">${esc([msTxt(x.ms), x.engine, x.format].filter(Boolean).join(" · "))}</span></li>`).join("")}</ol>`) : ""}
         ${crash ? sec("Laatste crash", crash) : ""}
       </div></details>`;
   }

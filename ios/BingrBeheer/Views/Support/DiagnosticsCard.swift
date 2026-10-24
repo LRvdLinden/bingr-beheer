@@ -78,6 +78,15 @@ struct DiagnosticsCard: View {
                 }
                 if !diag.milestones.isEmpty { milestonesView }
                 if !diag.updates.isEmpty { updatesView }
+                if let t = diag.stallsText {
+                    VStack(alignment: .leading, spacing: 4) {
+                        header("Haperingen tijdens het afspelen")
+                        Text(t).font(.caption).foregroundStyle(Color.textSecondary)
+                        ForEach(diag.stalls) { x in
+                            Text(TicketDiagnostics.stallLine(x)).font(.caption.monospacedDigit()).foregroundStyle(Color.textDim)
+                        }
+                    }
+                }
                 if diag.hasCrash { crashView }
             }
             .padding(.top, 8)

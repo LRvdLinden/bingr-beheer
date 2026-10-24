@@ -2,6 +2,15 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 38,
+   "version": "1.0.0",
+   "date": "2026-10-25",
+   "items": [
+    {"type": "new", "nl": "Support: haperingen tijdens het afspelen bij de diagnose (aantal, langste, tijd na de start en per hapering speler en formaat)"},
+    {"type": "improved", "nl": "Support: Kopiëren neemt de haperingen tijdens het afspelen mee"}
+   ]
+  },
+  {
    "build": 37,
    "version": "1.0.0",
    "date": "2026-10-25",
