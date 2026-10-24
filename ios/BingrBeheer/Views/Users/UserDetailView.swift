@@ -90,6 +90,7 @@ struct UserDetailView: View {
                         InfoRow("Laatst ingelogd", u.lastSignInAt.map { Fmt.dateTime($0) } ?? "nooit")
                         InfoRow("Bevestigd", u.confirmed ? "Ja" : "Nee")
                         InfoRow("Taal", u.lang ?? "—")
+                        InfoRow("Land", u.country.map { "\(Country.label($0)) (laatst gezien)" } ?? "Onbekend")
                         InfoRow("Profielen", Fmt.num(u.profileCount))
                         InfoRow("Actief (30 d)", "\(Fmt.num(u.activeDays30d)) dagen")
                         InfoRow("Kijkt nu", Fmt.num(u.watchingNow))
@@ -629,7 +630,8 @@ struct DeviceRow: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.surface3))
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name ?? Labels.platform(device.platform)).font(.subheadline.weight(.semibold))
-                Text([Labels.platform(device.platform), device.appVersion.map { "Bingr \($0)" }, device.osVersion]
+                Text([Labels.platform(device.platform), device.appVersion.map { "Bingr \($0)" }, device.osVersion,
+                      device.country.map { "\(Country.flag($0)) \($0)" }]
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption).foregroundStyle(Color.textSecondary)
                 Text("Laatst gezien \(Fmt.ago(device.lastSeenAt)) · gekoppeld \(Fmt.date(device.createdAt))")

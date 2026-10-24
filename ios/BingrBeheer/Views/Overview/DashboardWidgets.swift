@@ -19,6 +19,9 @@ struct DashData {
     /// Nieuwsbrief (newsletter_status): abonnees en of hij aan staat
     var newsletter: NewsletterStatus?
     var newsletterError: String?
+    /// Landen (countries): laatst gezien land per account
+    var countries: CountryStats?
+    var countriesError: String?
     /// Verhoogd bij elke keer vernieuwen: de Insights-grafieken laden dan opnieuw (eigen actie insights per widget)
     var insightsRevision = 0
 
@@ -37,6 +40,8 @@ enum DashTarget {
     case status
     case messages
     case newsletter
+    /// Kijkt nu: lijst van wie er nu kijkt (actie streams_now)
+    case watching
 }
 
 enum DashText {
@@ -53,6 +58,7 @@ enum DashText {
         case .announcements: return "Laatste pushmeldingen"
         case .pushSubscribers: return "Pushabonnees"
         case .newsletter: return "Nieuwsbrief"
+        case .countries: return "Landen"
         }
     }
 
@@ -184,6 +190,7 @@ struct DashWidgetCard: View {
     private var target: DashTarget? {
         switch widget.type {
         case .metric:
+            if o.metricValue == .watchingNow, metricValue != nil { return .watching }
             guard let f = o.metricValue.usersFilter, metricValue != nil else { return nil }
             return .users(f)
         case .plans: return .users(widget.size == .s ? (o.planList.first ?? "") : "")
@@ -232,7 +239,7 @@ struct DashWidgetCard: View {
 
     private var needsStats: Bool {
         switch widget.type {
-        case .support, .status, .announcements, .pushSubscribers, .insights: return false
+        case .support, .status, .announcements, .pushSubscribers, .insights, .countries: return false
         case .platforms: return o.source != "live"
         default: return true
         }
@@ -253,6 +260,7 @@ struct DashWidgetCard: View {
             case .announcements: pushHistoryView
             case .pushSubscribers: pushSubscribersView
             case .newsletter: newsletterView
+            case .countries: countriesView
             }
         }
     }
@@ -417,6 +425,47 @@ struct DashWidgetCard: View {
             }
         } else {
             placeholder(nil)
+        }
+    }
+
+    // Landen: vlag, land, aantal accounts (en actief in 30 dagen); een tik op een land opent Gebruikers met dat land
+    @ViewBuilder private var countriesView: some View {
+        if let d = data.countries {
+            let limit = widget.size == .l ? 7 : 3
+            let maxValue = max(1, d.items.map(\.accounts).max() ?? 1)
+            VStack(alignment: .leading, spacing: 8) {
+                head("\(Fmt.plural(d.items.count, "land", "landen")) · land bekend van \(Fmt.num(d.known)) van \(Fmt.num(d.accounts))")
+                if d.items.isEmpty {
+                    EmptyText(text: "Nog geen landen bekend. Het land komt erbij zodra een account de app gebruikt.")
+                }
+                ForEach(d.items.prefix(limit)) { x in
+                    Button { open(.users("country:\(x.country)")) } label: {
+                        HStack(spacing: 10) {
+                            Text(Country.label(x.country)).font(.subheadline).lineLimit(1).frame(width: 130, alignment: .leading)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.white.opacity(0.07))
+                                    Capsule().fill(Color.bingrRed).frame(width: max(4, geo.size.width * CGFloat(x.accounts) / CGFloat(maxValue)))
+                                }
+                            }
+                            .frame(height: 6)
+                            Text(o.showActive == true ? "\(Fmt.num(x.accounts)) · \(Fmt.num(x.active30d))" : Fmt.num(x.accounts))
+                                .font(.subheadline.weight(.bold)).monospacedDigit().frame(minWidth: 44, alignment: .trailing)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(editing)
+                    .accessibilityLabel("\(Country.name(x.country)): \(Fmt.num(x.accounts)) accounts")
+                }
+                if d.items.count > limit || d.unknown > 0 {
+                    Text([d.items.count > limit ? "+ \(Fmt.plural(d.items.count - limit, "land", "landen"))" : nil,
+                          d.unknown > 0 ? "\(Fmt.num(d.unknown)) nog onbekend" : nil].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(Color.textDim)
+                }
+            }
+        } else {
+            placeholder(data.countriesError)
         }
     }
 

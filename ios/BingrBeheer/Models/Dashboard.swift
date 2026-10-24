@@ -30,6 +30,8 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
     case pushSubscribers = "push_subscribers"
     /// Abonnees van de nieuwsbrief (newsletter_status: recipients.total) ten opzichte van alle leden (stats).
     case newsletter
+    /// Uit welke landen de gebruikers komen (actie countries: laatst gezien land per account, alleen de landcode).
+    case countries
 
     var id: String { rawValue }
 
@@ -45,6 +47,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .announcements: return "Laatste pushmeldingen"
         case .pushSubscribers: return "Pushabonnees"
         case .newsletter: return "Nieuwsbrief"
+        case .countries: return "Landen"
         }
     }
 
@@ -60,6 +63,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .announcements: return "De nieuwste pushmeldingen: beheer, releases en herinneringen"
         case .pushSubscribers: return "Accounts en apparaten met pushmeldingen aan, per platform"
         case .newsletter: return "Abonnees van de nieuwsbrief (bevestigd e-mailadres) ten opzichte van alle leden"
+        case .countries: return "Uit welke landen de gebruikers komen: vlag, land en aantal accounts"
         }
     }
 
@@ -75,6 +79,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         case .announcements: return "bell.badge"
         case .pushSubscribers: return "person.2.wave.2"
         case .newsletter: return "envelope.badge"
+        case .countries: return "globe.europe.africa"
         }
     }
 
@@ -82,7 +87,7 @@ enum DashWidgetType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .metric, .newsletter: return [.s, .m]
         case .insights, .plans, .support, .status, .pushSubscribers: return [.s, .m, .l]
-        case .platforms, .versions, .announcements: return [.m, .l]
+        case .platforms, .versions, .announcements, .countries: return [.m, .l]
         }
     }
 
@@ -156,6 +161,8 @@ struct DashOptions: Codable, Equatable {
     var pushPlatforms: [String]?
     var showNew: Bool?
     var showLangs: Bool?
+    // landen: actief in 30 dagen tonen
+    var showActive: Bool?
     // insights: metric, periode, storingen tonen, verborgen series (legenda)
     var insight: String?
     var period: String?
@@ -165,7 +172,7 @@ struct DashOptions: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case metric, series, days, display, source, platforms, plans, statuses, count
         case onlyActive = "only_active", showIncidents = "show_incidents", showNotices = "show_notices"
-        case pushPlatforms = "push_platforms", showNew = "show_new", showLangs = "show_langs"
+        case pushPlatforms = "push_platforms", showNew = "show_new", showLangs = "show_langs", showActive = "show_active"
         case insight, period, events, off
     }
 
@@ -188,6 +195,7 @@ struct DashOptions: Codable, Equatable {
         pushPlatforms = try? c.decodeIfPresent([String].self, forKey: .pushPlatforms)
         showNew = try? c.decodeIfPresent(Bool.self, forKey: .showNew)
         showLangs = try? c.decodeIfPresent(Bool.self, forKey: .showLangs)
+        showActive = try? c.decodeIfPresent(Bool.self, forKey: .showActive)
         insight = try? c.decodeIfPresent(String.self, forKey: .insight)
         period = try? c.decodeIfPresent(String.self, forKey: .period)
         events = try? c.decodeIfPresent(Bool.self, forKey: .events)
@@ -251,6 +259,8 @@ struct DashOptions: Codable, Equatable {
             o.showNew = showNew ?? true
         case .newsletter:
             o.showLangs = showLangs ?? true
+        case .countries:
+            o.showActive = showActive ?? true
         }
         return o
     }
@@ -395,6 +405,7 @@ struct DashLayout: Codable, Equatable {
             DashWidget(id: "status", type: .status, size: .m),
             chart("chart_new", .accounts, .d30), chart("chart_streams", .streams, .d7), chart("chart_push", .push, .d30),
             DashWidget(id: "platforms", type: .platforms, size: .l), DashWidget(id: "versions", type: .versions, size: .l),
+            DashWidget(id: "countries", type: .countries, size: .l),
         ])
     }
 }

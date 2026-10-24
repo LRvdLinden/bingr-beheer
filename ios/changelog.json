@@ -2,6 +2,17 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 33,
+   "version": "1.0.0",
+   "date": "2026-10-24",
+   "items": [
+    {"type": "new", "nl": "Kijkt nu: tik op de tegel voor de lijst van wie er nu kijkt (account, profiel, apparaat, platform, titel en soort, sinds wanneer en de laatste ping)"},
+    {"type": "new", "nl": "Nieuw onderdeel Server: database, opslag, tabellen, accounts, apparaten per platform, streams en piek, inloggen, webproxy, push, mail, cron-jobs en (als ze er zijn) de Edge Functions, met grafieken over 7, 30 of 90 dagen of een jaar"},
+    {"type": "new", "nl": "Landen: widget met vlag, land en aantal accounts op het overzicht; bij Gebruikers het land per account en een filter op land"},
+    {"type": "improved", "nl": "Windows staat overal bij de platforms (naam en icoon bij apparaten, streams en statistieken)"}
+   ]
+  },
+  {
    "build": 32,
    "version": "1.0.0",
    "date": "2026-10-24",

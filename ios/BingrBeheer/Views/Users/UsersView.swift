@@ -13,6 +13,7 @@ struct UsersView: View {
     @State private var blockedTotal: Int?
     @State private var freeTotal: Int?
     @State private var lifetimeTotal: Int?
+    @State private var countries: CountryStats?
 
     private let pageSize = 50
 
@@ -35,7 +36,7 @@ struct UsersView: View {
                 }
             }
             if loaded && items.isEmpty && error == nil {
-                EmptyText(text: Self.emptyText[session.usersFilter] ?? "Geen accounts gevonden.")
+                EmptyText(text: Self.emptyText[session.usersFilter] ?? (session.usersFilter.hasPrefix("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden."))
                     .listRowBackground(Color.surface1)
             }
             if loading {
@@ -83,7 +84,41 @@ struct UsersView: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) { filterButtons }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                countryMenu.padding(.leading, 16)
+                filterButtons
+            }
+        }
+        .task {
+            if countries == nil, let j = try? await session.call("countries") { countries = CountryStats(j) }
+        }
+    }
+
+    /// Filter op land (laatst gezien land); één filter tegelijk, net als op het web.
+    private var countryMenu: some View {
+        let cur = session.usersFilter.hasPrefix("country:") ? String(session.usersFilter.dropFirst(8)) : ""
+        return Menu {
+            Button("Alle landen") { session.usersFilter = "" }
+            ForEach(countries?.items ?? []) { x in
+                Button("\(Country.label(x.country)) (\(Fmt.num(x.accounts)))") { session.usersFilter = "country:\(x.country)" }
+            }
+            if let c = countries, c.unknown > 0 {
+                Button("Onbekend (\(Fmt.num(c.unknown)))") { session.usersFilter = "country:?" }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "globe.europe.africa")
+                Text(cur.isEmpty ? "Land" : cur == "?" ? "Onbekend" : Country.label(cur))
+                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle(cur.isEmpty ? Color.textSecondary : Color.white)
+            .background(Capsule().fill(cur.isEmpty ? Color.surface2 : Color.bingrRed))
+        }
+        .accessibilityLabel("Filter op land")
     }
 
     private var filterButtons: some View {
@@ -170,6 +205,7 @@ struct UserRowView: View {
                 if user.newsletter == false { Chip(text: "Geen nieuwsbrief", icon: "envelope.badge") }
                 if user.isBlocked { Chip(text: "Geblokkeerd", tone: .bad, icon: "nosign") }
                 PlanChip(plan: user.plan)
+                if let c = user.country { Text(Country.flag(c)).font(.caption).accessibilityLabel(Country.name(c)) }
             }
             HStack(spacing: 10) {
                 Label(Fmt.date(user.createdAt), systemImage: "calendar")

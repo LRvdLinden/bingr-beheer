@@ -28,9 +28,12 @@ struct UserRow: Identifiable, Hashable {
     let plan: AccountPlan
     /// Krijgt de nieuwsbrief (`newsletter`); nil = onbekend.
     let newsletter: Bool?
+    /// Laatst gezien land (`country`, alleen de landcode); nil = onbekend.
+    let country: String?
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        country = j["country"].text
         newsletter = j["newsletter"].bool
         plan = AccountPlan(j["plan"])
         isBlocked = j["blocked"].object != nil
@@ -61,6 +64,7 @@ struct UserDetail {
         let osVersion: String?
         let createdAt: Date?
         let lastSeenAt: Date?
+        var country: String? = nil
     }
 
     let id: String
@@ -71,6 +75,8 @@ struct UserDetail {
     let lastSignInAt: Date?
     let confirmed: Bool
     let lang: String?
+    /// Laatst gezien land (`country`, alleen de landcode); nil = onbekend.
+    let country: String?
     let profileCount: Int
     let activeDays30d: Int
     let watchingNow: Int
@@ -103,6 +109,7 @@ struct UserDetail {
         lastSignInAt = j["last_sign_in_at"].date
         confirmed = j["confirmed"].bool ?? false
         lang = j["lang"].text
+        country = j["country"].text
         profileCount = j["profile_count"].int ?? 0
         activeDays30d = j["active_days_30d"].int ?? 0
         watchingNow = j["watching_now"].int ?? 0
@@ -120,7 +127,8 @@ struct UserDetail {
         }
         devices = j["devices"].array.map {
             Device(name: $0["name"].text, platform: $0["platform"].text, appVersion: $0["app_version"].text,
-                   osVersion: $0["os_version"].text, createdAt: $0["created_at"].date, lastSeenAt: $0["last_seen_at"].date)
+                   osVersion: $0["os_version"].text, createdAt: $0["created_at"].date, lastSeenAt: $0["last_seen_at"].date,
+                   country: $0["country"].text)
         }
     }
 

@@ -77,6 +77,14 @@ enum Fmt {
         min < 60 ? "elke \(min) min" : "elke \(min / 60) uur"
     }
 
+    /// Grootte in bytes (decimaal, zoals fmtSize in admin.js): "64 MB".
+    static func bytes(_ v: Double?) -> String {
+        guard let v, v.isFinite, v >= 0 else { return "—" }
+        let f = ByteCountFormatter()
+        f.countStyle = .decimal
+        return f.string(fromByteCount: Int64(v))
+    }
+
     static func plural(_ n: Int, _ one: String, _ many: String) -> String {
         "\(num(n)) \(n == 1 ? one : many)"
     }
@@ -88,6 +96,16 @@ enum Labels {
         switch p ?? "" {
         case "browser": return "Webbrowser"
         case "tizen": return "Samsung TV"
+        case "windows", "Windows": return "Windows"
+        // platformgroepen van de server (tab Server, Kijkt nu)
+        case "ios": return "iPhone"
+        case "ipados": return "iPad"
+        case "macos": return "Mac"
+        case "tvos": return "Apple TV"
+        case "android": return "Android"
+        case "androidtv": return "Android TV"
+        case "web": return "Webspeler"
+        case "other": return "Overig"
         case "", "?": return "Onbekend"
         default: return p ?? "Onbekend"
         }
@@ -97,6 +115,7 @@ enum Labels {
     static func platformIcon(_ p: String?) -> String {
         let s = (p ?? "").lowercased()
         if s == "apple tv" || s == "appletv" || s == "tvos" { return "appletv" }
+        if s == "windows" { return "desktopcomputer" }
         if s.contains("iphone") || s == "android" || s == "ios" { return "iphone" }
         if s.contains("ipad") || s.contains("tablet") { return "ipad" }
         if s.contains("mac") { return "laptopcomputer" }
@@ -188,4 +207,26 @@ struct Option: Hashable {
 
 enum Tone {
     case good, bad, warn, neutral
+}
+
+/// Landen: alleen de landcode (ISO 3166-1, laatst gezien land uit het netwerk; nooit een IP-adres). Vlag en Nederlandse naam.
+enum Country {
+    static func flag(_ code: String?) -> String {
+        let c = (code ?? "").uppercased()
+        guard c.count == 2, c.unicodeScalars.allSatisfy({ $0.value >= 65 && $0.value <= 90 }) else { return "" }
+        var out = ""
+        for s in c.unicodeScalars { if let f = UnicodeScalar(127397 + s.value) { out.unicodeScalars.append(f) } }
+        return out
+    }
+
+    static func name(_ code: String?) -> String {
+        guard let c = code, c.count == 2 else { return "Onbekend" }
+        return Locale(identifier: "nl_NL").localizedString(forRegionCode: c.uppercased()) ?? c.uppercased()
+    }
+
+    /// "🇳🇱 Nederland"
+    static func label(_ code: String?) -> String {
+        guard let c = code, c.count == 2 else { return "Onbekend" }
+        return "\(flag(c)) \(name(c))"
+    }
 }

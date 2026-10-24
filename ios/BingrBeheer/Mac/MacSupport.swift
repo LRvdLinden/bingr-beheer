@@ -39,6 +39,8 @@ struct BeheerCommands: Commands {
     let session: Session
 
     private static let sections: [AppSection] = [.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .status, .downloads]
+    /// zonder sneltoets (⌘1 … ⌘9 zijn op)
+    private static let more: [AppSection] = [.server]
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}
@@ -55,6 +57,9 @@ struct BeheerCommands: Commands {
             ForEach(Array(Self.sections.enumerated()), id: \.element) { index, section in
                 Button(section.title) { onMain { $0.section = section } }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+            }
+            ForEach(Self.more, id: \.self) { section in
+                Button(section.title) { onMain { $0.section = section } }
             }
         }
 

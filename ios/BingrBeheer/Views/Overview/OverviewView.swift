@@ -13,6 +13,7 @@ struct OverviewView: View {
     @State private var showManage = false
     @State private var confirmReset = false
     @State private var loading = false
+    @State private var showWatching = false
 
     var body: some View {
         ScrollView {
@@ -56,6 +57,9 @@ struct OverviewView: View {
                 if let i = layout.widgets.firstIndex(where: { $0.id == updated.id }) { layout.widgets[i] = updated }
                 ensureData()
             }
+        }
+        .sheet(isPresented: $showWatching) {
+            NavigationStack { WatchingView() }
         }
         .sheet(isPresented: $showManage) {
             DashManageView(layout: $layout, titleFor: title) { ensureData() }
@@ -192,6 +196,8 @@ struct OverviewView: View {
             session.section = .messages
         case .newsletter:
             session.section = .newsletter
+        case .watching:
+            showWatching = true
         }
     }
 
@@ -204,6 +210,7 @@ struct OverviewView: View {
     private var needsPushHistory: Bool { layout.visible.contains { $0.type == .announcements } }
     private var needsPushSubscribers: Bool { layout.visible.contains { $0.type == .pushSubscribers } }
     private var needsNewsletter: Bool { layout.visible.contains { $0.type == .newsletter } }
+    private var needsCountries: Bool { layout.visible.contains { $0.type == .countries } }
 
     /// Na toevoegen of instellen: ontbrekende gegevens (status, pushmeldingen, abonnees) alsnog ophalen.
     private func ensureData() {
@@ -211,6 +218,7 @@ struct OverviewView: View {
             || (needsPushHistory && data.pushHistory == nil && data.pushHistoryError == nil)
             || (needsPushSubscribers && data.pushSubscribers == nil && data.pushSubscribersError == nil)
             || (needsNewsletter && data.newsletter == nil && data.newsletterError == nil)
+            || (needsCountries && data.countries == nil && data.countriesError == nil)
         if missing { Task { await load() } }
     }
 
@@ -237,8 +245,10 @@ struct OverviewView: View {
         async let historyResult = fetch("push_history", ["page": 0], when: needsPushHistory)
         async let subsResult = fetch("push_subscribers", when: needsPushSubscribers)
         async let newsletterResult = fetch("newsletter_status", when: needsNewsletter)
+        async let countriesResult = fetch("countries", when: needsCountries)
         let (rs, rst, rh, rp, rn) = await (statsResult, statusResult, historyResult, subsResult, newsletterResult)
-        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(rh) || Self.isAuth(rp) || Self.isAuth(rn) { return }
+        let rc = await countriesResult
+        if Self.isAuth(rs) || Self.isAuth(rst) || Self.isAuth(rh) || Self.isAuth(rp) || Self.isAuth(rn) || Self.isAuth(rc) { return }
 
         var d = data
         // Insights-grafieken halen hun eigen gegevens op (actie insights); bij vernieuwen opnieuw
@@ -293,6 +303,15 @@ struct OverviewView: View {
             d.newsletterError = nil
         case .failure(let e)?:
             d.newsletterError = Self.message(e)
+        case nil:
+            break
+        }
+        switch rc {
+        case .success(let j)?:
+            d.countries = CountryStats(j)
+            d.countriesError = nil
+        case .failure(let e)?:
+            d.countriesError = Self.message(e)
         case nil:
             break
         }

@@ -147,6 +147,14 @@ struct DashWidgetSettingsView: View {
             Section("Gegevens") {
                 Toggle("Nederlands en Engels apart tonen", isOn: value(\.showLangs, true))
             }
+        case .countries:
+            Section {
+                Toggle("Actief in de laatste 30 dagen tonen", isOn: value(\.showActive, true))
+            } header: {
+                Text("Gegevens")
+            } footer: {
+                Text("Laatst gezien land per account (alleen de landcode, uit het netwerk bij gebruik van de apps; nooit een IP-adres). Een tik op een land opent Gebruikers met dat land.")
+            }
         }
     }
 
