@@ -463,6 +463,10 @@ struct DashWidgetCard: View {
                           d.unknown > 0 ? "\(Fmt.num(d.unknown)) nog onbekend" : nil].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption).foregroundStyle(Color.textDim)
                 }
+                // Bronvermelding van de land-IP-tabel (DB-IP Lite, CC BY 4.0): verplicht met link waar de resultaten staan
+                Link("IP Geolocation by DB-IP", destination: URL(string: "https://db-ip.com")!)
+                    .font(.caption).foregroundStyle(Color.textDim)
+                    .disabled(editing)
             }
         } else {
             placeholder(data.countriesError)
