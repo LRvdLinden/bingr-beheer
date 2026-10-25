@@ -24,6 +24,9 @@ struct NewsletterStatus: Equatable {
     }
 
     var enabled: Bool
+    /// Secties Top 10 deze week en Populair (actie `newsletter_set_sections`); ontbreekt het, dan aan.
+    var top10: Bool
+    var popular: Bool
     let nextAt: Date?
     let nextKey: String?
     let recipientsNl: Int
@@ -40,6 +43,8 @@ struct NewsletterStatus: Equatable {
 
     init(_ j: JSON) {
         enabled = j["enabled"].bool ?? false
+        top10 = j["sections"]["top10"].bool ?? true
+        popular = j["sections"]["popular"].bool ?? true
         nextAt = j["next"]["at"].date
         nextKey = j["next"]["key"].text
         recipientsNl = max(0, j["recipients"]["nl"].int ?? 0)

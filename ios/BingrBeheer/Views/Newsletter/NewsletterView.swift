@@ -3,7 +3,8 @@ import WebKit
 
 /// Onderdeel Nieuwsbrief (zoals de tab in web/admin.js): schakelaar aan/uit (bevestiging bij aanzetten met het aantal
 /// leden), volgende verzending (NL-tijd), ontvangers NL/EN, voorbeeld sturen naar één adres (nooit bewaard of gelogd),
-/// voorbeeld bekijken en de geschiedenis van edities. Acties newsletter_status, newsletter_set_enabled,
+/// voorbeeld bekijken en de geschiedenis van edities. Secties Top 10 deze week en Populair aan/uit
+/// (newsletter_set_sections). Acties newsletter_status, newsletter_set_enabled,
 /// newsletter_preview en newsletter_render (functie admin → newsletter). Blok Welkomstmail: aantallen uit
 /// newsletter_status.welcome, voorbeeld sturen (welcome_preview) en bekijken (welcome_render). Blok Eigen mailing: link naar
 /// MailingView (zelf een mail opstellen en versturen, acties mailing_*).
@@ -114,6 +115,7 @@ struct NewsletterView: View {
                 }
                 .tint(.bingrRed)
                 .disabled(switching)
+                sectionsBlock(s)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 8) {
                     cell("Volgende verzending",
                          s.nextAt == nil ? "—" : s.enabled ? Fmt.longDateTimeNL(s.nextAt) : "uit",
@@ -127,6 +129,29 @@ struct NewsletterView: View {
             }
         }
         .card()
+    }
+
+    /// Secties Top 10 / Populair: meteen opslaan (geldt voor de volgende editie en het voorbeeld).
+    private func sectionsBlock(_ s: NewsletterStatus) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().overlay(Color.line)
+            Text("Secties").font(.subheadline.weight(.bold))
+            Text("Uitgelicht, Nieuw om te kijken en Binnenkort staan er altijd in. Een sectie die uit staat, komt niet in de volgende editie en niet in het voorbeeld; een editie die al loopt verandert niet.")
+                .font(.caption).foregroundStyle(Color.textDim)
+            sectionToggle("Top 10 deze week", "Films en series apart (TMDB trending, aangevuld met Trakt), met IMDb-score", isOn: s.top10, key: "top10")
+            sectionToggle("Populair", "Populaire films en series (TMDB), met IMDb-score", isOn: s.popular, key: "popular")
+        }
+    }
+
+    private func sectionToggle(_ title: String, _ hint: String, isOn: Bool, key: String) -> some View {
+        Toggle(isOn: Binding(get: { isOn }, set: { on in Task { await setSection(key, on, title) } })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(hint).font(.caption).foregroundStyle(Color.textDim)
+            }
+        }
+        .tint(.bingrRed)
+        .disabled(switching)
     }
 
     private func cell(_ label: String, _ value: String, hint: String? = nil, small: Bool = false) -> some View {
@@ -379,6 +404,21 @@ struct NewsletterView: View {
             status?.enabled = now
             session.show(now ? "Nieuwsbrief staat aan." : "Nieuwsbrief staat uit.")
             await load()
+        } catch {
+            session.report(error)
+        }
+    }
+
+    private func setSection(_ key: String, _ on: Bool, _ title: String) async {
+        switching = true
+        defer { switching = false }
+        do {
+            let r = try await session.call("newsletter_set_sections", [key: on])
+            let top10 = r["sections"]["top10"].bool ?? (key == "top10" ? on : status?.top10 ?? true)
+            let popular = r["sections"]["popular"].bool ?? (key == "popular" ? on : status?.popular ?? true)
+            status?.top10 = top10
+            status?.popular = popular
+            session.show("\(title) staat \((key == "top10" ? top10 : popular) ? "aan" : "uit").")
         } catch {
             session.report(error)
         }

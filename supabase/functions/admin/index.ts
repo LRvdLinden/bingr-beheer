@@ -163,6 +163,8 @@
 //   newsletter_status      {token}           -> {enabled, next:{key, at} | null, recipients:{nl, en, total}, editions:[{key,
 //                          created_at, recipients, sent, failed, done}]}
 //   newsletter_set_enabled {token, enabled: bool} -> {ok, enabled}  (in admin_audit met enabled)
+//   newsletter_set_sections {token, top10?: bool, popular?: bool} -> {ok, sections:{top10, popular}}  (secties Top 10 deze
+//                          week en Populair aan/uit; newsletter_status geeft ze als sections; in admin_audit met de nieuwe stand)
 //   newsletter_preview     {token, to, lang?: nl|en} -> {ok}  (de huidige editie alleen naar dat adres; het adres wordt
 //                          gecontroleerd en nooit gelogd: in admin_audit alleen "preview" en de taal. Max. 10 per uur per IP.)
 //   newsletter_render      {token, lang?}    -> {subject, html}  (alleen doorgeven, voor de voorbeeldweergave)
@@ -224,7 +226,7 @@ import {
   apnsHost, apnsJwt, apnsResult, cleanDeviceId, cleanPrefs, cleanRegister, DEFAULT_TOPIC, importApnsKey, summarizeSubscribers, testPayload,
 } from "./admin_push.ts";
 import {
-  cleanEmail, cleanEnabled, cleanLang, missingColumn, newsletterCall, planPrefChange, prefMap, prefView, renderView, statusView,
+  cleanEmail, cleanEnabled, cleanLang, cleanSections, sectionsView, missingColumn, newsletterCall, planPrefChange, prefMap, prefView, renderView, statusView,
 } from "./newsletter.ts";
 import {
   cleanAudience, cleanContent as cleanMailingContent, cleanMailingId, cleanRequestId, cleanTestLang, mailingStatusView, sendAudit,
@@ -1353,6 +1355,15 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const now = typeof out.enabled === "boolean" ? out.enabled : enabled;
       await audit("newsletter_set_enabled", ip, null, { enabled: now });
       return json({ ok: true, enabled: now });
+    }
+    case "newsletter_set_sections": {
+      const sec = cleanSections(body);
+      if (!sec) return json({ error: "bad_sections" }, 400);
+      const { status, out } = await nlCall("set_sections", sec);
+      if (status !== 200) return json(out, status);
+      const now = sectionsView(out.sections);
+      await audit("newsletter_set_sections", ip, null, now);
+      return json({ ok: true, sections: now });
     }
     case "newsletter_preview": {
       // voorbeeldmail naar één adres: nooit het adres loggen of in het logboek zetten

@@ -1,7 +1,7 @@
 // deno test supabase/functions/admin/newsletter_test.ts
 // Alleen voorbeeldadressen op example.com/example.org (gereserveerd, geen persoonsgegevens).
 import {
-  cleanEmail, cleanEnabled, cleanLang, EMAIL_MAX, editionView, errCode, HTML_MAX, newsletterCall, renderView, statusView,
+  cleanEmail, cleanEnabled, cleanLang, cleanSections, sectionsView, EMAIL_MAX, editionView, errCode, HTML_MAX, newsletterCall, renderView, statusView,
   welcomeView,
 } from "./newsletter.ts";
 
@@ -51,6 +51,15 @@ Deno.test("nieuwsbrief: status zonder adressen", () => {
   ok(statusView({ enabled: "true" }).enabled === false, "alleen true is aan");
   ok(statusView({ editions: Array.from({ length: 80 }, () => ({})) }).editions.length === 50, "max. 50 edities");
   ok(v.welcome === null && empty.welcome === null, "zonder welkomstgegevens: null");
+});
+
+Deno.test("nieuwsbrief: secties Top 10 en Populair aan/uit", () => {
+  ok(JSON.stringify(cleanSections({ top10: false })) === '{"top10":false}', "alleen top10");
+  ok(JSON.stringify(cleanSections({ token: "x", top10: true, popular: false, other: 1 })) === '{"top10":true,"popular":false}', "alleen bekende sleutels");
+  ok(cleanSections({}) === null && cleanSections({ top10: "false" }) === null && cleanSections(null) === null, "ongeldig");
+  ok(JSON.stringify(sectionsView(undefined)) === '{"top10":true,"popular":true}', "oudere functie: aan");
+  ok(JSON.stringify(sectionsView({ top10: false, popular: "x" })) === '{"top10":false,"popular":true}', "alleen false is uit");
+  ok(JSON.stringify(statusView({ sections: { top10: false } }).sections) === '{"top10":false,"popular":true}', "in de status");
 });
 
 Deno.test("welkomstmail: aantallen in de status, zonder adressen", () => {

@@ -102,6 +102,9 @@ def answer(req):
         return 200, {"new": 0, "open": 0, "pending": 0}
     if str(a).startswith("mailing_"):
         return mailing_answer(req)
+    if a == "newsletter_set_sections":
+        keys = [k for k in ("top10", "popular") if isinstance(req.get(k), bool)]
+        return (200, {"ok": True, "sections": {"top10": req.get("top10", True), "popular": req.get("popular", True)}}) if keys else (400, {"error": "bad_sections"})
     if a == "newsletter_status":
         return 200, {"enabled": False, "next": None, "recipients": {"nl": 1000, "en": 234, "total": 1234}, "editions": [], "welcome": None}
     return 200, {}
@@ -132,6 +135,12 @@ def mailing_smoke(b, base, errors, calls):
     page.wait_for_selector("#tab-newsletter:not(.hidden)", timeout=10000)
     page.wait_for_function("document.getElementById('mlCntNews').textContent.includes('1.234')", timeout=10000)
     check(page.is_enabled("#mlSend"), "Versturen niet beschikbaar bij nieuwsbrief-abonnees")
+    # secties Top 10 / Populair (standaard aan; schakelaar slaat meteen op)
+    check(page.is_checked("#nlSecTop10") and page.is_checked("#nlSecPopular"), "secties niet standaard aan")
+    page.click("#nlSecTop10 + .track")
+    page.wait_for_timeout(400)
+    check(calls.count("newsletter_set_sections") == 1 and not page.is_checked("#nlSecTop10") and page.is_enabled("#nlSecTop10")
+          and page.is_checked("#nlSecPopular"), "sectie Top 10 niet uitgezet")
     page.click('input[name="mlAudience"][value="service"] + span')
     check(page.is_visible("#mlWarn"), "geen waarschuwing bij een servicebericht")
     check(not page.is_enabled("#mlSend"), "servicebericht zonder vinkje toch te versturen")

@@ -48,6 +48,22 @@ export function cleanEnabled(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
+/** Secties aan/uit voor set_sections: alleen top10 en popular, elk een echte boolean of weggelaten; minstens één. */
+export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean } | null {
+  const o = obj(b), out: { top10?: boolean; popular?: boolean } = {};
+  for (const k of ["top10", "popular"] as const) {
+    if (o[k] === undefined) continue;
+    if (typeof o[k] !== "boolean") return null;
+    out[k] = o[k] as boolean;
+  }
+  return Object.keys(out).length ? out : null;
+}
+/** Schakelaars per sectie uit een antwoord; ontbreekt het (oudere functie), dan aan. */
+export function sectionsView(v: unknown): { top10: boolean; popular: boolean } {
+  const o = obj(v);
+  return { top10: o.top10 !== false, popular: o.popular !== false };
+}
+
 const KEY = /^[A-Za-z0-9_.:-]{1,60}$/;
 const keyOf = (v: unknown) => (typeof v === "string" && KEY.test(v) ? v : null);
 
@@ -75,6 +91,7 @@ export function statusView(v: unknown) {
   const editions = (Array.isArray(o.editions) ? o.editions : []).slice(0, 50).map(editionView);
   return {
     enabled: o.enabled === true,
+    sections: sectionsView(o.sections),
     next: str(next.at, 40) ? { key: keyOf(next.key), at: str(next.at, 40) } : null,
     recipients: { nl, en, total: typeof r.total === "number" ? nat(r.total) : nl + en },
     editions,

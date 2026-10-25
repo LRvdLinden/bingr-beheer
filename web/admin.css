@@ -713,6 +713,7 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .name-form .form-btns{margin-top:14px}
 /* nieuwsbrief (tab Nieuwsbrief, widget en gebruikerslade) */
 .nl-switch{margin-top:6px}
+.nl-sections{margin:18px 0 4px;padding-top:14px;border-top:1px solid #ffffff14}.nl-sections h3{margin:0 0 4px}.nl-sections .switch{margin-top:10px;font-size:14px;align-items:flex-start}.nl-sections .switch .track{margin-top:1px}
 .nl-facts{grid-template-columns:repeat(4,minmax(0,1fr))}
 .nl-facts .nl-next b{font-size:17px;line-height:1.35}
 @media (max-width:600px){.nl-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}

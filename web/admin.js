@@ -3059,7 +3059,8 @@
 
 
   // ---- nieuwsbrief (tab "newsletter"; functie admin -> newsletter in iptv-ios-appletv) ----
-  // Acties newsletter_status, newsletter_set_enabled, newsletter_preview (één adres, nooit gelogd) en newsletter_render;
+  // Acties newsletter_status, newsletter_set_enabled, newsletter_set_sections (Top 10 / Populair aan of uit),
+  // newsletter_preview (één adres, nooit gelogd) en newsletter_render;
   // blok Welkomstmail: welcome_preview en welcome_render (zelfde veilige weergave), aantallen uit newsletter_status.welcome.
   // De voorbeeldweergave staat in een Shadow DOM: de HTML wordt eerst inert geparsed (DOMParser), scripts en
   // event-attributen gaan eruit en style-attributen worden via element.style gezet (de strikte CSP blokkeert style=; een
@@ -3069,7 +3070,7 @@
     newsletter_not_deployed: "De functie newsletter staat nog niet online (workflow Backend in iptv-ios-appletv draaien).",
     newsletter_forbidden: "De functie newsletter weigerde de aanvraag (NEWSLETTER_ADMIN_SECRET klopt niet).",
     newsletter_unreachable: "De functie newsletter is niet bereikbaar. Probeer het later opnieuw.",
-    bad_email: "Vul een geldig e-mailadres in.", bad_lang: "Kies Nederlands of Engels.", bad_enabled: "Ongeldige keuze (aan of uit).",
+    bad_email: "Vul een geldig e-mailadres in.", bad_lang: "Kies Nederlands of Engels.", bad_enabled: "Ongeldige keuze (aan of uit).", bad_sections: "Ongeldige keuze voor de secties.",
     tmdb_unavailable: "De films en series konden niet worden opgehaald (TMDB). Probeer het later opnieuw.",
     email_opted_out: "Deze klant heeft alle mail van Bingr uitgezet; alleen de klant kan dat weer aanzetten.",
     newsletter_prefs_unavailable: "De nieuwsbriefstand per account is nog niet beschikbaar (databaseschema bijwerken: workflow Backend in iptv-ios-appletv).",
@@ -3093,6 +3094,8 @@
     const s = nlState, sw = $("nlEnabled");
     if (!s) return;
     sw.checked = !!s.enabled; sw.disabled = nlBusy;
+    const sec = s.sections || { top10: true, popular: true };
+    for (const [id, k] of [["nlSecTop10", "top10"], ["nlSecPopular", "popular"]]) { $(id).checked = sec[k] !== false; $(id).disabled = nlBusy; }
     $("nlEnabledText").innerHTML = s.enabled ? "<b>Aan</b> · de nieuwsbrief wordt verstuurd" : "<b>Uit</b> · er wordt niets verstuurd";
     const r = s.recipients || {};
     const cell = (l, v, h, cls = "") => `<div class="ps-k${cls}"><span class="l">${esc(l)}</span><b>${esc(v)}</b>${h ? `<span class="h">${esc(h)}</span>` : ""}</div>`;
@@ -3120,6 +3123,7 @@
       if (e.code === "auth") return;
       nlState = null; nlNotice(errText(e));
       $("nlEnabled").disabled = true; $("nlEnabledText").textContent = "Niet beschikbaar";
+      $("nlSecTop10").disabled = true; $("nlSecPopular").disabled = true;
       $("nlFacts").innerHTML = ""; $("nlEditions").innerHTML = '<p class="empty">Geen gegevens.</p>';
       $("wlFacts").innerHTML = '<p class="empty">Geen gegevens.</p>';
       return;
@@ -3144,6 +3148,22 @@
     } catch (e) { sw.checked = !on; if (e.code !== "auth") toast(errText(e), true); }
     finally { nlBusy = false; renderNl(); }
   };
+  // secties Top 10 / Populair: meteen opslaan; het voorbeeld opnieuw ophalen
+  for (const [id, k, label] of [["nlSecTop10", "top10", "Top 10 deze week"], ["nlSecPopular", "popular", "Populair"]]) {
+    $(id).onchange = async () => {
+      const sw = $(id), on = sw.checked;
+      if (!nlState || nlBusy) { sw.checked = !on; return; }
+      nlBusy = true; renderNl();
+      try {
+        const r = await call("newsletter_set_sections", { [k]: on });
+        nlState.sections = r.sections || { ...(nlState.sections || {}), [k]: on };
+        nlRender = {};
+        toast(`${label} staat ${nlState.sections[k] === false ? "uit" : "aan"}.`);
+        if (!$("nlView").classList.contains("hidden")) showNlPreview();
+      } catch (e) { sw.checked = !on; if (e.code !== "auth") toast(errText(e), true); }
+      finally { nlBusy = false; renderNl(); }
+    };
+  }
   $("nlPreviewForm").onsubmit = async (e) => {
     e.preventDefault();
     const to = $("nlTo").value.trim(), err = (m) => { $("nlSendErr").textContent = m; };
