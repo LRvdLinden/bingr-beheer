@@ -28,7 +28,8 @@
   const PLATFORM = { browser: "Webbrowser", tizen: "Samsung TV", windows: "Windows", webos: "LG TV", "lg tv": "LG TV", "lg webos": "LG TV", "?": "Onbekend", ios: "iPhone", ipados: "iPad", macos: "Mac",
     tvos: "Apple TV", android: "Android", androidtv: "Android TV", web: "Webspeler", other: "Overig" };
   const pname = (p) => PLATFORM[p] || PLATFORM[String(p || "").toLowerCase()] || p || "Onbekend";
-  // landen: alleen de landcode (laatst gezien land, uit het netwerk; nooit een IP-adres). Vlag-emoji en Nederlandse naam.
+  // landen: alleen de landcode (laatst gezien land, uit het netwerk via de land-IP-tabel van DB-IP Lite, CC BY 4.0: bronvermelding
+  // in de widget; nooit een IP-adres). Vlag-emoji en Nederlandse naam.
   const flag = (cc) => (/^[A-Z]{2}$/.test(cc || "") ? String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "");
   const REGION = (() => { try { return new Intl.DisplayNames(["nl"], { type: "region" }); } catch { return null; } })();
   const cname = (cc) => { if (!cc) return "Onbekend"; try { return REGION?.of(cc) || cc; } catch { return cc; } };
@@ -547,7 +548,8 @@
             <span class="cc-n"><span class="flag" aria-hidden="true">${flag(x.country)}</span>${esc(cname(x.country))}</span><span class="w-bar"><i data-w="${((x.accounts / max) * 100).toFixed(1)}"></i></span>
             <b>${nf.format(x.accounts)}<small> ${esc(pct(x.accounts))}${o.show_active ? ` · ${nf.format(x.active_30d)} actief` : ""}</small></b></button>`).join("")}</div>
             ${items.length > lim || unknown ? `<p class="sub w-facts">${items.length > lim ? `+ ${nf.format(items.length - lim)} ${items.length - lim === 1 ? "land" : "landen"}` : ""}${items.length > lim && unknown ? " · " : ""}${unknown ? `${nf.format(unknown)} nog onbekend` : ""}</p>` : ""}`
-            : '<p class="empty">Nog geen landen bekend. Het land komt erbij zodra een account de app gebruikt.</p>'}`;
+            : '<p class="empty">Nog geen landen bekend. Het land komt erbij zodra een account de app gebruikt.</p>'}
+          <p class="sub w-facts"><a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a></p>`;
         body.querySelectorAll("i[data-w]").forEach((b) => { b.style.width = `${Math.max(2, Number(b.dataset.w))}%`; });
         body.querySelectorAll("[data-cc]").forEach((b) => { b.disabled = dashEdit; b.onclick = () => goUsers(`country:${b.dataset.cc}`); });
         const more = body.querySelector("[data-go]"); if (more) more.onclick = () => goUsers("");
