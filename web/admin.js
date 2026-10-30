@@ -104,7 +104,7 @@
     name_failed: "De naam kon niet worden opgeslagen. Probeer het opnieuw.",
   };
   // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
-  const PLAN_DEFAULTS = { free: { streams: 1, devices: 8 }, lifetime: { streams: 3, devices: 15 } };
+  const PLAN_DEFAULTS = { free: { streams: 1, devices: 2 }, lifetime: { streams: 3, devices: 15 } };
   const PLAN_NAME = { free: "Gratis", lifetime: "Lifetime" };
   const PLAN_SOURCE = { legacy: "cadeau bij de invoering (bestaand account)", admin: "via het beheer", purchase: "gekocht" };
   const planObj = (p) => (p && typeof p === "object" ? p : { plan: "free" });
@@ -2031,7 +2031,7 @@
     const buyList = buys.length ? `<p class="sub">Aankopen: ${buys.map((b) => esc(`${fmtDate(b.paid_at || b.created_at)} ${euro(b.amount)} (${PURCHASE_STATUS[b.status] || b.status}${b.refunded_at ? " " + fmtDate(b.refunded_at) : ""})`)).join(" · ")}. Terugbetalen in het Stripe-dashboard; het account gaat dan vanzelf naar Gratis.</p>` : "";
     return `<section class="plan-box" aria-labelledby="plTitle">
       <h3 id="plTitle">Abonnement ${planChip(p)}</h3>
-      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at && p.source !== "purchase" ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 1 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's."}</p>${buyList}
+      <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at && p.source !== "purchase" ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 1 tegelijk kijken, 2 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt, thema's, Verder kijken, kinderprofielen en OpenSubtitles."}</p>${buyList}
       <form id="planForm" class="plan-form" novalidate>
         <label>Abonnement<select id="plPlan"><option value="free"${life ? "" : " selected"}>Gratis</option><option value="lifetime"${life ? " selected" : ""}>Lifetime (gratis gegeven)</option></select></label>
         <div class="plan-nums">

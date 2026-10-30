@@ -2,6 +2,15 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 45,
+   "version": "1.0.0",
+   "date": "2026-10-30",
+   "items": [
+    {"type": "improved", "nl": "Abonnement: Gratis heeft standaard 2 apparaten; Verder kijken, kinderprofielen en OpenSubtitles horen bij Lifetime"},
+    {"type": "fixed", "nl": "Abonnement: de standaardlimieten onder de velden kloppen weer (Gratis 1 / 2, Lifetime 3 / 15)"}
+   ]
+  },
+  {
    "build": 44,
    "version": "1.0.0",
    "date": "2026-10-30",

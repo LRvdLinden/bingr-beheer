@@ -314,7 +314,7 @@ struct UserDetailView: View {
             }
             Text(u.plan.isLifetime
                  ? ["Lifetime", u.plan.sourceText, u.plan.updatedAt.map { Fmt.date($0) }].compactMap { $0 }.joined(separator: " · ")
-                 : "Gratis: 1 tegelijk kijken, 8 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt en thema's.")
+                 : "Gratis: 1 tegelijk kijken, 2 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt, thema's, Verder kijken, kinderprofielen en OpenSubtitles.")
                 .font(.caption).foregroundStyle(Color.textDim)
             Picker("Abonnement", selection: $planChoice) {
                 ForEach(AccountPlan.options, id: \.key) { Text($0.label).tag($0.key) }
@@ -334,7 +334,7 @@ struct UserDetailView: View {
                         .keyboardType(.numberPad)
                 }
             }
-            Text("Leeg = standaard van het abonnement (Gratis 2 / 8, Lifetime 6 / 15).").font(.caption).foregroundStyle(Color.textDim)
+            Text("Leeg = standaard van het abonnement (Gratis 1 / 2, Lifetime 3 / 15).").font(.caption).foregroundStyle(Color.textDim)
             TextField("Notitie (intern, de klant ziet hem niet)", text: $planNote, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
             if let planError {

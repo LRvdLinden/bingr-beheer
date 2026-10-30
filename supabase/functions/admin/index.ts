@@ -255,7 +255,8 @@ const admin = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY")
 const TOKEN_TTL_MS = 12 * 3600 * 1000;
 
 // ---- abonnementen (zelfde standaarden als supabase/functions/_shared/plans.ts in iptv-ios-appletv) ----
-const PLAN_DEFAULTS = { free: { streams: 1, devices: 8, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } } as const;
+// build 157: Gratis 2 apparaten (was 8)
+const PLAN_DEFAULTS = { free: { streams: 1, devices: 2, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } } as const;
 // Samsung TV (tizen) en LG TV (webos) vervallen: niet meer in te stellen. Hun waarden in de database blijven staan.
 const LINK_KEYS = ["apple", "android", "androidtv", "web"] as const;
 const DEFAULT_LINK: Record<string, boolean> = { apple: false, android: true, androidtv: true, web: true };
