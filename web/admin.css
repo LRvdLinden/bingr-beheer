@@ -537,6 +537,24 @@ table.users tr.is-blocked td.em{color:#ffb3b6}
 .bld-hist-btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .bld-card .form-btns{flex-wrap:wrap;align-items:center}
 .bld-push-hint{margin-top:8px;font-size:13px}
+/* kaart Versies op bingr.online (Downloads): live en bèta per platform, voorbeeld van de rode badge */
+.rel-panel{margin-bottom:16px}
+.rel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
+.rel-plat{background:var(--s2);border:1px solid var(--line-soft);border-radius:12px;padding:16px 18px;min-width:0}
+.rel-plat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.rel-plat-head h3{margin:0;font-size:16px}
+.rel-ch{border:0;margin:14px 0 0;padding:0;min-width:0}
+.rel-ch legend{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--sec);padding:0}
+.rel-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+.rel-fields label{margin-top:8px;min-width:0}
+.rel-prev{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:16px}
+.rel-prev [data-rel-prev]{display:inline-flex;flex-wrap:wrap;gap:8px}
+.rel-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;border:1px solid #e5091499;background:#e5091426;color:#fff;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.rel-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--red)}
+.rel-upd{align-self:center}
+.form-btns .rel-upd{margin-left:4px}
+@media (max-width:760px){.rel-grid{grid-template-columns:1fr}}
+@media (max-width:420px){.rel-fields{grid-template-columns:1fr}}
 .chip.bld-push-sent{background:#46d36924;color:var(--ok);border-color:#46d36940}
 /* kaart PressKit (Downloads): gegevens links, downloads met mini-grafiek (30 dagen) rechts */
 .pk-card{grid-column:1/-1}

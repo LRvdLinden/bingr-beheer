@@ -141,6 +141,11 @@
 //   app_settings_set    {token, upgrade_link:{apple, android, androidtv, web}} -> {ok, upgrade_link} (andere sleutels in de
 //                       database, zoals tizen/webos van de vervallen tv-apps, blijven staan; meegestuurde worden genegeerd)
 //                       Abonnementen: tabellen account_plans en app_settings (schema in iptv-ios-appletv, docs/ACCOUNT.md).
+//   releases_get        {token}           -> {releases:{apple:{live, beta}, android:{live, beta}, updatedAt}}
+//   releases_set        {token, releases:{apple:{live:{version, build, date?}|null, beta:{version, build, date?, label}|null},
+//                       android:{…}}} -> {ok, releases} | 400 {error:"bad_releases", field}  (app_settings.release_channels:
+//                       versies bij de downloadknoppen op bingr.online; openbaar via status ?action=releases; releases.ts.
+//                       In admin_audit met de versies en builds.)
 //   builds              {token}           -> {ready, platforms: {android|android-aab|windows|apple|beheer: {version, build, file, path, size,
 //                       sha256, date, notes, history:[…]}} | null, updated?, reason?: "not_configured"|"no_builds"|"unreachable"}
 //                       (tab Downloads: builds/manifest.json van de server van beheer.bingr.online, opgehaald via dl.php met
@@ -209,6 +214,7 @@ import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFro
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
+import { releasesInput, releasesView } from "./releases.ts";
 import { serversFromRow } from "./servers.ts";
 import { streamsView } from "./streams.ts";
 import { buildServer, nowView, parseServer, planRange, serverPlan } from "./server.ts";
@@ -1141,6 +1147,19 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       await audit("app_settings_set", ip, null, { upgrade_link: value });
       return json({ ok: true, upgrade_link: value });
+    }
+    case "releases_get": {
+      const { data, error } = await admin.from("app_settings").select("value").eq("key", "release_channels").maybeSingle();
+      if (error) throw new Error(error.message);
+      return json({ releases: releasesView(data?.value) });
+    }
+    case "releases_set": {
+      const r = releasesInput(body.releases);
+      if ("error" in r) return json(r, 400);
+      const { error } = await admin.from("app_settings").upsert({ key: "release_channels", value: r.value, updated_at: r.value.updatedAt });
+      if (error) throw new Error(error.message);
+      await audit("releases_set", ip, null, { apple: r.value.apple, android: r.value.android });
+      return json({ ok: true, releases: r.value });
     }
     case "send_reset": {
       if (!isUuid(body.user_id)) return json({ error: "bad_id" }, 400);

@@ -4,6 +4,7 @@
 Serveert web/ lokaal, onderschept alle aanroepen naar functions/v1/admin en geeft antwoorden in de vorm van de
 actuele contracten (insights.ts: metrics en series worden uit supabase/functions/admin/insights.ts gelezen). Opent de
 tab Insights met alle bronnen aangevinkt en faalt bij JS-fouten, console-errors of ontbrekende bronnen/periodes/grafieken.
+Daarna de tab Downloads, kaart Versies (releases.ts): laden, "Neem nieuwste build", voorbeeldbadge en opslaan.
 Daarna de tab Nieuwsbrief, blok Eigen mailing (mailing.ts): doelgroep met waarschuwing bij een servicebericht, voorbeeld,
 testmail, versturen met bevestiging, voortgang en annuleren (alleen nep-antwoorden; er gaat nergens een mail heen).
 
@@ -94,8 +95,21 @@ def mailing_answer(req):
     return 200, {}
 
 
+RELEASES = {"apple": {"live": {"version": "1.0.2", "build": 152}, "beta": None}, "android": {"live": None, "beta": None}, "updatedAt": None}
+SAVED = []
+
+
 def answer(req):
     a = req.get("action")
+    if a == "releases_get":
+        return 200, {"releases": RELEASES}
+    if a == "releases_set":
+        SAVED.append(req.get("releases"))
+        return 200, {"ok": True, "releases": RELEASES}
+    if a == "builds":
+        return 200, {"ready": True, "updated": "2026-10-30T10:00:00Z", "release_push": {}, "platforms": {
+            "apple": {"version": "1.0.3", "build": 154, "file": "Bingr-1.0.3-154-Xcode.zip", "size": 1000, "uploaded_at": "2026-10-30T09:00:00Z", "history": []},
+            "android": {"version": "1.0.3", "build": 154, "file": "Bingr-1.0.3-154.apk", "size": 1000, "date": "2026-10-29", "history": []}}}
     if a == "insights":
         return insights_answer(req)
     if a == "support_counts":
@@ -172,6 +186,43 @@ def mailing_smoke(b, base, errors, calls):
     return steps
 
 
+def releases_smoke(b, base, errors, calls):
+    """Tab Downloads, kaart Versies. Vult errors aan; geeft het aantal geslaagde stappen terug."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'downloads');
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"versies: {msg}")
+    page.goto(base + "#downloads")
+    page.wait_for_selector('#relForm [data-rel="apple.live.version"]', timeout=10000)
+    page.wait_for_selector("#dlList .bld-card", timeout=10000)
+    check(page.input_value('[data-rel="apple.live.version"]') == "1.0.2", "live-versie Apple niet geladen")
+    check("Live 1.0.2 (152)" in page.inner_text('[data-rel-prev="apple"]'), "voorbeeldbadge Apple live ontbreekt")
+    page.click('button[data-rel-take="apple"]')
+    check(page.input_value('[data-rel="apple.beta.build"]') == "154" and page.input_value('[data-rel="apple.beta.date"]') == "2026-10-30",
+          "nieuwste build niet ingevuld als bèta")
+    check("TestFlight 1.0.3 (154)" in page.inner_text('[data-rel-prev="apple"]'), "voorbeeldbadge TestFlight ontbreekt")
+    page.click('button[data-rel-take="android"]')
+    page.click("#relSave")
+    page.wait_for_timeout(400)
+    got = SAVED[-1] if SAVED else {}
+    check(got.get("apple", {}).get("beta", {}).get("build") == "154" and got.get("android", {}).get("beta", {}).get("label") == "Beta"
+          and got.get("android", {}).get("live", {}).get("version") == "", f"releases_set met verkeerde inhoud: {got}")
+    page.close()
+    return steps
+
+
 def route_to(r, calls):
     if r.request.method == "OPTIONS":
         return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
@@ -230,6 +281,7 @@ def main():
         if periods:
             page.click('#insPeriods [data-p="30d"]')
             page.wait_for_timeout(500)
+        rel_steps = releases_smoke(b, base, errors, calls)
         ml_steps = mailing_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
@@ -239,6 +291,7 @@ def main():
             print(f"::error::Insights-rooktest: {e[:300]}")
         sys.exit(1)
     print(f"Insights-rooktest OK: {len(srcs)} bronnen, {len(periods)} periodes, {n} insights-aanroepen, geen JS-fouten")
+    print(f"Versies OK: {rel_steps} stappen (laden, nieuwste build, voorbeeldbadge, opslaan)")
     print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 
 

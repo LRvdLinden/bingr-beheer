@@ -57,6 +57,7 @@ struct APIError: Error, LocalizedError {
         "invalid_credentials": "Onjuiste gebruikersnaam of wachtwoord.",
         "not_configured": "Beheer is nog niet ingesteld (BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD).",
         "bad_id": "Ongeldig account.",
+        "bad_releases": "Ongeldige versie: vul versie (bijv. 1.0.3) én build (een heel getal) in, of laat allebei leeg.",
         "reason_missing": "Vul een reden in (de klant ziet hem in de mail).",
         "bad_until": "Kies een einddatum in de toekomst (minstens 1 minuut, hoogstens 10 jaar), of onbepaald.",
         "block_failed": "Blokkeren is mislukt. Probeer het opnieuw.",

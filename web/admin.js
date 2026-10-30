@@ -88,6 +88,7 @@
     delete_failed: "Verwijderen is mislukt; er is niets gemaild. Probeer het opnieuw.",
     bad_plan: "Kies Gratis of Lifetime.", bad_max_streams: "Tegelijk kijken: een heel getal van 1 tot 50, of leeg voor de standaard.",
     bad_max_devices: "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.", bad_settings: "Ongeldige instellingen.",
+    bad_releases: "Ongeldige versie: vul versie (bijv. 1.0.3) én build (een heel getal) in, of laat allebei leeg.",
     revenue_not_configured: "Omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv draaien).", bad_rate: "Kies een btw-tarief tussen 0 en 50%.",
     billing_unavailable: "Betalen staat uit (geen STRIPE_SECRET_KEY).", bad_bucket: "Deze resolutie past niet bij de periode.", bad_mode: "Ongeldige keuze.",
     // build 97
@@ -2317,8 +2318,89 @@
       <div class="form-btns">${dlButton("presskit", b, false)}</div>
     </div>`;
   }
+  // ---- versies op bingr.online (app_settings.release_channels; acties releases_get / releases_set) ----
+  // Live = in de App Store / Google Play, bèta = TestFlight / APK. Openbaar via status ?action=releases; de site toont
+  // per kanaal een rode badge, bijv. "Live 1.0.2 (152)". "Neem nieuwste build" vult de bèta uit het manifest hieronder.
+  const REL_PLATFORMS = [
+    ["apple", "Apple", "iPhone, iPad, Apple TV en Mac", "App Store", "TestFlight"],
+    ["android", "Android", "Telefoons, tablets, Android TV, Google TV en Fire TV", "Google Play", "APK"],
+  ];
+  const REL_LABELS = ["TestFlight", "Beta"];
+  let dlLatest = null; // platforms uit het manifest (actie builds), voor "Neem nieuwste build"
+  const relField = (k, label, v, attrs = "") => `<label>${esc(label)}<input data-rel="${k}" value="${esc(v ?? "")}" autocomplete="off"${attrs}></label>`;
+  function relChannel(p, kind, c, store) {
+    const k = `${p}.${kind}`;
+    const lbl = kind === "beta" ? `<label>Label<select data-rel="${k}.label">${REL_LABELS.map((l) => `<option${(c?.label || (p === "apple" ? "TestFlight" : "Beta")) === l ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : "";
+    return `<fieldset class="rel-ch"><legend>${kind === "live" ? "Live" : "Bèta"} <span class="sub">(${esc(store)})</span></legend>
+      <div class="rel-fields">
+        ${relField(`${k}.version`, "Versie", c?.version, ' inputmode="decimal" placeholder="bijv. 1.0.3" maxlength="15"')}
+        ${relField(`${k}.build`, "Build", c?.build, ' inputmode="numeric" placeholder="bijv. 154" maxlength="7"')}
+        ${relField(`${k}.date`, "Datum (optioneel)", c?.date, ' type="date"')}
+        ${lbl}
+      </div></fieldset>`;
+  }
+  function relPreview(p) {
+    const f = $("relForm");
+    const v = (k) => (f.querySelector(`[data-rel="${p}.${k}"]`)?.value || "").trim();
+    const chips = [["live", "Live"], ["beta", v("beta.label") || "Beta"]].filter(([k]) => v(`${k}.version`) && v(`${k}.build`))
+      .map(([k, l]) => `<span class="rel-badge">${esc(l)} ${esc(v(`${k}.version`))} (${esc(v(`${k}.build`))})</span>`);
+    const el = f.querySelector(`[data-rel-prev="${p}"]`);
+    if (el) el.innerHTML = chips.length ? chips.join("") : '<span class="sub">Geen badge</span>';
+  }
+  async function loadReleases() {
+    const el = $("relForm");
+    el.innerHTML = '<p class="sub">Laden…</p>';
+    let r;
+    try { r = await call("releases_get"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    const rel = r.releases || {};
+    el.innerHTML = `<div class="rel-grid">${REL_PLATFORMS.map(([p, title, hint, live, beta]) => `<div class="rel-plat">
+        <div class="rel-plat-head"><div><h3>${esc(title)}</h3><p class="sub">${esc(hint)}</p></div>
+          <button class="btn small ghost" type="button" data-rel-take="${p}">Neem nieuwste build</button></div>
+        ${relChannel(p, "live", rel[p]?.live, live)}${relChannel(p, "beta", rel[p]?.beta, beta)}
+        <div class="rel-prev"><span class="sub">Op de site:</span> <span data-rel-prev="${p}"></span></div>
+      </div>`).join("")}</div>
+      <div id="relErr" class="err" role="alert"></div>
+      <div class="form-btns"><button id="relSave" class="btn" type="button">Opslaan</button>${rel.updatedAt ? `<span class="sub rel-upd">Laatst opgeslagen ${esc(fmtDateTime(rel.updatedAt))}</span>` : ""}</div>`;
+    REL_PLATFORMS.forEach(([p]) => relPreview(p));
+    el.querySelectorAll("[data-rel]").forEach((i) => i.addEventListener("input", () => relPreview(i.dataset.rel.split(".")[0])));
+    el.querySelectorAll("button[data-rel-take]").forEach((b) => (b.onclick = () => relTakeLatest(b.dataset.relTake)));
+    $("relSave").onclick = saveReleases;
+  }
+  function relTakeLatest(p) {
+    const b = dlLatest && dlLatest[p];
+    if (!b || b.build == null || b.build === "") { toast("Geen build in het manifest voor dit platform (vernieuw Downloads).", true); return; }
+    const f = $("relForm");
+    const set = (k, v) => { const i = f.querySelector(`[data-rel="${p}.beta.${k}"]`); if (i) i.value = v ?? ""; };
+    const d = typeof b.uploaded_at === "string" && /^\d{4}-\d{2}-\d{2}/.test(b.uploaded_at)
+      ? new Date(b.uploaded_at).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" })
+      : typeof b.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(b.date) ? b.date.slice(0, 10) : "";
+    set("version", b.version || ""); set("build", String(b.build)); set("date", d);
+    relPreview(p);
+    toast(`Bèta ingevuld met build ${b.build}. Vergeet niet op te slaan.`);
+  }
+  async function saveReleases() {
+    const f = $("relForm");
+    const releases = {};
+    for (const [p] of REL_PLATFORMS) {
+      releases[p] = {};
+      for (const kind of ["live", "beta"]) {
+        const v = (k) => (f.querySelector(`[data-rel="${p}.${kind}.${k}"]`)?.value || "").trim();
+        releases[p][kind] = { version: v("version"), build: v("build"), date: v("date"), ...(kind === "beta" ? { label: v("label") } : {}) };
+      }
+    }
+    $("relSave").disabled = true; $("relErr").textContent = "";
+    try { await call("releases_set", { releases }); toast("Versies opgeslagen. bingr.online toont ze binnen een paar minuten."); loadReleases(); }
+    catch (e) {
+      if (e.code !== "auth") {
+        const fld = e.body?.field ? REL_PLATFORMS.find(([p]) => e.body.field.startsWith(p)) : null;
+        $("relErr").textContent = (fld ? `${fld[1]} ${e.body.field.endsWith("beta") ? "bèta" : "live"}: ` : "") + errText(e);
+      }
+    } finally { const b = $("relSave"); if (b) b.disabled = false; }
+  }
+
   $("dlRefresh").onclick = () => loadDownloads();
   async function loadDownloads() {
+    loadReleases();
     const el = $("dlList");
     el.innerHTML = '<p class="sub">Laden…</p>';
     $("dlUpdated").textContent = "";
@@ -2328,6 +2410,7 @@
       el.innerHTML = `<div class="panel"><p class="empty">${esc(DL_REASON[r.reason] || DL_REASON.no_builds)}</p></div>`;
       return;
     }
+    dlLatest = r.platforms;
     if (r.updated) $("dlUpdated").textContent = `Bijgewerkt ${fmtDateTime(r.updated)}`;
     dlPush = r.release_push && typeof r.release_push === "object" ? r.release_push : {};
     dlWinPub = r.windows_public && typeof r.windows_public === "object" ? r.windows_public : null;

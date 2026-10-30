@@ -2,6 +2,14 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 42,
+   "version": "1.0.0",
+   "date": "2026-10-30",
+   "items": [
+    {"type": "new", "nl": "Downloads: kaart Versies op bingr.online met per platform (Apple, Android) de live versie en de nieuwste bèta (versie, build, datum, label TestFlight of Beta), voorbeeld van de rode badge en de knop Neem nieuwste build"}
+   ]
+  },
+  {
    "build": 41,
    "version": "1.0.0",
    "date": "2026-10-30",

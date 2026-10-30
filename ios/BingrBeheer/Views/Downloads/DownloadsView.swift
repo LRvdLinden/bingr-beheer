@@ -30,6 +30,7 @@ struct DownloadsView: View {
                 Text("Buildpakketten van Bingr en BingrBeheer, en de PressKit. Ze staan alleen op de server van beheer.bingr.online (niet op GitHub); elke downloadlink is 10 minuten geldig.")
                     .font(.subheadline)
                     .foregroundStyle(Color.textDim)
+                ReleasesCard(latest: latestBuilds)
                 if let error, overview == nil {
                     NoticeBanner(text: error)
                 }
@@ -72,6 +73,15 @@ struct DownloadsView: View {
         } message: { a in
             Text("Doe dit pas als \(a.build.title) goedgekeurd is en in de stores staat. Alleen apparaten met een oudere build krijgen de melding, en dit kan maar één keer per build.")
         }
+    }
+
+    /// Nieuwste build van Apple en Android voor "Neem nieuwste build" op de kaart Versies.
+    private var latestBuilds: [String: BuildInfo] {
+        var out: [String: BuildInfo] = [:]
+        for p in overview?.platforms ?? [] where p.key == "apple" || p.key == "android" {
+            if let b = p.latest { out[p.key] = b }
+        }
+        return out
     }
 
     @ViewBuilder private func card(_ p: BuildPlatform) -> some View {
