@@ -48,10 +48,10 @@ export function cleanEnabled(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
-/** Secties aan/uit voor set_sections: alleen top10 en popular, elk een echte boolean of weggelaten; minstens één. */
-export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean } | null {
-  const o = obj(b), out: { top10?: boolean; popular?: boolean } = {};
-  for (const k of ["top10", "popular"] as const) {
+/** Secties aan/uit voor set_sections: top10, popular en monthly (maandoverzicht), elk een echte boolean of weggelaten; minstens één. */
+export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean; monthly?: boolean } | null {
+  const o = obj(b), out: { top10?: boolean; popular?: boolean; monthly?: boolean } = {};
+  for (const k of ["top10", "popular", "monthly"] as const) {
     if (o[k] === undefined) continue;
     if (typeof o[k] !== "boolean") return null;
     out[k] = o[k] as boolean;
@@ -59,9 +59,9 @@ export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean 
   return Object.keys(out).length ? out : null;
 }
 /** Schakelaars per sectie uit een antwoord; ontbreekt het (oudere functie), dan aan. */
-export function sectionsView(v: unknown): { top10: boolean; popular: boolean } {
+export function sectionsView(v: unknown): { top10: boolean; popular: boolean; monthly: boolean } {
   const o = obj(v);
-  return { top10: o.top10 !== false, popular: o.popular !== false };
+  return { top10: o.top10 !== false, popular: o.popular !== false, monthly: o.monthly !== false };
 }
 
 const KEY = /^[A-Za-z0-9_.:-]{1,60}$/;
@@ -84,6 +84,18 @@ export function welcomeView(v: unknown): { sent_7d: number; pending: number } | 
   return { sent_7d: nat(o.sent_7d), pending: nat(o.pending) };
 }
 
+/** Maandoverzicht "Volgende maand op Bingr": aan/uit, volgende verzending en de geschiedenis (alleen aantallen); null als de
+ *  functie het (nog) niet meegeeft. */
+export function monthlyView(v: unknown) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = obj(v), next = obj(o.next);
+  return {
+    enabled: o.enabled !== false,
+    next: str(next.at, 40) ? { key: keyOf(next.key), at: str(next.at, 40) } : null,
+    editions: (Array.isArray(o.editions) ? o.editions : []).slice(0, 24).map(editionView),
+  };
+}
+
 /** Stand van de nieuwsbrief (actie status van `newsletter`) voor het dashboard. */
 export function statusView(v: unknown) {
   const o = obj(v), next = obj(o.next), r = obj(o.recipients);
@@ -95,16 +107,18 @@ export function statusView(v: unknown) {
     next: str(next.at, 40) ? { key: keyOf(next.key), at: str(next.at, 40) } : null,
     recipients: { nl, en, total: typeof r.total === "number" ? nat(r.total) : nl + en },
     editions,
+    monthly: monthlyView(o.monthly),
     welcome: welcomeView(o.welcome),
   };
 }
 
 /** Voorbeeld-HTML (actie render): alleen onderwerp en html, begrensd. null = geen bruikbaar antwoord. */
 export const HTML_MAX = 1_000_000;
-export function renderView(v: unknown): { subject: string; html: string } | null {
+export function renderView(v: unknown): { subject: string; html: string; key?: string } | null {
   const o = obj(v);
   if (typeof o.html !== "string" || !o.html || o.html.length > HTML_MAX) return null;
-  return { subject: typeof o.subject === "string" ? o.subject.slice(0, 300) : "", html: o.html };
+  const key = keyOf(o.key);
+  return { subject: typeof o.subject === "string" ? o.subject.slice(0, 300) : "", html: o.html, ...(key ? { key } : {}) };
 }
 
 /** Foutcode uit een antwoord: alleen korte codes (geen serverteksten naar de browser of het logboek). */

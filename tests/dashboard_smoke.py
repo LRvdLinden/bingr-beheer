@@ -117,10 +117,16 @@ def answer(req):
     if str(a).startswith("mailing_"):
         return mailing_answer(req)
     if a == "newsletter_set_sections":
-        keys = [k for k in ("top10", "popular") if isinstance(req.get(k), bool)]
-        return (200, {"ok": True, "sections": {"top10": req.get("top10", True), "popular": req.get("popular", True)}}) if keys else (400, {"error": "bad_sections"})
+        keys = [k for k in ("top10", "popular", "monthly") if isinstance(req.get(k), bool)]
+        return (200, {"ok": True, "sections": {k: req.get(k, True) for k in ("top10", "popular", "monthly")}}) if keys else (400, {"error": "bad_sections"})
     if a == "newsletter_status":
-        return 200, {"enabled": False, "next": None, "recipients": {"nl": 1000, "en": 234, "total": 1234}, "editions": [], "welcome": None}
+        return 200, {"enabled": True, "next": None, "recipients": {"nl": 1000, "en": 234, "total": 1234}, "editions": [], "welcome": None,
+                     "monthly": {"enabled": True, "next": {"key": "2026-11", "at": "2026-10-31T17:00:00.000Z"},
+                                 "editions": [{"key": "2026-10", "created_at": "2026-09-30T16:00:03Z", "recipients": 1200, "sent": 1190, "failed": 10, "done": True}]}}
+    if a == "monthly_render":
+        return 200, {"subject": "Volgende maand op Bingr: Film en meer in november", "html": "<html><body><p>BINGR maandoverzicht</p></body></html>", "key": "2026-11"}
+    if a == "monthly_preview":
+        return 200, {"ok": True}
     return 200, {}
 
 
@@ -155,6 +161,21 @@ def mailing_smoke(b, base, errors, calls):
     page.wait_for_timeout(400)
     check(calls.count("newsletter_set_sections") == 1 and not page.is_checked("#nlSecTop10") and page.is_enabled("#nlSecTop10")
           and page.is_checked("#nlSecPopular"), "sectie Top 10 niet uitgezet")
+    # maandoverzicht: standaard aan, volgende verzending, geschiedenis, voorbeeld, testmail en uitzetten (met bevestiging)
+    check(page.is_checked("#moEnabled") and page.is_enabled("#moEnabled"), "maandoverzicht niet aan")
+    check("november 2026" in page.inner_text("#moFacts") and "oktober 2026" in page.inner_text("#moEditions")
+          and "1.190" in page.inner_text("#moEditions"), "maandoverzicht: volgende verzending of geschiedenis ontbreekt")
+    page.click("#moShow")
+    page.wait_for_selector("#moView:not(.hidden)", timeout=5000)
+    check("november" in page.inner_text("#moSubject")
+          and page.evaluate("document.getElementById('moView').shadowRoot.textContent.includes('maandoverzicht')"), "maandoverzicht: voorbeeld niet getoond")
+    page.fill("#moTo", "test@example.com")
+    page.click("#moSend")
+    page.wait_for_timeout(300)
+    check(calls.count("monthly_preview") == 1, "maandoverzicht: testmail niet aangevraagd")
+    page.click("#moEnabled + .track")
+    page.wait_for_timeout(400)
+    check(calls.count("newsletter_set_sections") == 2 and any("maandoverzicht uitzetten" in d for d in dialogs), "maandoverzicht niet uitgezet")
     page.click('input[name="mlAudience"][value="service"] + span')
     check(page.is_visible("#mlWarn"), "geen waarschuwing bij een servicebericht")
     check(not page.is_enabled("#mlSend"), "servicebericht zonder vinkje toch te versturen")

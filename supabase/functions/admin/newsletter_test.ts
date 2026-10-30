@@ -57,9 +57,11 @@ Deno.test("nieuwsbrief: secties Top 10 en Populair aan/uit", () => {
   ok(JSON.stringify(cleanSections({ top10: false })) === '{"top10":false}', "alleen top10");
   ok(JSON.stringify(cleanSections({ token: "x", top10: true, popular: false, other: 1 })) === '{"top10":true,"popular":false}', "alleen bekende sleutels");
   ok(cleanSections({}) === null && cleanSections({ top10: "false" }) === null && cleanSections(null) === null, "ongeldig");
-  ok(JSON.stringify(sectionsView(undefined)) === '{"top10":true,"popular":true}', "oudere functie: aan");
-  ok(JSON.stringify(sectionsView({ top10: false, popular: "x" })) === '{"top10":false,"popular":true}', "alleen false is uit");
-  ok(JSON.stringify(statusView({ sections: { top10: false } }).sections) === '{"top10":false,"popular":true}', "in de status");
+  ok(JSON.stringify(sectionsView(undefined)) === '{"top10":true,"popular":true,"monthly":true}', "oudere functie: aan");
+  ok(JSON.stringify(sectionsView({ top10: false, popular: "x" })) === '{"top10":false,"popular":true,"monthly":true}', "alleen false is uit");
+  ok(JSON.stringify(statusView({ sections: { top10: false } }).sections) === '{"top10":false,"popular":true,"monthly":true}', "in de status");
+  ok(JSON.stringify(cleanSections({ monthly: false, x: 1 })) === '{"monthly":false}', "maandoverzicht");
+  ok(cleanSections({ monthly: "uit" }) === null, "maandoverzicht: alleen boolean");
 });
 
 Deno.test("welkomstmail: aantallen in de status, zonder adressen", () => {
@@ -162,4 +164,22 @@ Deno.test("nieuwsbrief per account: voorkeur", async () => {
   ok(!d.ok && d.error === "email_opted_out", "alle mail uit: niet overschrijven");
   const e = planPrefChange(none, false);
   ok(e.ok && e.newsletter_opt_out === true, "uitzetten mag altijd");
+});
+
+Deno.test("maandoverzicht: status (alleen aantallen) en voorbeeld met maandsleutel", async () => {
+  const { monthlyView } = await import("./newsletter.ts");
+  const v = statusView({ monthly: { enabled: false, next: { key: "2026-11", at: "2026-10-31T17:00:00.000Z" },
+    editions: [{ key: "2026-11", created_at: "2026-10-31T17:00:02Z", recipients: 10, sent: 9, failed: 1, done: true, emails: ["x@example.com"] }] } });
+  ok(v.monthly?.enabled === false && v.monthly.next?.key === "2026-11" && v.monthly.next.at === "2026-10-31T17:00:00.000Z", "aan/uit en volgende");
+  ok(v.monthly?.editions.length === 1 && v.monthly.editions[0].sent === 9 && v.monthly.editions[0].done === true, "geschiedenis");
+  ok(!JSON.stringify(v).includes("example.com"), "geen adressen");
+  ok(statusView({}).monthly === null && monthlyView({})?.enabled === true, "oudere functie / standaard aan");
+  ok(monthlyView({ editions: Array.from({ length: 40 }, () => ({})) })!.editions.length === 24, "max. 24 edities");
+  const r = renderView({ subject: "S", html: "<p>x</p>", key: "2026-11" });
+  ok(r?.key === "2026-11", "maandsleutel");
+  ok(renderView({ subject: "S", html: "<p>x</p>", key: "<script>" })?.key === undefined, "ongeldige sleutel weg");
+  const seen: string[] = [];
+  const capture = async (_u: string, init: RequestInit) => { seen.push(String(init.body)); return new Response(JSON.stringify({ ok: true, key: "2026-11" }), { status: 200 }); };
+  await newsletterCall("https://x.example.com", "g", "monthly_preview", { to: "test@example.com", lang: "en", action: "status" }, capture);
+  ok(JSON.parse(seen[0]).action === "monthly_preview" && JSON.parse(seen[0]).lang === "en", "actie gaat voor");
 });

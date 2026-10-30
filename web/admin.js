@@ -3177,6 +3177,7 @@
   // Acties newsletter_status, newsletter_set_enabled, newsletter_set_sections (Top 10 / Populair aan of uit),
   // newsletter_preview (één adres, nooit gelogd) en newsletter_render;
   // blok Welkomstmail: welcome_preview en welcome_render (zelfde veilige weergave), aantallen uit newsletter_status.welcome.
+  // blok Maandoverzicht: schakelaar (newsletter_set_sections monthly), monthly_preview, monthly_render en de geschiedenis.
   // De voorbeeldweergave staat in een Shadow DOM: de HTML wordt eerst inert geparsed (DOMParser), scripts en
   // event-attributen gaan eruit en style-attributen worden via element.style gezet (de strikte CSP blokkeert style=; een
   // blob-tabblad of srcdoc-iframe erft die CSP, waardoor de opmaak van de mail daar zou wegvallen).
@@ -3199,6 +3200,14 @@
   }
   nlSeg("nlSendLang", (l) => { nlSendLang = l; });
   nlSeg("nlViewLang", (l) => { nlViewLang = l; if (!$("nlView").classList.contains("hidden")) showNlPreview(); });
+  // maandoverzicht "Volgende maand op Bingr" (schakelaar via newsletter_set_sections {monthly}, acties monthly_preview /
+  // monthly_render; geschiedenis en volgende verzending uit newsletter_status.monthly)
+  const MO_MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
+  const moMonth = (k) => (/^\d{4}-\d{2}$/.test(k || "") ? `${MO_MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}` : k || "—");
+  let moSendLang = "nl", moViewLang = "nl";
+  const moRender = {};
+  nlSeg("moSendLang", (l) => { moSendLang = l; });
+  nlSeg("moViewLang", (l) => { moViewLang = l; if (!$("moView").classList.contains("hidden")) showMoPreview(); });
   // welkomstmail (acties welcome_preview / welcome_render; aantallen uit newsletter_status.welcome)
   let wlSendLang = "nl", wlViewLang = "nl";
   const wlRender = {};
@@ -3225,6 +3234,21 @@
           <div class="meta"><span>${esc(fmtDateTime(e.created_at))}</span>${e.done ? "" : '<span class="chip warn">bezig</span>'}</div></div>
         <div class="ph-nums nl-nums" aria-label="Aantallen">${n(e.recipients, "ontvangers", "")}${n(e.sent, "verstuurd", "s")}${n(e.failed, "mislukt", "f")}</div></div>`;
     }).join("") || '<p class="empty">Nog geen edities verstuurd.</p>';
+    // maandoverzicht (newsletter_status.monthly; null = functie nog niet bijgewerkt)
+    const mo = s.monthly, moSw = $("moEnabled");
+    moSw.checked = !!(mo && mo.enabled); moSw.disabled = nlBusy || !mo;
+    $("moEnabledText").innerHTML = !mo ? "Niet beschikbaar (workflow Backend in iptv-ios-appletv draaien)"
+      : mo.enabled ? (s.enabled ? "<b>Aan</b> · gaat op de laatste dag van de maand" : "<b>Aan</b> · maar de nieuwsbrief staat uit, dus er gaat niets") : "<b>Uit</b> · er wordt geen maandoverzicht verstuurd";
+    $("moFacts").innerHTML = mo
+      ? cell("Volgende verzending", mo.next?.at ? fmtNl(mo.next.at) : "—", mo.next?.key ? `over ${moMonth(mo.next.key)}` : "", " nl-next")
+        + cell("Status", mo.enabled && s.enabled ? "aan" : "uit", mo.enabled && s.enabled ? "zelfde ontvangers als de nieuwsbrief" : "")
+      : "";
+    $("moEditions").innerHTML = (mo?.editions || []).map((e) => {
+      const n = (v, label, cls) => `<span class="ph-n ${cls}"><b>${nf.format(v || 0)}</b> ${label}</span>`;
+      return `<div class="ph"><div class="ph-main"><div class="ph-top"><span class="kind rem">Maand</span><span class="tt">${esc(moMonth(e.key))}</span></div>
+          <div class="meta"><span>${esc(fmtDateTime(e.created_at))}</span>${e.done ? "" : '<span class="chip warn">bezig</span>'}</div></div>
+        <div class="ph-nums nl-nums" aria-label="Aantallen">${n(e.recipients, "ontvangers", "")}${n(e.sent, "verstuurd", "s")}${n(e.failed, "mislukt", "f")}</div></div>`;
+    }).join("") || '<p class="empty">Nog geen maandoverzicht verstuurd.</p>';
     const w = s.welcome;
     $("wlFacts").innerHTML = w
       ? cell("Verstuurd", nf.format(w.sent_7d || 0), "laatste 7 dagen", " main") + cell("Wachtend", nf.format(w.pending || 0), "gaat binnen 5 minuten")
@@ -3241,6 +3265,8 @@
       $("nlSecTop10").disabled = true; $("nlSecPopular").disabled = true;
       $("nlFacts").innerHTML = ""; $("nlEditions").innerHTML = '<p class="empty">Geen gegevens.</p>';
       $("wlFacts").innerHTML = '<p class="empty">Geen gegevens.</p>';
+      $("moEnabled").disabled = true; $("moEnabledText").textContent = "Niet beschikbaar";
+      $("moFacts").innerHTML = ""; $("moEditions").innerHTML = '<p class="empty">Geen gegevens.</p>';
       return;
     }
     nlNotice(""); nlState = r; dd.nl = r; dd.nlErr = null; renderNl();
@@ -3279,6 +3305,50 @@
       finally { nlBusy = false; renderNl(); }
     };
   }
+  $("moEnabled").onchange = async () => {
+    const sw = $("moEnabled"), on = sw.checked;
+    if (!nlState || nlBusy || !nlState.monthly) { sw.checked = !on; return; }
+    if (!on && !confirm("Het maandoverzicht uitzetten? Er gaat dan op de laatste dag van de maand geen mail.")) { sw.checked = true; return; }
+    nlBusy = true; renderNl();
+    try {
+      const r = await call("newsletter_set_sections", { monthly: on });
+      nlState.sections = r.sections || { ...(nlState.sections || {}), monthly: on };
+      nlState.monthly.enabled = nlState.sections.monthly !== false;
+      toast(`Maandoverzicht staat ${nlState.monthly.enabled ? "aan" : "uit"}.`);
+      loadNewsletter();
+    } catch (e) { sw.checked = !on; if (e.code !== "auth") toast(errText(e), true); }
+    finally { nlBusy = false; renderNl(); }
+  };
+  $("moPreviewForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const to = $("moTo").value.trim(), err = (m) => { $("moSendErr").textContent = m; };
+    err("");
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[A-Za-z]{2,}$/.test(to) || to.length > 254) return err(ERR.bad_email);
+    $("moSend").disabled = true;
+    try {
+      await call("monthly_preview", { to, lang: moSendLang });
+      toast(`Testmail van het maandoverzicht (${moSendLang.toUpperCase()}) verstuurd.`);
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    finally { $("moSend").disabled = false; }
+  };
+  async function showMoPreview() {
+    const btn = $("moShow"), lang = moViewLang;
+    btn.disabled = true;
+    try {
+      if (!moRender[lang] || Date.now() - moRender[lang].at > 120000) {
+        const r = await call("monthly_render", { lang });
+        moRender[lang] = { subject: r.subject || "", html: r.html || "", key: r.key || "", at: Date.now() };
+      }
+      if (lang !== moViewLang) return;
+      const r = moRender[lang];
+      $("moSubject").innerHTML = `<span class="sub">Onderwerp</span> <b>${esc(r.subject || "—")}</b>${r.key ? ` <span class="sub">· ${esc(moMonth(r.key))}</span>` : ""}`;
+      $("moSubject").classList.remove("hidden");
+      $("moView").classList.remove("hidden");
+      mountMail($("moView"), r.html);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { btn.disabled = false; }
+  }
+  $("moShow").onclick = showMoPreview;
   $("nlPreviewForm").onsubmit = async (e) => {
     e.preventDefault();
     const to = $("nlTo").value.trim(), err = (m) => { $("nlSendErr").textContent = m; };

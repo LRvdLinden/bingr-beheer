@@ -35,6 +35,16 @@ struct NewsletterStatus: Equatable {
     let editions: [Edition]
     /// Welkomstmail: verstuurd in de laatste 7 dagen en wachtend; nil = (nog) geen gegevens van de functie.
     let welcome: Welcome?
+    /// Maandoverzicht "Volgende maand op Bingr" (`newsletter_status.monthly`); nil = functie nog niet bijgewerkt.
+    var monthly: Monthly?
+
+    struct Monthly: Equatable {
+        var enabled: Bool
+        let nextAt: Date?
+        /// Maand waar de volgende editie over gaat, bv. "2026-11".
+        let nextKey: String?
+        let editions: [Edition]
+    }
 
     struct Welcome: Equatable {
         let sent7d: Int
@@ -51,6 +61,13 @@ struct NewsletterStatus: Equatable {
         recipientsEn = max(0, j["recipients"]["en"].int ?? 0)
         recipientsTotal = max(0, j["recipients"]["total"].int ?? (recipientsNl + recipientsEn))
         editions = j["editions"].array.enumerated().map { Edition($0.element, index: $0.offset) }
+        if j["monthly"].object != nil {
+            let m = j["monthly"]
+            monthly = Monthly(enabled: m["enabled"].bool ?? true, nextAt: m["next"]["at"].date, nextKey: m["next"]["key"].text,
+                              editions: m["editions"].array.enumerated().map { Edition($0.element, index: $0.offset) })
+        } else {
+            monthly = nil
+        }
         if j["welcome"].object != nil {
             welcome = Welcome(sent7d: max(0, j["welcome"]["sent_7d"].int ?? 0), pending: max(0, j["welcome"]["pending"].int ?? 0))
         } else {
@@ -92,6 +109,13 @@ enum EmailCheck {
 }
 
 extension Fmt {
+    /// "2026-11" -> "november 2026" (maandoverzicht).
+    static func monthNL(_ key: String?) -> String {
+        let names = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
+        guard let key, key.count == 7, let y = Int(key.prefix(4)), let m = Int(key.suffix(2)), (1...12).contains(m) else { return key ?? "—" }
+        return "\(names[m - 1]) \(y)"
+    }
+
     /// "zondag 18 oktober, 09:00" in Nederlandse tijd (volgende verzending van de nieuwsbrief).
     static func longDateTimeNL(_ d: Date?) -> String {
         guard let d else { return "—" }

@@ -171,7 +171,7 @@
 //   newsletter_status      {token}           -> {enabled, next:{key, at} | null, recipients:{nl, en, total}, editions:[{key,
 //                          created_at, recipients, sent, failed, done}]}
 //   newsletter_set_enabled {token, enabled: bool} -> {ok, enabled}  (in admin_audit met enabled)
-//   newsletter_set_sections {token, top10?: bool, popular?: bool} -> {ok, sections:{top10, popular}}  (secties Top 10 deze
+//   newsletter_set_sections {token, top10?: bool, popular?: bool, monthly?: bool} -> {ok, sections:{top10, popular, monthly}}  (secties Top 10 deze
 //                          week en Populair aan/uit; newsletter_status geeft ze als sections; in admin_audit met de nieuwe stand)
 //   newsletter_preview     {token, to, lang?: nl|en} -> {ok}  (de huidige editie alleen naar dat adres; het adres wordt
 //                          gecontroleerd en nooit gelogd: in admin_audit alleen "preview" en de taal. Max. 10 per uur per IP.)
@@ -180,6 +180,11 @@
 //                          adres nooit gelogd, in admin_audit alleen "welcome_preview" en de taal; limiet gedeeld met
 //                          newsletter_preview)
 //   welcome_render         {token, lang?}    -> {subject, html}  (welkomstmail voor de voorbeeldweergave)
+//   monthly_preview        {token, to, lang?: nl|en} -> {ok}  (maandoverzicht "Volgende maand op Bingr" alleen naar dat adres;
+//                          adres nooit gelogd, in admin_audit alleen de taal; limiet gedeeld met newsletter_preview)
+//   monthly_render         {token, lang?}    -> {subject, html, key}  (maandoverzicht van de volgende maand, voor de weergave)
+//                          newsletter_status bevat monthly: {enabled, next, editions[]} | null; aan/uit met
+//                          newsletter_set_sections {monthly: bool}.
 //                          newsletter_status bevat welcome: {sent_7d, pending} | null (alleen aantallen).
 //                          Fouten: newsletter_not_configured (geen geheim), newsletter_not_deployed, newsletter_forbidden,
 //                          newsletter_unreachable, en van newsletter zelf bv. bad_email, rate_limited, tmdb_unavailable,
@@ -1428,6 +1433,29 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (status !== 200) return json(out, status);
       await audit("welcome_preview", ip, null, { lang });
       return json({ ok: true });
+    }
+    case "monthly_preview": {
+      // maandoverzicht als voorbeeld naar één adres: nooit het adres loggen of in het logboek zetten
+      const to = cleanEmail(body.to);
+      if (!to) return json({ error: "bad_email" }, 400);
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      // zelfde teller als newsletter_preview: samen max. NL_PREVIEW_MAX per uur
+      if (!(await rateOk(`admin-nlpreview:${ip}`, NL_PREVIEW_MAX, NL_PREVIEW_WINDOW))) {
+        return json({ error: "rate_limited", retry_after: NL_PREVIEW_WINDOW }, 429);
+      }
+      const { status, out } = await nlCall("monthly_preview", { to, lang });
+      if (status !== 200) return json(out, status);
+      await audit("monthly_preview", ip, null, { lang });
+      return json({ ok: true });
+    }
+    case "monthly_render": {
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      const { status, out } = await nlCall("monthly_render", { lang });
+      if (status !== 200) return json(out, status);
+      const r = renderView(out);
+      return r ? json(r) : json({ error: "server_error" }, 502);
     }
     case "welcome_render": {
       const lang = cleanLang(body.lang);

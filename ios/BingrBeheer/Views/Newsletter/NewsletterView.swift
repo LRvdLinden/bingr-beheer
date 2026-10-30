@@ -7,7 +7,9 @@ import WebKit
 /// (newsletter_set_sections). Acties newsletter_status, newsletter_set_enabled,
 /// newsletter_preview en newsletter_render (functie admin → newsletter). Blok Welkomstmail: aantallen uit
 /// newsletter_status.welcome, voorbeeld sturen (welcome_preview) en bekijken (welcome_render). Blok Eigen mailing: link naar
-/// MailingView (zelf een mail opstellen en versturen, acties mailing_*).
+/// MailingView (zelf een mail opstellen en versturen, acties mailing_*). Blok Maandoverzicht ("Volgende maand op Bingr"):
+/// schakelaar (newsletter_set_sections monthly), volgende verzending, testmail (monthly_preview), voorbeeld (monthly_render)
+/// en de geschiedenis van maandedities (newsletter_status.monthly).
 struct NewsletterView: View {
     @Environment(Session.self) private var session
 
@@ -33,6 +35,14 @@ struct NewsletterView: View {
     @State private var wViewLang = "nl"
     @State private var wRendering = false
 
+    @State private var mTo = ""
+    @State private var mSendLang = "nl"
+    @State private var mSending = false
+    @State private var mSendError = ""
+    @State private var mViewLang = "nl"
+    @State private var mRendering = false
+    @State private var confirmMonthlyOff = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -50,6 +60,7 @@ struct NewsletterView: View {
                         viewCard
                     }
                 }
+                monthlyCard
                 welcomeCard
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
@@ -76,6 +87,12 @@ struct NewsletterView: View {
             Button("Aanzetten") { Task { await setEnabled(true) } }
         } message: {
             Text(confirmText)
+        }
+        .alert("Maandoverzicht uitzetten?", isPresented: $confirmMonthlyOff) {
+            Button("Annuleren", role: .cancel) {}
+            Button("Uitzetten", role: .destructive) { Task { await setSection("monthly", false, "Maandoverzicht") } }
+        } message: {
+            Text("Er gaat dan op de laatste dag van de maand geen mail.")
         }
         .sheet(item: $rendered) { mail in
             NavigationStack {
@@ -252,6 +269,109 @@ struct NewsletterView: View {
         .card()
     }
 
+    // MARK: maandoverzicht
+
+    private var monthlyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(title: "Maandoverzicht",
+                       subtitle: "\"Volgende maand op Bingr\": op de laatste dag van elke maand om 18:00 (Nederlandse tijd) wat er de volgende maand nieuw komt: films in de bioscoop, nieuw op streaming en digitaal, nieuwe series en nieuwe seizoenen. Zelfde leden, opmaak en afmeldlink als de nieuwsbrief, één keer per maand. Gaat alleen als de nieuwsbrief ook aan staat.")
+            if let s = status, let m = s.monthly {
+                Toggle(isOn: Binding(get: { m.enabled }, set: { on in
+                    if on { Task { await setSection("monthly", true, "Maandoverzicht") } } else { confirmMonthlyOff = true }
+                })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.enabled ? "Aan" : "Uit").font(.subheadline.weight(.bold))
+                        Text(!m.enabled ? "Er wordt geen maandoverzicht verstuurd" : s.enabled ? "Gaat op de laatste dag van de maand" : "Maar de nieuwsbrief staat uit, dus er gaat niets")
+                            .font(.caption).foregroundStyle(Color.textDim)
+                    }
+                }
+                .tint(.bingrRed)
+                .disabled(switching)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 8) {
+                    cell("Volgende verzending", Fmt.longDateTimeNL(m.nextAt), hint: m.nextKey.map { "over \(Fmt.monthNL($0))" }, small: true)
+                    cell("Status", m.enabled && s.enabled ? "aan" : "uit", hint: m.enabled && s.enabled ? "zelfde ontvangers als de nieuwsbrief" : nil, small: true)
+                }
+                Divider().overlay(Color.line)
+                Text("Testmail").font(.subheadline.weight(.bold))
+                Text("Stuurt het maandoverzicht van de volgende maand alleen naar dit adres. Het adres wordt niet bewaard en niet gelogd. Zelfde limiet als het voorbeeld van de nieuwsbrief.")
+                    .font(.caption).foregroundStyle(Color.textDim)
+                TextField("E-mailadres", text: $mTo)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .fieldStyle()
+                    .onChange(of: mTo) { _, v in if v.count > 254 { mTo = String(v.prefix(254)) } }
+                Picker("Taal", selection: $mSendLang) {
+                    Text("Nederlands").tag("nl")
+                    Text("Engels").tag("en")
+                }
+                .pickerStyle(.segmented)
+                if !mSendError.isEmpty {
+                    Text(mSendError).font(.subheadline).foregroundStyle(Color.warn)
+                }
+                Button {
+                    Task { await sendMonthlyPreview() }
+                } label: {
+                    HStack {
+                        if mSending { ProgressView().tint(.white) }
+                        Text("Testmail sturen")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bingr)
+                .disabled(mSending)
+                Divider().overlay(Color.line)
+                Text("Voorbeeld").font(.subheadline.weight(.bold))
+                Picker("Taal", selection: $mViewLang) {
+                    Text("NL").tag("nl")
+                    Text("EN").tag("en")
+                }
+                .pickerStyle(.segmented)
+                Button {
+                    Task { await renderMonthly() }
+                } label: {
+                    HStack {
+                        if mRendering { ProgressView().tint(.white) }
+                        Text("Voorbeeld tonen")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bingrGhost)
+                .disabled(mRendering)
+                Divider().overlay(Color.line)
+                Text("Geschiedenis").font(.subheadline.weight(.bold))
+                if m.editions.isEmpty { EmptyText(text: "Nog geen maandoverzicht verstuurd.") }
+                ForEach(m.editions) { e in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Chip(text: "MAAND")
+                                Text(Fmt.monthNL(e.key)).font(.subheadline.weight(.bold))
+                            }
+                            HStack(spacing: 6) {
+                                Text(Fmt.dateTime(e.createdAt)).font(.caption).foregroundStyle(Color.textDim)
+                                if !e.done { Chip(text: "bezig", tone: .warn) }
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        number(e.recipients, "ontvangers", .white)
+                        number(e.sent, "verstuurd", .white)
+                        number(e.failed, "mislukt", e.failed > 0 ? Color.warn : .white)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            } else if status != nil {
+                EmptyText(text: "Nog niet beschikbaar (workflow Backend in iptv-ios-appletv draaien).")
+            } else if loadError != nil {
+                EmptyText(text: "Geen gegevens.")
+            } else {
+                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .card()
+    }
+
     // MARK: welkomstmail
 
     private var welcomeCard: some View {
@@ -416,9 +536,12 @@ struct NewsletterView: View {
             let r = try await session.call("newsletter_set_sections", [key: on])
             let top10 = r["sections"]["top10"].bool ?? (key == "top10" ? on : status?.top10 ?? true)
             let popular = r["sections"]["popular"].bool ?? (key == "popular" ? on : status?.popular ?? true)
+            let monthly = r["sections"]["monthly"].bool ?? (key == "monthly" ? on : status?.monthly?.enabled ?? true)
             status?.top10 = top10
             status?.popular = popular
-            session.show("\(title) staat \((key == "top10" ? top10 : popular) ? "aan" : "uit").")
+            status?.monthly?.enabled = monthly
+            let now = key == "top10" ? top10 : key == "popular" ? popular : monthly
+            session.show("\(title) staat \(now ? "aan" : "uit").")
         } catch {
             session.report(error)
         }
@@ -452,6 +575,32 @@ struct NewsletterView: View {
 }
 
 extension NewsletterView {
+    fileprivate func sendMonthlyPreview() async {
+        mSendError = ""
+        let address = mTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailCheck.looksValid(address) else { mSendError = APIError.text("bad_email"); return }
+        mSending = true
+        defer { mSending = false }
+        do {
+            _ = try await session.call("monthly_preview", ["to": address, "lang": mSendLang])
+            session.show("Testmail van het maandoverzicht (\(mSendLang.uppercased())) verstuurd.")
+        } catch let e as APIError {
+            if e.code != "auth" { mSendError = e.errorDescription ?? "" }
+        } catch {}
+    }
+
+    fileprivate func renderMonthly() async {
+        mRendering = true
+        defer { mRendering = false }
+        do {
+            let r = try await session.call("monthly_render", ["lang": mViewLang])
+            guard let html = r["html"].string, !html.isEmpty else { session.show(APIError.text("server_error"), bad: true); return }
+            rendered = RenderedMail(subject: r["subject"].string ?? "", html: html)
+        } catch {
+            session.report(error)
+        }
+    }
+
     fileprivate func sendWelcomePreview() async {
         wSendError = ""
         let address = wTo.trimmingCharacters(in: .whitespacesAndNewlines)
