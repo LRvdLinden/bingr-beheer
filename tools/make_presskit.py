@@ -68,22 +68,21 @@ Latest version: https://bingr.online/presskit
 Website: https://bingr.online  -  Support: https://support.bingr.online
 
 Bingr is a media player for your own IPTV subscription on iPhone, iPad, Apple TV, Mac,
-Android, Android TV / Google TV / Fire TV, Samsung TV, Windows and in the browser. Bingr does not
+Android, Android TV / Google TV / Fire TV, Windows and in the browser. Bingr does not
 provide, sell or host any channels, movies or series.
 
 CONTENTS
   README.txt              this file
 {"  CREDITS.txt             credits for the film and series images in the screenshots" + chr(10) if "CREDITS.txt" in credit_files else ""}{chr(10).join(lines)}
-  Planned: {", ".join(x + "/" for x in cfg.get("planned", []))}
-
+{("  Planned: " + ", ".join(x + "/" for x in cfg["planned"]) + chr(10)) if cfg.get("planned") else ""}
 TERMS OF USE FOR PRESS
   Free to use for news coverage, reviews and articles about Bingr, in print and online.
   Do not alter the logo or the screenshots beyond cropping and resizing, and do not use them
   to suggest endorsement or for other products.
   {credits_en}
   Apple, iPhone, iPad, Apple TV and Mac are trademarks of Apple Inc. Android, Google TV and
-  Android TV are trademarks of Google LLC, Fire TV of Amazon.com, Inc., Samsung and Tizen of
-  Samsung Electronics Co., Ltd. Windows is a trademark of Microsoft Corporation.
+  Android TV are trademarks of Google LLC and Fire TV of Amazon.com, Inc. Windows is a trademark
+  of Microsoft Corporation.
 
 Questions: https://support.bingr.online
 

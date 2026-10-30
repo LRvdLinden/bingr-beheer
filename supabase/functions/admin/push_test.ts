@@ -60,7 +60,7 @@ Deno.test("push: doelgroep", () => {
   ok(err({ ...base, target: { platforms: [] } }) === "no_platforms", "geen platforms");
   ok(err({ ...base, target: { platforms: ["tvos"] } }) === "no_push_platform", "tvOS heeft geen systeem-push");
   ok(err({ ...base, target: { platforms: ["ios", "androidtv"] } }) === "no_push_platform", "Android TV heeft geen systeem-push");
-  ok(err({ ...base, target: { platforms: ["tizen"] } }) === "no_push_platform", "Samsung TV heeft geen systeem-push");
+  ok(err({ ...base, target: { platforms: ["tizen"] } }) === "bad_platform", "Samsung TV vervallen: onbekend platform");
   ok(err({ ...base, target: { platforms: ["windows"] } }) === "bad_platform", "onbekend platform");
   const pl = cleanTarget({ platforms: ["web", "ipados", "ios", "web"] });
   ok(pl.ok && "platforms" in pl.value && pl.value.platforms.join() === "ios,ipados,web", "vaste volgorde, ontdubbeld");

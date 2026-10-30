@@ -16,8 +16,10 @@ srv_rm(){ ftps_try "rm -f \"$(srv_dir)/$1\"" >/dev/null 2>&1 || true; }
 
 # android-aab = Android App Bundle voor Google Play (zelfde build als de APK, eigen map en branch inbox-android-aab)
 # windows = installer (.exe) van Bingr voor Windows (repo bingr-windows), branch inbox-windows
-# webos = LG TV-app (.ipk, repo bingr-webos), branch inbox-webos (build 147); niet openbaar, alleen via een kortgeldige link
-PLATS="apple android android-aab tizen windows webos beheer"
+# Samsung TV (tizen) en LG TV (webos) worden niet meer ondersteund: geen inbox-branches meer verwerken; hun oude pakketten
+# blijven op de server staan, maar gaan in het manifest naar "retired" (niet in Downloads, geen downloadlink).
+PLATS="apple android android-aab windows beheer"
+RETIRED_PLATS="tizen webos"
 
 builds_init(){
   BW=$(mktemp -d); mkdir -p "$BW/srv"
@@ -89,7 +91,7 @@ builds_current(){ python3 -c 'import json,sys; print((json.load(open(sys.argv[1]
 builds_import_repo(){
   [ -f versions/latest.json ] || return 0
   local key plat path build
-  for key in android tizen apple beheer; do
+  for key in android apple beheer; do
     plat=$key
     path=$(python3 -c 'import json,sys; print((json.load(open("versions/latest.json")).get(sys.argv[1]) or {}).get("path",""))' "$key")
     build=$(python3 -c 'import json,sys; print((json.load(open("versions/latest.json")).get(sys.argv[1]) or {}).get("build",0))' "$key")
@@ -210,6 +212,18 @@ PY
 builds_finish(){
   # Beheer-app: notities (nieuwste en oudere builds) uit de interne changelog ios/changelog.json, ook voor pakketten
   # die al op de server staan (bv. met de oude uitpak-uitleg). Niet de openbare Bingr-changelog.
+  # vervallen platforms (Samsung TV, LG TV) uit platforms halen en bewaren onder retired; de bestanden blijven staan
+  if python3 - "$BW/srv/manifest.json" $RETIRED_PLATS <<'PY'
+import json, sys
+mp, plats = sys.argv[1], sys.argv[2:]
+m = json.load(open(mp)); p = m.get("platforms") or {}
+moved = [x for x in plats if x in p]
+if not moved: sys.exit(1)
+r = m.setdefault("retired", {})
+for x in moved: r[x] = p.pop(x)
+json.dump(m, open(mp, "w"), indent=1)
+PY
+  then BUILDS_CHANGED=1; echo "::notice::Vervallen platforms uit Downloads gehaald (bestanden blijven op de server)."; fi
   if [ -f ios/changelog.json ] && python3 tools/beheer_notes.py --manifest "$BW/srv/manifest.json"; then
     BUILDS_CHANGED=1; echo "::notice::beheer: notities bijgewerkt uit ios/changelog.json."
   fi

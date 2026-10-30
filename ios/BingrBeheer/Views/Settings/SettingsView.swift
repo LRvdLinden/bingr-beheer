@@ -29,8 +29,6 @@ struct SettingsView: View {
         .init(key: "apple", label: "Apple", hint: "iPhone, iPad, Apple TV en Mac"),
         .init(key: "android", label: "Android", hint: "Telefoons en tablets"),
         .init(key: "androidtv", label: "Android TV", hint: "Android TV, Google TV en Fire TV"),
-        .init(key: "tizen", label: "Samsung TV", hint: "Tizen"),
-        .init(key: "webos", label: "LG TV", hint: "webOS"),
         .init(key: "web", label: "Web", hint: "Webspeler en bingr.online"),
     ]
 
@@ -132,7 +130,7 @@ struct SettingsView: View {
                         Label(AppSection.downloads.title, systemImage: AppSection.downloads.icon)
                     }
                 } footer: {
-                    Text("Buildpakketten van Bingr en BingrBeheer (APK, Samsung TV, Xcode-projecten) van de server van beheer.bingr.online.")
+                    Text("Buildpakketten van Bingr en BingrBeheer (APK, Windows-installer, Xcode-projecten) van de server van beheer.bingr.online.")
                 }
             }
 

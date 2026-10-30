@@ -109,7 +109,7 @@ struct APIError: Error, LocalizedError {
         "too_many_accounts": "Kies hoogstens 500 accounts.",
         "bad_account": "Ongeldig account in de lijst.",
         "no_platforms": "Kies minstens één platform.",
-        "no_push_platform": "Apple TV, Android TV en Samsung TV hebben geen systeem-push.",
+        "no_push_platform": "Apple TV en Android TV hebben geen systeem-push.",
         // pushmeldingen van deze app (admin_push_register / _prefs / _test)
         "bad_device_id": "Ongeldige apparaat-id voor pushmeldingen.",
         "bad_apns_token": "Ongeldig pushtoken van Apple.",

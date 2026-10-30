@@ -11,8 +11,7 @@
 | 🟠 P1 | Statuspagina en buildverhuizing | 5 |
 | 🟠 P1 | Echte pushnotificaties | 14 |
 | 🟠 P1 | Beveiliging en SEO | 4 |
-| 🟡 P2 | LG webOS | 3 |
-| **Totaal** | | **28** |
+| **Totaal** | | **25** |
 
 **Prioriteiten:** 🔴 P0 = kritiek · 🟠 P1 = belangrijk · 🟡 P2 = ontwikkeling
 
@@ -51,7 +50,7 @@
   Centraal pushplatform met veilig server-side verzenden; gebruik zo nodig andere platformspecifieke diensten.
 
 - [ ] **Platformondersteuning vaststellen**  
-  iOS, iPadOS, macOS, Android, Google TV, Apple TV/tvOS, Samsung Tizen, LG webOS en web; systeem-push niet claimen waar niet ondersteund.
+  iOS, iPadOS, macOS, Android, Google TV, Apple TV/tvOS en web; systeem-push niet claimen waar niet ondersteund.
 
 - [ ] **Automatische push bij elke nieuwe release**  
   Na succesvolle publicatie, ook bij uitsluitend een nieuw buildnummer binnen dezelfde versie.
@@ -101,21 +100,6 @@
 
 - [ ] **Sitemap en zoekmachine-indexering**  
   `bingr.online/sitemap.xml` controleren of aanmaken; beheer niet indexeren en privépagina's daadwerkelijk afschermen.
-
----
-
-## 🟡 P2 — LG webOS
-
-- [ ] **LG webOS-app bouwen**  
-  Op basis van Apple TV: profielen, koppelen, Live TV, films, series, zoeken, speler en instellingen.
-
-- [ ] **LG webOS op website toevoegen**  
-  Platform en werkelijke beschikbaarheidsstatus op de site en support verwerken.
-
-- [ ] webOS ook koppelen aan OneSignal voor pushmeldingen
-
-- [ ] **webOS-repository en builds koppelen**  
-  `LRvdLinden/bingr-webOS` integreren met beveiligde buildworkflow via `BINGR_BEHEER_TOKEN` (alleen secret).
 
 ---
 

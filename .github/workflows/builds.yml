@@ -1,6 +1,6 @@
 name: Builds
 
-# Zet de buildpakketten van Bingr (APK, App Bundle .aab voor Google Play, Samsung TV .wgt, Windows-installer .exe, Xcode-projecten) in de afgesloten map builds/ op de server van
+# Zet de buildpakketten van Bingr (APK, App Bundle .aab voor Google Play, Windows-installer .exe, Xcode-projecten) in de afgesloten map builds/ op de server van
 # beheer.bingr.online. Ze staan nooit onversleuteld op GitHub: de workflows van iptv-ios-appletv, bingr-android en bingr-windows leveren
 # ze versleuteld aan op de branch inbox-<platform> van de PRIVÉ repo LRvdLinden/bingr-inbox, de Beheer-app op inbox-beheer
 # van deze repo (tools/seal_build.sh). Deze workflow haalt ze op (inbox-repo met secret BINGR_INBOX_READ_TOKEN; branches

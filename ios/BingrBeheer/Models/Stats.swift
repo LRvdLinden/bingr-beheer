@@ -91,10 +91,10 @@ struct Stats {
         }
         platforms = j["platforms"].array.map {
             PlatformCount(platform: $0["platform"].text ?? "?", version: nil, devices: $0["devices"].int ?? 0)
-        }
+        }.filter { !Labels.isRetired($0.platform) }
         versions = j["versions"].array.map {
             PlatformCount(platform: $0["platform"].text ?? "?", version: $0["app_version"].text ?? "?", devices: $0["devices"].int ?? 0)
-        }
+        }.filter { !Labels.isRetired($0.platform) }
         smtp = j["smtp"].bool ?? false
     }
 }

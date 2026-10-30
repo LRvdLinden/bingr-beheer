@@ -1,5 +1,5 @@
 {
-  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is; 'include' = alleen deze namen op het eerste niveau; 'exclude' = mappen of bestanden die op elk niveau wegblijven (bv. raw). Later erbij: SamsungTV/ (zelfde vorm, bv. bron appstore/samsungtv/...). Windows/ maakt presskit/make_windows.py (iconen uit bingr-windows, vensters rond appstore/en/Mac/raw).",
+  "_": "Inhoud van Bingr-PressKit.zip (tools/make_presskit.py, workflow PressKit). Per map een bron in deze repo; 'optional' = overslaan als de bron er (nog) niet is; 'include' = alleen deze namen op het eerste niveau; 'exclude' = mappen of bestanden die op elk niveau wegblijven (bv. raw). Windows/ maakt presskit/make_windows.py (iconen uit bingr-windows, vensters rond appstore/en/Mac/raw).",
   "name": "Bingr-PressKit",
   "files": [
     { "to": "CREDITS.txt", "from": "appstore/en/CREDITS.txt", "optional": true }
@@ -23,5 +23,5 @@
     },
     { "to": "Promo", "from": "appstore/en/Promo", "optional": true, "label": "App Store header and search promos" }
   ],
-  "planned": ["SamsungTV"]
+  "planned": []
 }

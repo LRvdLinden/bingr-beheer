@@ -6,8 +6,8 @@
 
 /** Platforms met systeem-push (APNs, FCM, Web Push). */
 export const PUSH_PLATFORMS = ["ios", "ipados", "macos", "android", "web"] as const;
-/** Platforms zonder systeem-push: daar registreert de app niet (tvOS, Android TV, Samsung TV, LG TV). */
-export const NO_PUSH_PLATFORMS = ["tvos", "androidtv", "tizen", "webos"] as const;
+/** Platforms zonder systeem-push: daar registreert de app niet (tvOS, Android TV). */
+export const NO_PUSH_PLATFORMS = ["tvos", "androidtv"] as const;
 export type PushPlatform = typeof PUSH_PLATFORMS[number];
 
 export const TITLE_MAX = 100;

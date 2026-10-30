@@ -224,7 +224,7 @@ struct ServerNow {
         proxy30d = j["proxy_30d"]
         firstDay = j["first_day"].text
         tables = j["tables"].array.map { Table(name: $0["name"].text ?? "?", bytes: $0["bytes"].double ?? 0, rows: $0["rows"].int) }
-        devices = j["devices"].array.map { Device(platform: $0["platform"].text ?? "other", devices: $0["devices"].int ?? 0, active30d: $0["active_30d"].int ?? 0, live: $0["live"].int ?? 0) }
+        devices = j["devices"].array.map { Device(platform: $0["platform"].text ?? "other", devices: $0["devices"].int ?? 0, active30d: $0["active_30d"].int ?? 0, live: $0["live"].int ?? 0) }.filter { !Labels.isRetired($0.platform) }
         storage = j["storage"].array.map { Bucket(bucket: $0["bucket"].text ?? "?", isPublic: $0["public"].bool ?? false, objects: $0["objects"].int ?? 0, bytes: $0["bytes"].double ?? 0) }
         cron = j["cron"].array.map {
             Job(name: $0["name"].text ?? "?", schedule: $0["schedule"].text ?? "", active: $0["active"].bool ?? false, lastStart: $0["last_start"].date,

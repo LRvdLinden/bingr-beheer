@@ -15,7 +15,7 @@ enum PushAudience: String, CaseIterable, Identifiable {
     }
 }
 
-/// Keuze bij "Platforms": alleen platforms met systeem-push. tvOS, Android TV en Samsung TV staan er grijs bij.
+/// Keuze bij "Platforms": alleen platforms met systeem-push. tvOS en Android TV staan er grijs bij.
 struct PushPlatformOption: Identifiable, Hashable {
     let id: String
     let label: String
@@ -34,7 +34,6 @@ struct PushPlatformOption: Identifiable, Hashable {
     static let withoutPush: [PushPlatformOption] = [
         PushPlatformOption(id: "tvos", label: "Apple TV", keys: [], icon: "appletv"),
         PushPlatformOption(id: "androidtv", label: "Android TV", keys: [], icon: "tv"),
-        PushPlatformOption(id: "tizen", label: "Samsung TV", keys: [], icon: "tv"),
     ]
 
     /// Naam van één platformsleutel uit de functie (by_platform, doelgroep in de geschiedenis).

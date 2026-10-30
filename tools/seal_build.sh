@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Levert een buildpakket VERSLEUTELD aan voor de afgesloten map builds/ op de server van beheer.bingr.online.
 # Gebruik (vanuit een anonieme clone van bingr-beheer, of na een anonieme download van dit script en builds.pub.pem):
-#   TOKEN=<token met alleen Contents: write op de inbox-repo> tools/seal_build.sh <apple|android|android-aab|tizen|windows|webos|beheer> <bestand> <versie> <build> [notities.md]
+#   TOKEN=<token met alleen Contents: write op de inbox-repo> tools/seal_build.sh <apple|android|android-aab|windows|beheer> <bestand> <versie> <build> [notities.md]
 # Doel: de PRIVÉ repo ${BINGR_INBOX_REPO:-LRvdLinden/bingr-inbox} (H3: aanleverende repo's hebben geen schrijftoken meer op
 # de openbare repo bingr-beheer, zodat niemand daarmee het dashboard of de functie admin kan vervangen). Alleen de
 # workflow Beheer-app van bingr-beheer zelf levert met zijn eigen GITHUB_TOKEN aan bij bingr-beheer, en dan alleen
@@ -16,8 +16,9 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 plat="${1:?platform}"; file="${2:?bestand}"; ver="${3:?versie}"; build="${4:?build}"; notes="${5:-}"
-# webos = LG TV-app (.ipk, repo bingr-webos), build 147
-case "$plat" in apple|android|android-aab|tizen|windows|webos|beheer) ;; *) echo "::error::Onbekend platform: $plat"; exit 1 ;; esac
+# Samsung TV (tizen) en LG TV (webos) worden niet meer ondersteund: niets aanleveren, wel groen (oude workflows breken niet)
+case "$plat" in tizen|webos) echo "::notice::Platform $plat wordt niet meer ondersteund: pakket niet aangeleverd."; exit 0 ;; esac
+case "$plat" in apple|android|android-aab|windows|beheer) ;; *) echo "::error::Onbekend platform: $plat"; exit 1 ;; esac
 [[ "$build" =~ ^[0-9]{1,6}$ ]] || { echo "::error::Ongeldig buildnummer"; exit 1; }
 [[ "$ver" =~ ^[0-9][0-9.]{0,15}$ ]] || { echo "::error::Ongeldige versie"; exit 1; }
 name="$(basename "$file")"

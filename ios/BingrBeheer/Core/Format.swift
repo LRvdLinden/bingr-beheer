@@ -92,6 +92,12 @@ enum Fmt {
 
 /// Vaste labels (zelfde teksten als web/admin.js).
 enum Labels {
+    /// Samsung TV (tizen) en LG TV (webos) worden niet meer ondersteund: niet in widgets en de tab Server.
+    /// Hun labels hieronder blijven alleen voor oude apparaten en tickets.
+    static func isRetired(_ p: String?) -> Bool {
+        ["tizen", "samsung tv", "webos", "lg tv", "lg webos"].contains((p ?? "").trimmingCharacters(in: .whitespaces).lowercased())
+    }
+
     static func platform(_ p: String?) -> String {
         switch p ?? "" {
         case "browser": return "Webbrowser"

@@ -15,7 +15,7 @@ export type Source = { label: string; desc: string; series: SSeries[]; fn?: "cal
 
 const PLATFORM_SERIES: [string, string][] = [
   ["ios", "iPhone"], ["ipados", "iPad"], ["macos", "Mac"], ["tvos", "Apple TV"], ["android", "Android"],
-  ["androidtv", "Android TV"], ["tizen", "Samsung TV"], ["webos", "LG TV"], ["web", "Webspeler"], ["windows", "Windows"],
+  ["androidtv", "Android TV"], ["web", "Webspeler"], ["windows", "Windows"],
 ];
 
 /** Bronnen (volgorde = volgorde in de tab; serievolgorde = kleur). */

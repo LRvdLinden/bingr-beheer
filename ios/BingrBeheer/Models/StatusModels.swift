@@ -63,7 +63,7 @@ struct StatusOverview {
                      startedAt: $0["started_at"].date, endedAt: $0["ended_at"].date,
                      durationS: $0["duration_s"].int, cause: $0["cause"].text)
         }
-        devices = j["devices"].array.map { DeviceCount(platform: $0["platform"].text ?? "?", devices: $0["devices"].int ?? 0) }
+        devices = j["devices"].array.map { DeviceCount(platform: $0["platform"].text ?? "?", devices: $0["devices"].int ?? 0) }.filter { !Labels.isRetired($0.platform) }
         let cron = j["scheduler"]["cron"]
         cronExists = cron.object != nil
         cronActive = cron["active"].bool ?? false

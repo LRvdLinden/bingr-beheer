@@ -23,11 +23,15 @@
     if (d < 30) return `${d} dagen geleden`;
     return fmtDate(v);
   }
-  // ruwe platformnamen van de apps ("iPhone", "Apple TV", "tizen", "browser", "windows") en platformgroepen van de server
-  // (ios, ipados, macos, tvos, android, androidtv, tizen, webos, web, windows, other)
+  // ruwe platformnamen van de apps ("iPhone", "Apple TV", "browser", "windows") en platformgroepen van de server
+  // (ios, ipados, macos, tvos, android, androidtv, web, windows, other). tizen (Samsung TV) en webos (LG TV) worden niet
+  // meer ondersteund: hun namen blijven hier alleen voor oude apparaten en tickets in de database.
   const PLATFORM = { browser: "Webbrowser", tizen: "Samsung TV", windows: "Windows", webos: "LG TV", "lg tv": "LG TV", "lg webos": "LG TV", "?": "Onbekend", ios: "iPhone", ipados: "iPad", macos: "Mac",
     tvos: "Apple TV", android: "Android", androidtv: "Android TV", web: "Webspeler", other: "Overig" };
   const pname = (p) => PLATFORM[p] || PLATFORM[String(p || "").toLowerCase()] || p || "Onbekend";
+  // vervallen platforms (Samsung TV, LG TV): niet in widgets, filters en de tab Server (de gegevens blijven in de database)
+  const RETIRED = ["tizen", "samsung tv", "webos", "lg tv", "lg webos"];
+  const isRetired = (p) => RETIRED.includes(String(p || "").trim().toLowerCase());
   // landen: alleen de landcode (laatst gezien land, uit het netwerk via de land-IP-tabel van DB-IP Lite, CC BY 4.0: bronvermelding
   // in de widget; nooit een IP-adres). Vlag-emoji en Nederlandse naam.
   const flag = (cc) => (/^[A-Z]{2}$/.test(cc || "") ? String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "");
@@ -560,7 +564,7 @@
         const live = w.type === "platforms" && o.source === "live";
         if (live && !dd.status) { body.innerHTML = dd.statusErr ? fail(dd.statusErr) : wait(); return; }
         const src = w.type === "versions" ? s.versions || [] : live ? dd.status.devices || [] : s.platforms || [];
-        const rows = src.filter((p) => !o.platforms.length || o.platforms.includes(p.platform));
+        const rows = src.filter((p) => !isRetired(p.platform) && (!o.platforms.length || o.platforms.includes(p.platform)));
         const sub = (live ? "Gezien in de laatste 15 minuten" : w.type === "versions" ? "Per platform, laatste 30 dagen" : "Gezien in de laatste 30 dagen") + (o.platforms.length ? ` · ${o.platforms.map(pname).join(", ")}` : "");
         body.innerHTML = `${head(sub)}<div class="hbars"></div>`;
         hbars(body.querySelector(".hbars"), rows.map((p) => ({ n: p.devices,
@@ -779,7 +783,7 @@
   // instellingen van één widget (lade): grootte en de opties van het type
   function openWidgetSettings(w) {
     const t = WTYPES[w.type];
-    const known = [...new Set([...(dd.stats?.platforms || []), ...(dd.stats?.versions || []), ...(dd.status?.devices || [])].map((p) => p.platform).filter(Boolean).concat(w.options.platforms || []))];
+    const known = [...new Set([...(dd.stats?.platforms || []), ...(dd.stats?.versions || []), ...(dd.status?.devices || [])].map((p) => p.platform).filter(Boolean).concat(w.options.platforms || []))].filter((p) => !isRetired(p));
     const field = (k, [kind, vals, def]) => {
       const [label, names] = OPT_LABEL[k], cur = w.options[k];
       if (kind === "bool") return `<label class="switch"><input type="checkbox" data-o="${k}" ${cur ? "checked" : ""}><span class="track"></span><span>${esc(label)}</span></label>`;
@@ -1696,7 +1700,8 @@
     const table = (head, rows) => `<div class="table-wrap srv-table"><table><thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ""}>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
     $("srvTables").innerHTML = n.tables.length ? table(["Tabel", "Grootte", "Rijen"], n.tables.slice(0, 12).map((x) =>
       `<tr><td><code>${esc(x.name)}</code></td><td class="num">${esc(fmtSize(x.bytes))}</td><td class="num">${x.rows == null ? "—" : `≈ ${esc(compact(x.rows))}`}</td></tr>`)) : '<p class="empty">Geen tabellen.</p>';
-    $("srvDevices").innerHTML = n.devices.length ? table(["Platform", "Totaal", "30 d", "Nu"], n.devices.map((x) =>
+    const srvDevs = n.devices.filter((x) => !isRetired(x.platform));
+    $("srvDevices").innerHTML = srvDevs.length ? table(["Platform", "Totaal", "30 d", "Nu"], srvDevs.map((x) =>
       `<tr><td>${esc(pname(x.platform))}</td><td class="num">${nf.format(x.devices)}</td><td class="num">${nf.format(x.active_30d)}</td><td class="num">${nf.format(x.live)}</td></tr>`)) : '<p class="empty">Geen apparaten.</p>';
     const CRON_ST = { succeeded: ["ok", "geslaagd"], failed: ["bad", "mislukt"], running: ["warn", "bezig"], starting: ["warn", "start"] };
     $("srvCron").innerHTML = n.cron.length ? table(["Taak", "Laatste", "Fouten 24 u"], n.cron.map((x) => {
@@ -2140,7 +2145,7 @@
   const LINK_PLATFORMS = [
     ["apple", "Apple", "iPhone, iPad, Apple TV en Mac. Uit: de apps tonen de vergelijking, maar geen link, knop of QR-code."],
     ["android", "Android", "Telefoons en tablets"], ["androidtv", "Android TV", "Android TV, Google TV en Fire TV"],
-    ["tizen", "Samsung TV", "Tizen"], ["webos", "LG TV", "webOS"], ["web", "Web", "Webspeler, bingr.online en de Windows-app"],
+    ["web", "Web", "Webspeler, bingr.online en de Windows-app"],
   ];
   async function loadSettings() {
     const el = $("linkSettings");
@@ -2175,9 +2180,7 @@
   const DL_PLATFORMS = [
     ["android", "Android en Android TV", "APK voor telefoons, tablets, Android TV, Google TV en Fire TV"],
     ["android-aab", "Android App Bundle (Google Play)", ".aab voor Google Play (telefoon, tablet en Google TV), getekend met de upload key"],
-    ["tizen", "Samsung TV", ".wgt voor Tizen"],
     ["windows", "Windows (.exe)", "Installer voor Windows 10 en 11 (x64)"],
-    ["webos", "LG TV (webOS)", ".ipk voor LG webOS (niet openbaar)"],
     ["apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS"],
     ["beheer", "BingrBeheer", "Xcode-project (zip) van deze beheer-app voor iPhone en iPad"],
   ];
@@ -2384,6 +2387,7 @@
   const SUP_ST = { new: "Nieuw", open: "In behandeling", pending: "Wacht op klant", resolved: "Opgelost", closed: "Gesloten" };
   const SUP_FILTERS = [["active", "Actief"], ["new", "Nieuw"], ["open", "In behandeling"], ["pending", "Wacht op klant"], ["resolved", "Opgelost"], ["closed", "Gesloten"], ["all", "Alles"]];
   const SUP_CAT = { account: "Account", afspelen: "Afspelen", apps: "Apps", website: "Website", overig: "Overig" };
+  // tizen/webos: alleen voor oude tickets (Samsung TV en LG TV worden niet meer ondersteund)
   const SUP_PLAT = { ios: "iPhone/iPad", tvos: "Apple TV", macos: "Mac", android: "Android", androidtv: "Android TV", tizen: "Samsung TV", webos: "LG TV", web: "Browser", windows: "Windows" };
   // build 146: apparaat en diagnose-bijlage van tickets uit de app (contract: docs/ACCOUNT.md "Build 146" in iptv-ios-appletv)
   const DEV_TYPE = { phone: "Telefoon", tablet: "Tablet", tv: "Tv", desktop: "Computer", browser: "Browser" };
@@ -2862,7 +2866,7 @@
     en_incomplete: "Vul bij Engels zowel titel als tekst in (of laat beide leeg).", text_too_large: "De tekst is te lang voor een pushmelding.",
     bad_link: "De link moet met https:// beginnen en naar een echte website gaan.", bad_target: "Kies een doelgroep.",
     no_accounts: "Kies minstens één account.", too_many_accounts: "Kies hoogstens 500 accounts.", bad_account: "Ongeldig account in de lijst.",
-    no_platforms: "Kies minstens één platform.", no_push_platform: "Apple TV, Android TV, Samsung TV en LG TV hebben geen systeem-push.",
+    no_platforms: "Kies minstens één platform.", no_push_platform: "Apple TV en Android TV hebben geen systeem-push.",
   });
   const pushTitle = (m) => (m.kind === "release" ? `Bingr ${m.version || ""} (Build ${m.build ?? "?"}) is beschikbaar` : m.title || (m.kind === "reminder" ? "Programmaherinnering" : "—"));
 

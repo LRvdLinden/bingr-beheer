@@ -60,9 +60,7 @@ struct BuildPlatform: Identifiable {
     static let all: [(key: String, title: String, hint: String, icon: String)] = [
         ("android", "Android en Android TV", "APK voor telefoons, tablets, Android TV, Google TV en Fire TV", "apps.iphone"),
         ("android-aab", "Android App Bundle (Google Play)", ".aab voor Google Play (telefoon, tablet en Google TV), getekend met de upload key", "shippingbox"),
-        ("tizen", "Samsung TV", ".wgt voor Tizen", "tv"),
         ("windows", "Windows (.exe)", "Installer voor Windows 10 en 11 (x64)", "pc"),
-        ("webos", "LG TV (webOS)", ".ipk voor LG webOS (niet openbaar)", "tv"),
         ("apple", "Apple", "Xcode-project (zip) voor iOS, iPadOS, tvOS en macOS", "apple.logo"),
         ("beheer", "BingrBeheer", "Xcode-project (zip) van deze app voor iPhone en iPad", "wrench.and.screwdriver"),
     ]
@@ -99,7 +97,7 @@ struct ReleasePushState: Hashable {
         return bits.joined(separator: ", ")
     }
 
-    /// Platforms in Downloads met een releasemelding, met wie hem krijgt (Samsung TV en BingrBeheer hebben geen push).
+    /// Platforms in Downloads met een releasemelding, met wie hem krijgt (Windows en BingrBeheer hebben geen push).
     static let audience: [String: String] = ["apple": "iPhone, iPad en Mac", "android": "Android-telefoons en -tablets"]
 }
 

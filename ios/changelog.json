@@ -2,6 +2,14 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 41,
+   "version": "1.0.0",
+   "date": "2026-10-30",
+   "items": [
+    {"type": "improved", "nl": "Samsung TV en LG TV vervallen: niet meer in Downloads, Instellingen (upgrade-link), Pushmeldingen en de lijsten met apparaten per platform"}
+   ]
+  },
+  {
    "build": 40,
    "version": "1.0.0",
    "date": "2026-10-25",

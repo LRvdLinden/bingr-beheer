@@ -1,5 +1,5 @@
 // Downloads van Bingr-builds (functie admin): pure hulpjes zonder netwerk of database, getest in builds_test.ts.
-// De buildpakketten (APK, Samsung .wgt, Windows-installer .exe, Xcode-zips) staan niet op GitHub maar op de server van beheer.bingr.online in de
+// De buildpakketten (APK, Windows-installer .exe, Xcode-zips) staan niet op GitHub maar op de server van beheer.bingr.online in de
 // afgesloten map builds/ (workflow Builds). Ophalen kan alleen via https://beheer.bingr.online/dl.php?t=<token> (web/dl.php).
 // Token = "<payload>.<sig>": payload = base64url (zonder =) van JSON {"f": "<pad>", "e": <unix-seconden verloop>},
 // sig = base64url(HMAC-SHA256(sleutel, payload)), sleutel = de UTF-8-string uit het function-secret BINGR_BUILDS_KEY
@@ -10,8 +10,9 @@ export const DL_URL = "https://beheer.bingr.online/dl.php";
 /** Platforms in builds/manifest.json, tevens de mappen in builds/. `presskit` = Bingr-PressKit (workflow PressKit). */
 /** `android-aab` = Android App Bundle voor Google Play (alleen via een kortgeldige link, niet openbaar zoals de APK). */
 /** `windows` = installer (.exe) van Bingr voor Windows (repo bingr-windows), ook alleen via een kortgeldige link. */
-/** `webos` = LG TV-app (.ipk, repo bingr-webos, build 147): niet openbaar, alleen via een kortgeldige link. */
-export const BUILD_PLATFORMS = ["android", "android-aab", "tizen", "windows", "webos", "apple", "beheer", "presskit"] as const;
+/** Samsung TV (`tizen`, .wgt) en LG TV (`webos`, .ipk) worden niet meer ondersteund: hun oude bestanden blijven op de server,
+ * maar staan niet meer in Downloads en krijgen geen downloadlink meer (onbekende platforms vallen uit het manifest). */
+export const BUILD_PLATFORMS = ["android", "android-aab", "windows", "apple", "beheer", "presskit"] as const;
 export type BuildPlatform = typeof BUILD_PLATFORMS[number];
 /** dl.php accepteert hoogstens 15 minuten. */
 export const MAX_TTL = 900;
@@ -41,7 +42,7 @@ export const WINDOWS_STATS = "windows-stats.json";
 /** Openbare link naar de nieuwste Windows-installer (302 naar dl.php?app=windows, workflow Website van bingr-website). */
 export const WINDOWS_PUBLIC_URL = "https://bingr.online/windows";
 
-/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json", "windows-stats.json" of "<apple|android|android-aab|tizen|windows|webos|beheer|presskit>/<bestandsnaam>". */
+/** Zelfde regels als dl.php: "manifest.json", "presskit-stats.json", "windows-stats.json" of "<apple|android|android-aab|windows|beheer|presskit>/<bestandsnaam>". */
 export function isValidBuildPath(path: unknown): path is string {
   if (typeof path !== "string") return false;
   if (path === "manifest.json" || path === PRESSKIT_STATS || path === WINDOWS_STATS) return true;
@@ -116,7 +117,7 @@ export function findBuild(manifest: ReturnType<typeof cleanManifest>, platform: 
 // Niet meer automatisch na het plaatsen: Apple en Google keuren een build soms pas na dagen goed. De beheerder stuurt
 // hem per build zelf vanuit Downloads; de functie `push` stuurt één melding per (platform_group, build).
 
-/** Platforms in Downloads met een releasemelding (Samsung TV en de Beheer-app hebben geen push). */
+/** Platforms in Downloads met een releasemelding (Windows en de Beheer-app hebben geen push). */
 export const RELEASE_PUSH_PLATFORMS = ["apple", "android"] as const;
 export const isReleasePushPlatform = (p: unknown): p is typeof RELEASE_PUSH_PLATFORMS[number] =>
   typeof p === "string" && (RELEASE_PUSH_PLATFORMS as readonly string[]).includes(p);

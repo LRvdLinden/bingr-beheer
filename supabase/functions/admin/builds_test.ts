@@ -22,12 +22,12 @@ Deno.test("token: HMAC-SHA256 gelijk aan een met de hand berekende waarde (pytho
 
 Deno.test("token: base64url zonder =, payload leesbaar met f en een geheel getal e", async () => {
   for (const ttl of [1, 60, 600, MAX_TTL]) {
-    const { token, exp } = await signBuildToken(KEY, "tizen/Bingr-1.0.0-build1.wgt", ttl, NOW + 123);
+    const { token, exp } = await signBuildToken(KEY, "windows/Bingr-1.0.0-build1-setup.exe", ttl, NOW + 123);
     ok(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(token), `vorm ${token}`);
     ok(!token.includes("="), "geen =");
     const [p] = token.split(".");
     const j = JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((p.length + 3) % 4)));
-    ok(j.f === "tizen/Bingr-1.0.0-build1.wgt" && j.e === exp && Number.isInteger(j.e) && exp === 1792152000 + ttl, `payload ${JSON.stringify(j)}`);
+    ok(j.f === "windows/Bingr-1.0.0-build1-setup.exe" && j.e === exp && Number.isInteger(j.e) && exp === 1792152000 + ttl, `payload ${JSON.stringify(j)}`);
   }
   ok(b64url(new Uint8Array([251, 255])) === "-_8", "base64url-tekens");
   ok(b64url(new Uint8Array([1])) === "AQ", "zonder opvulling");
@@ -43,10 +43,11 @@ Deno.test("token: weigert korte sleutel, ongeldig pad en een te lange of rare ge
 });
 
 Deno.test("pad: zelfde regels als dl.php", () => {
-  for (const p of ["manifest.json", "android/Bingr-1.0.0-build105.apk", "tizen/Bingr-1.0.0-build105.wgt",
+  for (const p of ["manifest.json", "android/Bingr-1.0.0-build105.apk",
     "apple/Bingr-1.0.0-build105-Xcode.zip", "beheer/Bingr-Beheer-1.0.0-build7-Xcode.zip",
     "windows/Bingr-1.0.1-build140-setup.exe"]) ok(isValidBuildPath(p), `geldig: ${p}`);
-  for (const p of ["", "key.php", "builds/manifest.json", "android/", "android/../key.php", "android/a..b", "ios/x.zip",
+  // Samsung TV (tizen) en LG TV (webos) vervallen: geen geldige map meer
+  for (const p of ["tizen/Bingr-1.0.0-build105.wgt", "webos/Bingr-1.0.0-build147.ipk", "", "key.php", "builds/manifest.json", "android/", "android/../key.php", "android/a..b", "ios/x.zip",
     "android/.htaccess", "android/a/b.apk", "win/x.exe", "Windows/x.exe", "windows/../key.php", "/android/x.apk", "android/x y.apk", "Android/x.apk", "manifest.json/x",
     `android/${"a".repeat(152)}`, null, 5, undefined]) ok(!isValidBuildPath(p), `ongeldig: ${String(p)}`);
   ok(isValidBuildFile("Bingr-1.0.0-build105.apk") && !isValidBuildFile("-x") && !isValidBuildFile("a/b"), "bestandsnaam");
@@ -62,6 +63,7 @@ const RAW = {
         { file: "../key.php" }, "onzin"],
     },
     tizen: { file: "../../etc/passwd" },
+    webos: { version: "1.0.0", build: 147, file: "Bingr-1.0.0-build147.ipk", path: "webos/Bingr-1.0.0-build147.ipk", size: 9 },
     linux: { file: "Bingr.AppImage" },
   },
 };
@@ -85,7 +87,7 @@ Deno.test("manifest: build zoeken (nieuwste, uit history, of weigeren)", () => {
   ok(findBuild(m, "android", "Bingr-1.0.0-build104.apk")?.build === 104, "history");
   ok(findBuild(m, "android", "Bingr-1.0.0-build1.apk") === null, "staat niet in het manifest");
   ok(findBuild(m, "android", "../key.php") === null, "ongeldige naam");
-  ok(findBuild(m, "tizen") === null && findBuild(m, "windows") === null && findBuild(m, "apple") === null, "geen build");
+  ok(findBuild(m, "tizen") === null && findBuild(m, "webos") === null && findBuild(m, "windows") === null && findBuild(m, "apple") === null, "geen build");
   ok(findBuild(m, "linux") === null, "onbekend platform");
   ok(findBuild(null, "android") === null, "geen manifest");
 });
