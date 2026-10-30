@@ -10,3 +10,4 @@ supabase/.branches/
 ios/*.xcodeproj/
 ios/build/
 ios/DerivedData/
+__pycache__/
