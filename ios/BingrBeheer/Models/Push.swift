@@ -100,6 +100,26 @@ struct PushCounts: Equatable {
         default: return code
         }
     }
+
+    /// Reden van een mislukte bezorging (code uit push_deliveries.error) in gewone taal (zoals PUSH_ERR in admin.js).
+    static func reason(_ code: String) -> String {
+        switch code {
+        case "apns_TooManyProviderTokenUpdates": return "Apple: te vaak een nieuw token"
+        case "apns_BadEnvironmentKeyInToken": return "Apple: sleutel past niet bij de omgeving (sandbox/productie)"
+        case "apns_InvalidProviderToken": return "Apple: ongeldig token"
+        case "apns_ExpiredProviderToken": return "Apple: token verlopen"
+        case "apns_TooManyRequests": return "Apple: te veel meldingen"
+        case "apns_BadDeviceToken": return "Apple: ongeldige apparaattoken"
+        case "apns_Unregistered": return "Apple: app verwijderd"
+        case "apns_DeviceTokenNotForTopic": return "Apple: verkeerde app"
+        case "fcm_UNREGISTERED": return "Android: app verwijderd"
+        case "fcm_QUOTA_EXCEEDED": return "Android: limiet"
+        case "fcm_UNAVAILABLE": return "Android: tijdelijk niet bereikbaar"
+        case "too_late": return "te laat (programma begonnen)"
+        case "device_removed": return "apparaat verwijderd"
+        default: return code.hasPrefix("network_") ? "netwerkfout (\(code.dropFirst(8)))" : code
+        }
+    }
 }
 
 /// Stand van het versturen (`push_send` en daarna `push_progress` tot done); blijft lopen als je van tab wisselt.
@@ -129,6 +149,12 @@ struct PushProgress: Equatable {
     }
 }
 
+/// Reden van mislukte bezorgingen met het aantal (push_history: errors).
+struct PushErrorCount: Hashable {
+    let code: String
+    let count: Int
+}
+
 /// Eén bericht uit `push_history` (zonder account-id's; de doelgroep is alleen soort en aantal).
 struct PushMessage: Identifiable {
     let id: String
@@ -147,9 +173,13 @@ struct PushMessage: Identifiable {
     let counts: PushCounts
     let done: Bool
     let notes: [String]
+    /// Redenen van mislukte/ongeldige bezorgingen (code, aantal), meeste eerst.
+    let errors: [PushErrorCount]
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        errors = (j["errors"].object ?? [:]).compactMap { k, v in (v.int ?? 0) > 0 ? PushErrorCount(code: k, count: v.int ?? 0) : nil }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.code < $1.code }
         let k = j["kind"].text ?? "admin"
         kind = ["release", "admin", "reminder"].contains(k) ? k : "admin"
         createdAt = j["created_at"].date
@@ -167,6 +197,9 @@ struct PushMessage: Identifiable {
         done = j["done"].bool ?? (counts.queued == 0)
         notes = j["notes"].strings
     }
+
+    /// Knop "Mislukte opnieuw proberen" (push_retry): alleen als het bericht klaar is en er iets mislukte.
+    var canRetry: Bool { done && counts.failed > 0 && Int(id) != nil }
 
     var kindLabel: String {
         switch kind {

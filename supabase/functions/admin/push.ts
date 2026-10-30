@@ -163,12 +163,23 @@ function notes(v: unknown): string[] {
   return a.filter((x): x is string => typeof x === "string" && /^[a-z0-9_.:-]{1,60}$/i.test(x)).slice(0, 10);
 }
 
-/** Stand van één bericht: aantallen en of het klaar is (klaar = `done`, of niets meer in de wachtrij). */
+/** Redenen van mislukte/ongeldige bezorgingen {code: aantal}: alleen korte codes (apns_…, fcm_…, webpush_…), max. 10. */
+export function errorCodes(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  const o = obj(isObj(obj(v).errors) ? obj(v).errors : null);
+  for (const [k, n] of Object.entries(o)) {
+    if (Object.keys(out).length >= 10) break;
+    if (/^[A-Za-z0-9_.:-]{1,60}$/.test(k) && nat(n)) out[k] = nat(n)!;
+  }
+  return out;
+}
+
+/** Stand van één bericht: aantallen, redenen en of het klaar is (klaar = `done`, of niets meer in de wachtrij). */
 export function progressView(v: unknown) {
   const o = obj(v), c = counts(o);
   const devices = nat(o.devices) ?? nat(o.total) ?? c.queued + c.sent + c.failed + c.invalid;
   const done = typeof o.done === "boolean" ? o.done : c.queued === 0;
-  return { message_id: idOf(o.message_id ?? o.id), devices, ...c, done, notes: notes(o.notes ?? o.skipped_channels ?? o.warnings) };
+  return { message_id: idOf(o.message_id ?? o.id), devices, ...c, done, errors: errorCodes(o), notes: notes(o.notes ?? o.skipped_channels ?? o.warnings) };
 }
 
 /** Eén bericht uit de geschiedenis, zonder account-id's of tokens. */

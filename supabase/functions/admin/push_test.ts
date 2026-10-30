@@ -86,6 +86,11 @@ Deno.test("push: antwoorden van push normaliseren", () => {
   ok(!progressView({ queued: 4, sent: 1 }).done, "nog in de wachtrij");
   ok(progressView({ queued: 0, done: false }).done === false, "done van de server wint");
   ok(progressView({ notes: ["apns_not_configured", "<script>"] }).notes.join() === "apns_not_configured", "alleen korte codes");
+  // redenen van mislukte bezorgingen: alleen codes met een aantal, nooit iets anders
+  const er = progressView({ failed: 12, errors: { apns_TooManyProviderTokenUpdates: 12, "a@b.nl kapot": 1, fcm_UNREGISTERED: "x" } }).errors;
+  ok(JSON.stringify(er) === '{"apns_TooManyProviderTokenUpdates":12}', "alleen geldige codes");
+  ok(JSON.stringify(progressView({ errors: ["x"] }).errors) === "{}", "geen object = leeg");
+  ok(Object.keys(progressView({ errors: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`c${i}`, 1])) }).errors).length === 10, "max. 10");
   const h = historyView({ items: [
     { id: "m1", kind: "admin", created_at: "2026-10-16T10:00:00Z", title_nl: "Hoi", target: { accounts: [A, B] }, counts: { sent: 2 } },
     { id: "m2", kind: "release", platform_group: "apple", version: "1.0.0", build: 105, sent: 40, queued: 0 },

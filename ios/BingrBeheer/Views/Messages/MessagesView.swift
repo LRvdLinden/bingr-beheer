@@ -27,6 +27,7 @@ struct MessagesView: View {
     @State private var history: [PushMessage] = []
     @State private var historyError: String?
     @State private var historyLoaded = false
+    @State private var retrying: String?
     @State private var page = 0
     @State private var hasMore = false
 
@@ -339,7 +340,7 @@ struct MessagesView: View {
                 EmptyText(text: page > 0 ? "Geen oudere meldingen." : "Nog geen pushmeldingen.")
             }
             ForEach(history) { m in
-                PushMessageRow(item: m)
+                PushMessageRow(item: m, retrying: retrying == m.id) { Task { await retry(m) } }
                 if m.id != history.last?.id { Divider().overlay(Color.line) }
             }
             if page > 0 || hasMore {
@@ -551,6 +552,32 @@ struct MessagesView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Mislukte bezorgingen van één bericht opnieuw proberen (push_retry), daarna push_progress tot klaar.
+    private func retry(_ m: PushMessage) async {
+        guard retrying == nil, let id = Int(m.id) else { return }
+        retrying = m.id
+        defer { retrying = nil }
+        do {
+            var r = try await session.call("push_retry", ["message_id": id])
+            let n = r["retried"].int ?? 0
+            if n == 0 {
+                session.show("Niets opnieuw te proberen (apparaten verwijderd of te laat).")
+            } else {
+                var p = PushProgress(r)
+                for _ in 0..<60 where !p.done {
+                    try? await Task.sleep(for: .seconds(2))
+                    guard let next = try? await session.call("push_progress", ["message_id": id]) else { break }
+                    r = next
+                    p = PushProgress(r)
+                }
+                session.show("Pushmelding opnieuw: \(p.counts.text).", bad: p.counts.failed > 0)
+            }
+        } catch {
+            session.report(error)
+        }
+        await loadHistory()
+    }
+
     private func loadHistory() async {
         do {
             let r = try await session.call("push_history", ["page": page])
@@ -581,8 +608,21 @@ struct PendingPush: Identifiable {
 /// Eén pushmelding in de geschiedenis: soort, titel, datum, doelgroep en de tellers.
 struct PushMessageRow: View {
     let item: PushMessage
+    var retrying = false
+    var onRetry: (() -> Void)?
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content
+            if item.canRetry, let onRetry {
+                Button(retrying ? "Bezig…" : "Mislukte opnieuw proberen", action: onRetry)
+                    .buttonStyle(.bingrGhost).controlSize(.small).disabled(retrying)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Chip(text: item.kindLabel.uppercased(), tone: item.kindTone)
@@ -612,8 +652,12 @@ struct PushMessageRow: View {
             }
             Text(Fmt.plural(item.devices, "apparaat", "apparaten") + (item.done ? "" : " · bezig"))
                 .font(.caption).foregroundStyle(Color.textDim)
+            if !item.errors.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(item.errors, id: \.code) { e in Chip(text: "\(PushCounts.reason(e.code)): \(Fmt.num(e.count))", tone: .warn) }
+                }
+            }
         }
-        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
 

@@ -2939,6 +2939,15 @@
     apns_not_configured: "APNs (Apple) niet ingesteld", fcm_not_configured: "FCM (Android) niet ingesteld",
     webpush_not_configured: "Web Push niet ingesteld", vapid_not_configured: "Web Push niet ingesteld",
   };
+  // redenen van mislukte bezorgingen (codes uit push_deliveries.error); onbekende code = de code zelf
+  const PUSH_ERR = {
+    apns_TooManyProviderTokenUpdates: "Apple: te vaak een nieuw token", apns_BadEnvironmentKeyInToken: "Apple: sleutel past niet bij de omgeving (sandbox/productie)",
+    apns_InvalidProviderToken: "Apple: ongeldig token", apns_ExpiredProviderToken: "Apple: token verlopen", apns_TooManyRequests: "Apple: te veel meldingen",
+    apns_BadDeviceToken: "Apple: ongeldige apparaattoken", apns_Unregistered: "Apple: app verwijderd", apns_DeviceTokenNotForTopic: "Apple: verkeerde app",
+    fcm_UNREGISTERED: "Android: app verwijderd", fcm_QUOTA_EXCEEDED: "Android: limiet", fcm_UNAVAILABLE: "Android: tijdelijk niet bereikbaar",
+    too_late: "te laat (programma begonnen)", device_removed: "apparaat verwijderd",
+  };
+  const pushErrText = (c) => PUSH_ERR[c] || (/^network_/.test(c) ? `netwerkfout (${c.slice(8)})` : c);
   const accSel = new Map(); // id -> label (naam en gemaskeerd e-mailadres, zoals op de pagina Gebruikers)
   Object.assign(ERR, {
     push_not_configured: "Pushmeldingen zijn nog niet ingesteld (PUSH_ADMIN_SECRET; workflow Backend in iptv-ios-appletv draaien).",
@@ -3115,6 +3124,23 @@
       + PUSH_PFS.map((k) => cell(PUSH_PF_NAME[k], by[k])).join("");
   }
   $("pushRefresh").onclick = loadPushTab;
+  // knop "Mislukte opnieuw proberen" (push_retry): mislukte bezorgingen weer in de wachtrij, daarna de voortgang volgen
+  $("pushList").addEventListener("click", async (ev) => {
+    const b = ev.target instanceof Element ? ev.target.closest("[data-push-retry]") : null;
+    if (!b || b.disabled) return;
+    b.disabled = true; b.textContent = "Bezig…";
+    let r;
+    try { r = await call("push_retry", { message_id: Number(b.dataset.pushRetry) }); }
+    catch (e) { if (e.code !== "auth") toast(errText(e), true); b.disabled = false; b.textContent = "Mislukte opnieuw proberen"; return; }
+    if (!r.retried) { toast("Niets opnieuw te proberen (apparaten verwijderd of te laat)."); loadPushHistory(); return; }
+    toast(`${nf.format(r.retried)} opnieuw in de wachtrij.`);
+    for (let i = 0; i < 120 && !r.done; i++) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      try { r = await call("push_progress", { message_id: Number(b.dataset.pushRetry) }); } catch { break; }
+    }
+    toast(`Pushmelding opnieuw: ${countsText(r)}.`, !!r.failed);
+    loadPushHistory();
+  });
   $("phPrev").onclick = () => { if (phPage > 0) { phPage--; loadPushHistory(); } };
   $("phNext").onclick = () => { phPage++; loadPushHistory(); };
   async function loadPushHistory() {
@@ -3136,7 +3162,9 @@
           ${m.body && m.kind !== "release" ? `<div class="bd">${esc(m.body)}</div>` : ""}
           <div class="meta"><span>${esc(fmtDateTime(m.created_at))}</span><span>· ${esc(targetText(m.target, m))}</span>
             ${m.url ? `<span>· link naar ${esc((() => { try { return new URL(m.url).hostname; } catch { return "?"; } })())}</span>` : ""}
-            ${(m.notes || []).map((x) => `<span class="chip warn">${esc(PUSH_NOTE[x] || x)}</span>`).join("")}</div></div>
+            ${(m.notes || []).map((x) => `<span class="chip warn">${esc(PUSH_NOTE[x] || x)}</span>`).join("")}</div>
+          ${Object.keys(m.errors || {}).length ? `<div class="meta">${Object.entries(m.errors).map(([c, k]) => `<span class="chip warn" title="${esc(c)}">${esc(pushErrText(c))}: ${nf.format(k)}</span>`).join("")}</div>` : ""}
+          ${m.failed && m.done && m.id ? `<div class="meta"><button type="button" class="btn small ghost" data-push-retry="${esc(m.id)}">Mislukte opnieuw proberen</button></div>` : ""}</div>
         <div class="ph-nums" aria-label="Aantallen">${n("queued", "in wachtrij", "q")}${n("sent", "verstuurd", "s")}${n("failed", "mislukt", "f")}${n("invalid", "ongeldig", "i")}
           <span class="ph-tot">${nf.format(m.devices || 0)} ${m.devices === 1 ? "apparaat" : "apparaten"}${m.done ? "" : " · bezig"}</span></div></div>`;
     }).join("") || `<p class="empty">${phPage ? "Geen oudere meldingen." : "Nog geen pushmeldingen."}</p>`;

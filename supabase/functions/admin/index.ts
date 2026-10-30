@@ -98,6 +98,8 @@
 //                       alleen soort doelgroep, aantallen en lengtes: nooit tekst, link of ontvangers. Max. 20 per uur per IP.)
 //   push_progress       {token, message_id} -> {message_id, devices, queued, sent, failed, invalid, done, notes}  (push:
 //                       admin_progress; herhalen tot done)
+//   push_retry          {token, message_id} -> {retried, message_id, devices, queued, sent, failed, invalid, errors, done, notes}
+//                       (push: admin_retry; mislukte bezorgingen opnieuw in de wachtrij; daarna push_progress tot done)
 //   push_history        {token, page?}    -> {items:[{id, kind: release|admin|reminder, created_at, title, body, url, target:
 //                       {type, count?|platforms?}, platform_group, version, build, devices, queued, sent, failed, invalid, done,
 //                       notes}], page, has_more}  (push: admin_history; zonder account-id's)
@@ -210,7 +212,7 @@
 //                       voorbeeldgegevens naar één testadres support+ci-…@bingr.online; er wordt geen account aangeraakt.)
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar bingr.online/unsubscribe/
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailErrorCode, mailtestOk, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
@@ -516,12 +518,12 @@ async function sendAccountMail(to: string, m: Mail, kind: "blocked" | "unblocked
       await tx.sendMail({ ...base, from: SUPPORT_FROM(), replyTo: addressOf(SUPPORT_FROM()) });
     } catch (e) {
       if (!smtpFrom() || addressOf(smtpFrom()).toLowerCase() === addressOf(SUPPORT_FROM()).toLowerCase()) throw e;
-      console.error("account mail (support-afzender)", e instanceof Error ? e.message : e);
+      console.error("account mail (support-afzender)", mailErrorCode(e));
       await tx.sendMail({ ...base, from: withName(addressOf(smtpFrom()), "Bingr Support"), replyTo: addressOf(SUPPORT_FROM()) });
     }
     return { ok: true };
   } catch (e) {
-    console.error("account mail", e instanceof Error ? e.message : e);
+    console.error("account mail", mailErrorCode(e)); // alleen de code: de servertekst kan het adres bevatten
     return { ok: false, error: "send_failed" };
   } finally { tx.close(); }
 }
@@ -690,12 +692,15 @@ async function countSubscribers() {
 // Provider token 50 minuten in het geheugen (Apple: max. 60). Nooit de sleutel, de JWT of het devicetoken loggen.
 const PUSHREG_MAX = 30, PUSHREG_WINDOW = 3600, PUSHTEST_MAX = 10, PUSHTEST_WINDOW = 3600;
 const apnsConfigured = () => !!(env("APNS_KEY_P8") && env("APNS_KEY_ID") && env("APNS_TEAM_ID"));
+// iat op hetzelfde blok van 30 minuten als de functie push (channels.ts, apnsIat): Apple weigert met 429
+// TooManyProviderTokenUpdates als het token vaker dan eens per 20 minuten verandert; zo telt dit niet als een extra token.
 let apnsAuth: { jwt: string; at: number; kid: string } | null = null;
 async function apnsBearer(): Promise<string> {
   const now = Date.now(), kid = env("APNS_KEY_ID");
   if (apnsAuth && apnsAuth.kid === kid && now - apnsAuth.at < 50 * 60_000) return apnsAuth.jwt;
-  const jwt = await apnsJwt(await importApnsKey(env("APNS_KEY_P8")), kid, env("APNS_TEAM_ID"), Math.floor(now / 1000));
-  apnsAuth = { jwt, at: now, kid };
+  const iat = Math.floor(now / 1000 / 1800) * 1800;
+  const jwt = await apnsJwt(await importApnsKey(env("APNS_KEY_P8")), kid, env("APNS_TEAM_ID"), iat);
+  apnsAuth = { jwt, at: iat * 1000, kid };
   return jwt;
 }
 async function sendApnsTest(token: string, sandbox: boolean): Promise<{ ok: true } | { ok: false; invalid: boolean; error: string }> {
@@ -729,7 +734,7 @@ async function sendApnsTest(token: string, sandbox: boolean): Promise<{ ok: true
   else await res.body?.cancel().catch(() => {});
   const r = apnsResult(res.status, reason);
   if (!r.ok) {
-    if (/ProviderToken/.test(reason)) apnsAuth = null;
+    if (/^(Expired|Invalid)ProviderToken$/.test(reason)) apnsAuth = null; // niet bij TooManyProviderTokenUpdates
     console.error("admin", "push_test", r.error);
   }
   return r;
@@ -1348,6 +1353,19 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const { status, out } = await pushCall("admin_progress", { message_id: id });
       if (status !== 200) return json(out, status);
       return json(progressView({ message_id: id, ...out }));
+    }
+    case "push_retry": {
+      // mislukte bezorgingen van één bericht opnieuw in de wachtrij (push: admin_retry); in admin_audit alleen id en aantal
+      const id = body.message_id;
+      if (!(typeof id === "number" && Number.isSafeInteger(id) && id > 0) && !(typeof id === "string" && /^[1-9][0-9]{0,15}$/.test(id))) {
+        return json({ error: "bad_id" }, 400);
+      }
+      if (!(await rateOk(`admin-push-retry:${ip}`, PUSH_MAX, PUSH_WINDOW))) return json({ error: "rate_limited", retry_after: PUSH_WINDOW }, 429);
+      const { status, out } = await pushCall("admin_retry", { message_id: Number(id) });
+      if (status !== 200) return json(out, status);
+      const retried = Math.max(0, Math.floor(Number(out.retried) || 0));
+      await audit("push_retry", ip, null, { message_id: String(id), retried });
+      return json({ ...progressView({ message_id: id, ...out }), retried });
     }
     case "push_history": {
       const page = pageInput(body.page);
