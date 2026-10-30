@@ -1,0 +1,300 @@
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Support/TicketDetailView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Users/UserDetailView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Users.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Users/UsersView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Overview/WatchingView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/Shared/WidgetShared.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftDriverJobDiscovery normal x86_64 Compiling RootView.swift, ServerModels.swift, ServerView.swift, Session.swift, SettingsView.swift, Stats.swift, StatusModels.swift, StatusView.swift, SupportModels.swift, SupportView.swift, Theme.swift, TicketDetailView.swift, UserDetailView.swift, Users.swift, UsersView.swift, WatchingView.swift, WidgetShared.swift, GeneratedAssetSymbols.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+
+SwiftCompile normal x86_64 Compiling\ LoginView.swift,\ MacSupport.swift,\ MailImage.swift,\ Mailing.swift,\ MailingView.swift,\ MessagesView.swift,\ MonitorDetailView.swift,\ MonitorEditView.swift,\ Newsletter.swift,\ NewsletterView.swift,\ NoticeViews.swift,\ OverviewView.swift,\ Platform.swift,\ Push.swift,\ PushService.swift,\ ReleasesCard.swift,\ Revenue.swift,\ RevenueView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/LoginView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Mac/MacSupport.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/MailImage.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Mailing.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/MailingView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Messages/MessagesView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorDetailView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorEditView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Newsletter.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/NewsletterView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/NoticeViews.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Overview/OverviewView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Core/Platform.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Push.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/App/PushService.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Downloads/ReleasesCard.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Revenue.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Revenue/RevenueView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/LoginView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Mac/MacSupport.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/MailImage.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Mailing.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/MailingView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Messages/MessagesView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorDetailView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorEditView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Newsletter.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/NewsletterView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/NoticeViews.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Overview/OverviewView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Core/Platform.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Push.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/App/PushService.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Downloads/ReleasesCard.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Revenue.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal x86_64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Revenue/RevenueView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftDriverJobDiscovery normal x86_64 Compiling AdminAPI.swift, BingrBeheerApp.swift, BuildNotesView.swift, Builds.swift, Charts.swift, Components.swift, CoverWall.swift, Dashboard.swift, DashboardEditing.swift, DashboardWidgets.swift, DiagnosticsCard.swift, DownloadsView.swift, Format.swift, Insights.swift, InsightsViews.swift, JSON.swift, Keychain.swift, LockView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+
+SwiftCompile normal arm64 Compiling\ LoginView.swift,\ MacSupport.swift,\ MailImage.swift,\ Mailing.swift,\ MailingView.swift,\ MessagesView.swift,\ MonitorDetailView.swift,\ MonitorEditView.swift,\ Newsletter.swift,\ NewsletterView.swift,\ NoticeViews.swift,\ OverviewView.swift,\ Platform.swift,\ Push.swift,\ PushService.swift,\ ReleasesCard.swift,\ Revenue.swift,\ RevenueView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/LoginView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Mac/MacSupport.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/MailImage.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Mailing.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/MailingView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Messages/MessagesView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorDetailView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorEditView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Newsletter.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/NewsletterView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/NoticeViews.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Overview/OverviewView.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Core/Platform.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Push.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/App/PushService.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Downloads/ReleasesCard.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Revenue.swift /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Revenue/RevenueView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/LoginView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Mac/MacSupport.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/MailImage.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Mailing.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/MailingView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Messages/MessagesView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorDetailView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/MonitorEditView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Newsletter.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Newsletter/NewsletterView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Status/NoticeViews.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Overview/OverviewView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Core/Platform.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Push.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/App/PushService.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Downloads/ReleasesCard.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Models/Revenue.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftCompile normal arm64 /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Views/Revenue/RevenueView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling AdminAPI.swift, BingrBeheerApp.swift, BuildNotesView.swift, Builds.swift, Charts.swift, Components.swift, CoverWall.swift, Dashboard.swift, DashboardEditing.swift, DashboardWidgets.swift, DiagnosticsCard.swift, DownloadsView.swift, Format.swift, Insights.swift, InsightsViews.swift, JSON.swift, Keychain.swift, LockView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+
+SwiftDriverJobDiscovery normal arm64 Compiling RootView.swift, ServerModels.swift, ServerView.swift, Session.swift, SettingsView.swift, Stats.swift, StatusModels.swift, StatusView.swift, SupportModels.swift, SupportView.swift, Theme.swift, TicketDetailView.swift, UserDetailView.swift, Users.swift, UsersView.swift, WatchingView.swift, WidgetShared.swift, GeneratedAssetSymbols.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+
+RegisterExecutionPolicyException /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheerWidgets.appex (in target 'BingrBeheerWidgets' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-RegisterExecutionPolicyException /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheerWidgets.appex
+
+Touch /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheerWidgets.appex (in target 'BingrBeheerWidgets' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /usr/bin/touch -c /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheerWidgets.appex
+
+Ld /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/__preview.dylib normal x86_64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target x86_64-apple-ios17.0-macabi -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -O0 -L/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -F/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -install_name @rpath/BingrBeheer.debug.dylib -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer_dependency_info.dat -o /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/__preview.dylib
+
+Ld /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/__preview.dylib normal arm64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-macabi -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -O0 -L/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -F/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -install_name @rpath/BingrBeheer.debug.dylib -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer_dependency_info.dat -o /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/__preview.dylib
+
+CreateUniversalBinary /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/__preview.dylib normal arm64\ x86_64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/lipo -create /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/__preview.dylib /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/__preview.dylib -output /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/__preview.dylib
+
+SwiftDriverJobDiscovery normal x86_64 Compiling LoginView.swift, MacSupport.swift, MailImage.swift, Mailing.swift, MailingView.swift, MessagesView.swift, MonitorDetailView.swift, MonitorEditView.swift, Newsletter.swift, NewsletterView.swift, NoticeViews.swift, OverviewView.swift, Platform.swift, Push.swift, PushService.swift, ReleasesCard.swift, Revenue.swift, RevenueView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+
+SwiftDriver\ Compilation BingrBeheer normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BingrBeheer -Onone -enforce-exclusivity\=checked @/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -target x86_64-apple-ios17.0-macabi -g -module-cache-path /Users/runner/work/_temp/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/_temp/dd/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -F /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -Fsystem /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/_temp/dd/SDKStatCaches.noindex/macosx15.5-24F74-a403186ba963133a54a0e0cacd566b0b.sdkstatcache -output-file-map /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/_temp/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-generated-files.hmap -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-own-target-headers.hmap -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-all-target-headers.hmap -Xcc -iquote -Xcc /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-project-headers.hmap -Xcc -I/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/include -Xcc -isystem -Xcc /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/include -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources-normal/x86_64 -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources/x86_64 -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer-Swift.h -working-directory /Users/runner/work/bingr-beheer/bingr-beheer/ios -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer.debug.dylib normal x86_64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target x86_64-apple-ios17.0-macabi -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -O0 -L/Users/runner/work/_temp/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-maccatalyst -L/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -F/Users/runner/work/_temp/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-maccatalyst -F/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -filelist /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer.LinkFileList -install_name @rpath/BingrBeheer.debug.dylib -Xlinker -rpath -Xlinker @loader_path/../Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -object_path_lto -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/System/iOSSupport/usr/lib/swift -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer.swiftmodule -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -o /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer.debug.dylib
+
+ConstructStubExecutorLinkFileList /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-ExecutorLinkFileList-normal-x86_64.txt (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    construct-stub-executor-link-file-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer.debug.dylib /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/iOSSupport/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/iOSSupport/usr/lib/libPreviewsJITStubExecutor.a --output /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-ExecutorLinkFileList-normal-x86_64.txt
+note: Using stub executor library with Swift entry point. (in target 'BingrBeheer' from project 'BingrBeheer')
+
+Ld /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer normal x86_64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target x86_64-apple-ios17.0-macabi -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -O0 -L/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -F/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker @loader_path/../Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-DebugDylibPath-normal-x86_64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-DebugDylibInstallName-normal-x86_64.txt -Xlinker -filelist -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-ExecutorLinkFileList-normal-x86_64.txt /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer.debug.dylib -o /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer
+
+SwiftDriverJobDiscovery normal arm64 Compiling LoginView.swift, MacSupport.swift, MailImage.swift, Mailing.swift, MailingView.swift, MessagesView.swift, MonitorDetailView.swift, MonitorEditView.swift, Newsletter.swift, NewsletterView.swift, NoticeViews.swift, OverviewView.swift, Platform.swift, Push.swift, PushService.swift, ReleasesCard.swift, Revenue.swift, RevenueView.swift (in target 'BingrBeheer' from project 'BingrBeheer')
+
+SwiftDriver\ Compilation BingrBeheer normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BingrBeheer -Onone -enforce-exclusivity\=checked @/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -target arm64-apple-ios17.0-macabi -g -module-cache-path /Users/runner/work/_temp/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/runner/work/_temp/dd/Index.noindex/DataStore -swift-version 5 -I /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -F /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -Fsystem /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/_temp/dd/SDKStatCaches.noindex/macosx15.5-24F74-a403186ba963133a54a0e0cacd566b0b.sdkstatcache -output-file-map /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/_temp/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-generated-files.hmap -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-own-target-headers.hmap -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-all-target-headers.hmap -Xcc -iquote -Xcc /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-project-headers.hmap -Xcc -I/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/include -Xcc -isystem -Xcc /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/include -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer-Swift.h -working-directory /Users/runner/work/bingr-beheer/bingr-beheer/ios -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer.debug.dylib normal arm64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-macabi -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -O0 -L/Users/runner/work/_temp/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-maccatalyst -L/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -F/Users/runner/work/_temp/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-maccatalyst -F/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -filelist /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer.LinkFileList -install_name @rpath/BingrBeheer.debug.dylib -Xlinker -rpath -Xlinker @loader_path/../Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -object_path_lto -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/System/iOSSupport/usr/lib/swift -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer.swiftmodule -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -o /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer.debug.dylib
+
+ConstructStubExecutorLinkFileList /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-ExecutorLinkFileList-normal-arm64.txt (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    construct-stub-executor-link-file-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer.debug.dylib /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/iOSSupport/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/iOSSupport/usr/lib/libPreviewsJITStubExecutor.a --output /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'BingrBeheer' from project 'BingrBeheer')
+
+CreateUniversalBinary /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/BingrBeheer.debug.dylib normal arm64\ x86_64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/lipo -create /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer.debug.dylib /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer.debug.dylib -output /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/BingrBeheer.debug.dylib
+
+Ld /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer normal arm64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-macabi -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -O0 -L/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -L/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/usr/lib -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/maccatalyst -F/Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -iframework /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk/System/iOSSupport/System/Library/Frameworks -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker @loader_path/../Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer-ExecutorLinkFileList-normal-arm64.txt /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer.debug.dylib -o /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer
+
+CreateUniversalBinary /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/BingrBeheer normal arm64\ x86_64 (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/lipo -create /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/Binary/BingrBeheer /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/Binary/BingrBeheer -output /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/BingrBeheer
+
+Copy /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PlugIns/BingrBeheerWidgets.appex /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheerWidgets.appex (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks -remove-static-executable /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheerWidgets.appex /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PlugIns
+
+ProcessInfoPlistFile /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Info.plist /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Info.plist (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-infoPlistUtility /Users/runner/work/bingr-beheer/bingr-beheer/ios/BingrBeheer/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PkgInfo -expandbuildsettings -platform macosx -additionalcontentfile /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/assetcatalog_generated_info.plist -scanforprivacyfile /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PlugIns/BingrBeheerWidgets.appex -o /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Info.plist
+adding entry for "NSSupportsAutomaticTermination" => 1
+adding entry for "NSSupportsSuddenTermination" => 1
+
+PhaseScriptExecution Quarantaine-kenmerken\ verwijderen /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Script-A799F80D8D016038A816808E.sh (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /bin/sh -c /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Script-A799F80D8D016038A816808E.sh
+
+ValidateEmbeddedBinary /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PlugIns/BingrBeheerWidgets.appex (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/embeddedBinaryValidationUtility /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PlugIns/BingrBeheerWidgets.appex -info-plist-path /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Info.plist
+
+ExtractAppIntentsMetadata (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name BingrBeheer --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk --xcode-version 16F6 --platform-family macOS --deployment-target 14.0 --bundle-identifier nl.lrvdlinden.bingr.beheer --output /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Resources --target-triple arm64-apple-ios17.0-macabi --target-triple x86_64-apple-ios17.0-macabi --binary-file /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/BingrBeheer --dependency-file /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer_dependency_info.dat --dependency-file /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer_dependency_info.dat --stringsdata-file /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --stringsdata-file /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer.SwiftFileList --source-file-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer.SwiftFileList --metadata-file-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/BingrBeheer.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/arm64/BingrBeheer.SwiftConstValuesFileList --swift-const-vals-list /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/Objects-normal/x86_64/BingrBeheer.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-10-30 19:27:14.422 appintentsmetadataprocessor[6982:22909] Starting appintentsmetadataprocessor export
+2026-10-30 19:27:14.509 appintentsmetadataprocessor[6982:22909] Extracted no relevant App Intents symbols, skipping writing output
+
+CopySwiftLibs /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/MacOS/BingrBeheer.debug.dylib --scan-folder /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Frameworks --scan-folder /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/PlugIns --scan-folder /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Library/SystemExtensions --scan-folder /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Extensions --platform macosx --toolchain /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app/Contents/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/runner/work/_temp/dd/Build/Intermediates.noindex/BingrBeheer.build/Debug-maccatalyst/BingrBeheer.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+Ignoring --strip-bitcode because --sign was not passed
+
+RegisterExecutionPolicyException /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-RegisterExecutionPolicyException /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app
+
+Validate /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    builtin-validationUtility /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app -no-validate-extension -infoplist-subpath Contents/Info.plist
+
+Touch /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /usr/bin/touch -c /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app
+
+RegisterWithLaunchServices /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app (in target 'BingrBeheer' from project 'BingrBeheer')
+    cd /Users/runner/work/bingr-beheer/bingr-beheer/ios
+    /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -f -R -trusted /Users/runner/work/_temp/dd/Build/Products/Debug-maccatalyst/BingrBeheer.app
+
+note: Run script build phase 'Quarantaine-kenmerken verwijderen' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'BingrBeheerWidgets' from project 'BingrBeheer')
+note: Run script build phase 'Quarantaine-kenmerken verwijderen' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'BingrBeheer' from project 'BingrBeheer')
+** BUILD SUCCEEDED **
+

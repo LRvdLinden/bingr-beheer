@@ -1,0 +1,14 @@
+commit: c062181291a2602a42c7ff88a19abc901cc4750e
+run: https://github.com/LRvdLinden/bingr-beheer/actions/runs/41114803983
+ios: success
+mac: success
+
+=== errors (iOS) ===
+
+=== errors (Mac Catalyst) ===
+
+=== warnings (Swift, iOS) ===
+ios/BingrBeheer/Views/Common/Components.swift:227:34: warning: converting non-sendable function value to '@Sendable () async -> Void' may introduce data races
+
+=== warnings (Swift, Mac Catalyst) ===
+ios/BingrBeheer/Views/Common/Components.swift:227:34: warning: converting non-sendable function value to '@Sendable () async -> Void' may introduce data races
