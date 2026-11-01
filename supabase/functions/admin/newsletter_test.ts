@@ -57,9 +57,9 @@ Deno.test("nieuwsbrief: secties Top 10 en Populair aan/uit", () => {
   ok(JSON.stringify(cleanSections({ top10: false })) === '{"top10":false}', "alleen top10");
   ok(JSON.stringify(cleanSections({ token: "x", top10: true, popular: false, other: 1 })) === '{"top10":true,"popular":false}', "alleen bekende sleutels");
   ok(cleanSections({}) === null && cleanSections({ top10: "false" }) === null && cleanSections(null) === null, "ongeldig");
-  ok(JSON.stringify(sectionsView(undefined)) === '{"top10":true,"popular":true,"monthly":true}', "oudere functie: aan");
-  ok(JSON.stringify(sectionsView({ top10: false, popular: "x" })) === '{"top10":false,"popular":true,"monthly":true}', "alleen false is uit");
-  ok(JSON.stringify(statusView({ sections: { top10: false } }).sections) === '{"top10":false,"popular":true,"monthly":true}', "in de status");
+  ok(JSON.stringify(sectionsView(undefined)) === '{"top10":true,"popular":true,"monthly":true,"recap":true}', "oudere functie: aan");
+  ok(JSON.stringify(sectionsView({ top10: false, popular: "x" })) === '{"top10":false,"popular":true,"monthly":true,"recap":true}', "alleen false is uit");
+  ok(JSON.stringify(statusView({ sections: { top10: false } }).sections) === '{"top10":false,"popular":true,"monthly":true,"recap":true}', "in de status");
   ok(JSON.stringify(cleanSections({ monthly: false, x: 1 })) === '{"monthly":false}', "maandoverzicht");
   ok(cleanSections({ monthly: "uit" }) === null, "maandoverzicht: alleen boolean");
 });
@@ -182,4 +182,15 @@ Deno.test("maandoverzicht: status (alleen aantallen) en voorbeeld met maandsleut
   const capture = async (_u: string, init: RequestInit) => { seen.push(String(init.body)); return new Response(JSON.stringify({ ok: true, key: "2026-11" }), { status: 200 }); };
   await newsletterCall("https://x.example.com", "g", "monthly_preview", { to: "test@example.com", lang: "en", action: "status" }, capture);
   ok(JSON.parse(seen[0]).action === "monthly_preview" && JSON.parse(seen[0]).lang === "en", "actie gaat voor");
+});
+
+Deno.test("maandrecap: alleen Lifetime, aantallen per maand, schakelaar", async () => {
+  const { recapView } = await import("./newsletter.ts");
+  const v = statusView({ recap: { enabled: false, audience: "all", next: { key: "2026-11", at: "2026-12-01T19:00:00.000Z" },
+    history: [{ month: "2026-11", sent: 9, failed: 1, skipped: 2, open: 0, email: "x@example.com" }, { month: "<b>", sent: -1 }] } });
+  ok(v.recap?.enabled === false && v.recap.audience === "lifetime" && v.recap.next?.at === "2026-12-01T19:00:00.000Z", "aan/uit, altijd Lifetime, volgende");
+  ok(v.recap?.history[0].sent === 9 && v.recap.history[0].skipped === 2 && !("email" in v.recap.history[0]), "alleen aantallen");
+  ok(v.recap?.history[1].month === null && v.recap.history[1].sent === 0, "ongeldige maand en aantallen");
+  ok(statusView({}).recap === null && recapView({})?.enabled === true, "oudere functie / standaard aan");
+  ok(JSON.stringify(cleanSections({ recap: false })) === '{"recap":false}' && cleanSections({ recap: "uit" }) === null, "schakelaar recap");
 });

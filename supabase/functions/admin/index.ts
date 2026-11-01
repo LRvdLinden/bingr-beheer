@@ -185,6 +185,12 @@
 //   monthly_render         {token, lang?}    -> {subject, html, key}  (maandoverzicht van de volgende maand, voor de weergave)
 //                          newsletter_status bevat monthly: {enabled, next, editions[]} | null; aan/uit met
 //                          newsletter_set_sections {monthly: bool}.
+//   recap_preview          {token, to, lang?: nl|en} -> {ok, own}  (maandrecap "Jouw maand op Bingr", alleen Lifetime, naar dat
+//                          adres: met de eigen kijkgegevens van het Lifetime-account met dat adres, anders voorbeeldgegevens;
+//                          adres nooit gelogd, in admin_audit alleen de taal; limiet gedeeld met newsletter_preview)
+//   recap_render           {token, lang?}    -> {subject, html, key}  (maandrecap met voorbeeldgegevens, nooit van een gebruiker)
+//                          newsletter_status bevat recap: {enabled, audience, next, history[{month, sent, failed, skipped, open}]} | null;
+//                          aan/uit met newsletter_set_sections {recap: bool}.
 //                          newsletter_status bevat welcome: {sent_7d, pending} | null (alleen aantallen).
 //                          Fouten: newsletter_not_configured (geen geheim), newsletter_not_deployed, newsletter_forbidden,
 //                          newsletter_unreachable, en van newsletter zelf bv. bad_email, rate_limited, tmdb_unavailable,
@@ -1449,6 +1455,28 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (status !== 200) return json(out, status);
       await audit("monthly_preview", ip, null, { lang });
       return json({ ok: true });
+    }
+    case "recap_preview": {
+      // maandrecap als testmail naar één adres: nooit het adres loggen of in het logboek zetten
+      const to = cleanEmail(body.to);
+      if (!to) return json({ error: "bad_email" }, 400);
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      if (!(await rateOk(`admin-nlpreview:${ip}`, NL_PREVIEW_MAX, NL_PREVIEW_WINDOW))) {
+        return json({ error: "rate_limited", retry_after: NL_PREVIEW_WINDOW }, 429);
+      }
+      const { status, out } = await nlCall("recap_preview", { to, lang });
+      if (status !== 200) return json(out, status);
+      await audit("recap_preview", ip, null, { lang });
+      return json({ ok: true, own: out.own === true });
+    }
+    case "recap_render": {
+      const lang = cleanLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      const { status, out } = await nlCall("recap_render", { lang });
+      if (status !== 200) return json(out, status);
+      const r = renderView(out);
+      return r ? json(r) : json({ error: "server_error" }, 502);
     }
     case "monthly_render": {
       const lang = cleanLang(body.lang);

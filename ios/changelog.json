@@ -2,6 +2,14 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 46,
+   "version": "1.0.0",
+   "date": "2026-11-01",
+   "items": [
+    {"type": "new", "nl": "Nieuwsbrief: blok Maandrecap (Jouw maand op Bingr, alleen Lifetime) met schakelaar, volgende verzending, testmail naar je eigen adres, voorbeeld met voorbeeldgegevens en de geschiedenis met aantallen"}
+   ]
+  },
+  {
    "build": 45,
    "version": "1.0.0",
    "date": "2026-10-30",

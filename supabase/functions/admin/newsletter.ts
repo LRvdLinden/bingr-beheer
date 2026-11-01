@@ -49,9 +49,9 @@ export function cleanEnabled(v: unknown): boolean | null {
 }
 
 /** Secties aan/uit voor set_sections: top10, popular en monthly (maandoverzicht), elk een echte boolean of weggelaten; minstens één. */
-export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean; monthly?: boolean } | null {
-  const o = obj(b), out: { top10?: boolean; popular?: boolean; monthly?: boolean } = {};
-  for (const k of ["top10", "popular", "monthly"] as const) {
+export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean; monthly?: boolean; recap?: boolean } | null {
+  const o = obj(b), out: { top10?: boolean; popular?: boolean; monthly?: boolean; recap?: boolean } = {};
+  for (const k of ["top10", "popular", "monthly", "recap"] as const) {
     if (o[k] === undefined) continue;
     if (typeof o[k] !== "boolean") return null;
     out[k] = o[k] as boolean;
@@ -59,9 +59,9 @@ export function cleanSections(b: unknown): { top10?: boolean; popular?: boolean;
   return Object.keys(out).length ? out : null;
 }
 /** Schakelaars per sectie uit een antwoord; ontbreekt het (oudere functie), dan aan. */
-export function sectionsView(v: unknown): { top10: boolean; popular: boolean; monthly: boolean } {
+export function sectionsView(v: unknown): { top10: boolean; popular: boolean; monthly: boolean; recap: boolean } {
   const o = obj(v);
-  return { top10: o.top10 !== false, popular: o.popular !== false, monthly: o.monthly !== false };
+  return { top10: o.top10 !== false, popular: o.popular !== false, monthly: o.monthly !== false, recap: o.recap !== false };
 }
 
 const KEY = /^[A-Za-z0-9_.:-]{1,60}$/;
@@ -96,6 +96,23 @@ export function monthlyView(v: unknown) {
   };
 }
 
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+/** Maandrecap "Jouw maand op Bingr" (alleen Lifetime): aan/uit, volgende verzending en per maand alleen aantallen
+ *  (verstuurd, mislukt, overgeslagen, open); null als de functie het (nog) niet meegeeft. */
+export function recapView(v: unknown) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = obj(v), next = obj(o.next);
+  return {
+    enabled: o.enabled !== false,
+    audience: "lifetime" as const,
+    next: str(next.at, 40) ? { key: keyOf(next.key), at: str(next.at, 40) } : null,
+    history: (Array.isArray(o.history) ? o.history : []).slice(0, 13).map((h) => {
+      const x = obj(h);
+      return { month: typeof x.month === "string" && MONTH.test(x.month) ? x.month : null, sent: nat(x.sent), failed: nat(x.failed), skipped: nat(x.skipped), open: nat(x.open) };
+    }),
+  };
+}
+
 /** Stand van de nieuwsbrief (actie status van `newsletter`) voor het dashboard. */
 export function statusView(v: unknown) {
   const o = obj(v), next = obj(o.next), r = obj(o.recipients);
@@ -108,6 +125,7 @@ export function statusView(v: unknown) {
     recipients: { nl, en, total: typeof r.total === "number" ? nat(r.total) : nl + en },
     editions,
     monthly: monthlyView(o.monthly),
+    recap: recapView(o.recap),
     welcome: welcomeView(o.welcome),
   };
 }

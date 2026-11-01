@@ -37,6 +37,26 @@ struct NewsletterStatus: Equatable {
     let welcome: Welcome?
     /// Maandoverzicht "Volgende maand op Bingr" (`newsletter_status.monthly`); nil = functie nog niet bijgewerkt.
     var monthly: Monthly?
+    /// Maandrecap "Jouw maand op Bingr" (`newsletter_status.recap`, alleen Lifetime); nil = functie nog niet bijgewerkt.
+    var recap: Recap?
+
+    struct Recap: Equatable {
+        var enabled: Bool
+        let nextAt: Date?
+        /// Maand waar de volgende recap over gaat, bv. "2026-11".
+        let nextKey: String?
+        let history: [Month]
+
+        /// Eén maand: alleen aantallen.
+        struct Month: Equatable, Identifiable {
+            let id: String
+            let month: String?
+            let sent: Int
+            let failed: Int
+            let skipped: Int
+            let open: Int
+        }
+    }
 
     struct Monthly: Equatable {
         var enabled: Bool
@@ -67,6 +87,17 @@ struct NewsletterStatus: Equatable {
                               editions: m["editions"].array.enumerated().map { Edition($0.element, index: $0.offset) })
         } else {
             monthly = nil
+        }
+        if j["recap"].object != nil {
+            let r = j["recap"]
+            recap = Recap(enabled: r["enabled"].bool ?? true, nextAt: r["next"]["at"].date, nextKey: r["next"]["key"].text,
+                          history: r["history"].array.enumerated().map { i, h in
+                              Recap.Month(id: "\(h["month"].text ?? "maand")-\(i)", month: h["month"].text,
+                                          sent: max(0, h["sent"].int ?? 0), failed: max(0, h["failed"].int ?? 0),
+                                          skipped: max(0, h["skipped"].int ?? 0), open: max(0, h["open"].int ?? 0))
+                          })
+        } else {
+            recap = nil
         }
         if j["welcome"].object != nil {
             welcome = Welcome(sent7d: max(0, j["welcome"]["sent_7d"].int ?? 0), pending: max(0, j["welcome"]["pending"].int ?? 0))

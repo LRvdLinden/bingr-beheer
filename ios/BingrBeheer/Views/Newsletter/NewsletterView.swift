@@ -43,6 +43,14 @@ struct NewsletterView: View {
     @State private var mRendering = false
     @State private var confirmMonthlyOff = false
 
+    @State private var rTo = ""
+    @State private var rSendLang = "nl"
+    @State private var rSending = false
+    @State private var rSendError = ""
+    @State private var rViewLang = "nl"
+    @State private var rRendering = false
+    @State private var confirmRecapOff = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -61,6 +69,7 @@ struct NewsletterView: View {
                     }
                 }
                 monthlyCard
+                recapCard
                 welcomeCard
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
@@ -87,6 +96,12 @@ struct NewsletterView: View {
             Button("Aanzetten") { Task { await setEnabled(true) } }
         } message: {
             Text(confirmText)
+        }
+        .alert("Maandrecap uitzetten?", isPresented: $confirmRecapOff) {
+            Button("Annuleren", role: .cancel) {}
+            Button("Uitzetten", role: .destructive) { Task { await setSection("recap", false, "Maandrecap") } }
+        } message: {
+            Text("Er gaat dan op de 1e van de maand geen persoonlijke recap.")
         }
         .alert("Maandoverzicht uitzetten?", isPresented: $confirmMonthlyOff) {
             Button("Annuleren", role: .cancel) {}
@@ -270,6 +285,104 @@ struct NewsletterView: View {
     }
 
     // MARK: maandoverzicht
+
+    // MARK: maandrecap
+
+    private var recapCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(title: "Maandrecap",
+                       subtitle: "\"Jouw maand op Bingr\": een persoonlijke mail op de 1e van elke maand om 20:00 lokale tijd van het lid, over wat er de vorige maand gekeken is. Alleen voor Lifetime, met de nieuwsbrief aan en als er iets gekeken is. Eén mail per lid per maand; de eerste op 1 december 2026 over november. Het beheer ziet alleen aantallen.")
+            if let s = status, let m = s.recap {
+                Toggle(isOn: Binding(get: { m.enabled }, set: { on in
+                    if on { Task { await setSection("recap", true, "Maandrecap") } } else { confirmRecapOff = true }
+                })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.enabled ? "Aan" : "Uit").font(.subheadline.weight(.bold))
+                        Text(!m.enabled ? "Er wordt geen maandrecap verstuurd" : s.enabled ? "Alleen Lifetime, op de 1e om 20:00 lokale tijd" : "Maar de nieuwsbrief staat uit, dus er gaat niets")
+                            .font(.caption).foregroundStyle(Color.textDim)
+                    }
+                }
+                .tint(.bingrRed)
+                .disabled(switching)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 8) {
+                    cell("Volgende verzending", Fmt.longDateTimeNL(m.nextAt), hint: m.nextKey.map { "over \(Fmt.monthNL($0)) · Nederlandse tijd" }, small: true)
+                    cell("Voor wie", "Lifetime", hint: "met de nieuwsbrief aan en iets gekeken", small: true)
+                }
+                Divider().overlay(Color.line)
+                Text("Testmail").font(.subheadline.weight(.bold))
+                Text("Naar je eigen adres: met je eigen kijkgegevens van de vorige maand als dit adres bij een Lifetime-account hoort, anders met voorbeeldgegevens. Het adres wordt niet bewaard en niet gelogd.")
+                    .font(.caption).foregroundStyle(Color.textDim)
+                TextField("Je eigen e-mailadres", text: $rTo)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .fieldStyle()
+                    .onChange(of: rTo) { _, v in if v.count > 254 { rTo = String(v.prefix(254)) } }
+                Picker("Taal", selection: $rSendLang) {
+                    Text("Nederlands").tag("nl")
+                    Text("Engels").tag("en")
+                }
+                .pickerStyle(.segmented)
+                if !rSendError.isEmpty {
+                    Text(rSendError).font(.subheadline).foregroundStyle(Color.warn)
+                }
+                Button {
+                    Task { await sendRecapPreview() }
+                } label: {
+                    HStack {
+                        if rSending { ProgressView().tint(.white) }
+                        Text("Testmail sturen")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bingr)
+                .disabled(rSending)
+                Divider().overlay(Color.line)
+                Text("Voorbeeld (voorbeeldgegevens)").font(.subheadline.weight(.bold))
+                Picker("Taal", selection: $rViewLang) {
+                    Text("NL").tag("nl")
+                    Text("EN").tag("en")
+                }
+                .pickerStyle(.segmented)
+                Button {
+                    Task { await renderRecap() }
+                } label: {
+                    HStack {
+                        if rRendering { ProgressView().tint(.white) }
+                        Text("Voorbeeld tonen")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bingrGhost)
+                .disabled(rRendering)
+                Divider().overlay(Color.line)
+                Text("Geschiedenis").font(.subheadline.weight(.bold))
+                if m.history.isEmpty { EmptyText(text: "Nog geen maandrecap verstuurd.") }
+                ForEach(m.history) { h in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        HStack(spacing: 6) {
+                            Chip(text: "RECAP")
+                            Text(Fmt.monthNL(h.month)).font(.subheadline.weight(.bold))
+                            if h.open > 0 { Chip(text: "bezig", tone: .warn) }
+                        }
+                        Spacer(minLength: 8)
+                        number(h.sent, "verstuurd", .white)
+                        number(h.failed, "mislukt", h.failed > 0 ? Color.warn : .white)
+                        number(h.skipped, "overgeslagen", .white)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            } else if status != nil {
+                EmptyText(text: "Nog niet beschikbaar (workflow Backend in iptv-ios-appletv draaien).")
+            } else if loadError != nil {
+                EmptyText(text: "Geen gegevens.")
+            } else {
+                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .card()
+    }
 
     private var monthlyCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -537,10 +650,12 @@ struct NewsletterView: View {
             let top10 = r["sections"]["top10"].bool ?? (key == "top10" ? on : status?.top10 ?? true)
             let popular = r["sections"]["popular"].bool ?? (key == "popular" ? on : status?.popular ?? true)
             let monthly = r["sections"]["monthly"].bool ?? (key == "monthly" ? on : status?.monthly?.enabled ?? true)
+            let recap = r["sections"]["recap"].bool ?? (key == "recap" ? on : status?.recap?.enabled ?? true)
+            status?.recap?.enabled = recap
             status?.top10 = top10
             status?.popular = popular
             status?.monthly?.enabled = monthly
-            let now = key == "top10" ? top10 : key == "popular" ? popular : monthly
+            let now = key == "top10" ? top10 : key == "popular" ? popular : key == "recap" ? recap : monthly
             session.show("\(title) staat \(now ? "aan" : "uit").")
         } catch {
             session.report(error)
@@ -575,6 +690,33 @@ struct NewsletterView: View {
 }
 
 extension NewsletterView {
+    fileprivate func sendRecapPreview() async {
+        rSendError = ""
+        let address = rTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EmailCheck.looksValid(address) else { rSendError = APIError.text("bad_email"); return }
+        rSending = true
+        defer { rSending = false }
+        do {
+            let r = try await session.call("recap_preview", ["to": address, "lang": rSendLang])
+            let own = r["own"].bool ?? false
+            session.show("Testmail van de maandrecap (\(rSendLang.uppercased())) verstuurd, \(own ? "met je eigen kijkgegevens" : "met voorbeeldgegevens").")
+        } catch let e as APIError {
+            if e.code != "auth" { rSendError = e.errorDescription ?? "" }
+        } catch {}
+    }
+
+    fileprivate func renderRecap() async {
+        rRendering = true
+        defer { rRendering = false }
+        do {
+            let r = try await session.call("recap_render", ["lang": rViewLang])
+            guard let html = r["html"].string, !html.isEmpty else { session.show(APIError.text("server_error"), bad: true); return }
+            rendered = RenderedMail(subject: r["subject"].string ?? "", html: html)
+        } catch {
+            session.report(error)
+        }
+    }
+
     fileprivate func sendMonthlyPreview() async {
         mSendError = ""
         let address = mTo.trimmingCharacters(in: .whitespacesAndNewlines)

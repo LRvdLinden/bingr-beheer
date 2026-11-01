@@ -3208,6 +3208,12 @@
   const moRender = {};
   nlSeg("moSendLang", (l) => { moSendLang = l; });
   nlSeg("moViewLang", (l) => { moViewLang = l; if (!$("moView").classList.contains("hidden")) showMoPreview(); });
+  // maandrecap "Jouw maand op Bingr" (alleen Lifetime; schakelaar via newsletter_set_sections {recap}, acties recap_preview /
+  // recap_render met voorbeeldgegevens; geschiedenis alleen met aantallen uit newsletter_status.recap)
+  let rcSendLang = "nl", rcViewLang = "nl";
+  const rcRender = {};
+  nlSeg("rcSendLang", (l) => { rcSendLang = l; });
+  nlSeg("rcViewLang", (l) => { rcViewLang = l; if (!$("rcView").classList.contains("hidden")) showRcPreview(); });
   // welkomstmail (acties welcome_preview / welcome_render; aantallen uit newsletter_status.welcome)
   let wlSendLang = "nl", wlViewLang = "nl";
   const wlRender = {};
@@ -3249,6 +3255,21 @@
           <div class="meta"><span>${esc(fmtDateTime(e.created_at))}</span>${e.done ? "" : '<span class="chip warn">bezig</span>'}</div></div>
         <div class="ph-nums nl-nums" aria-label="Aantallen">${n(e.recipients, "ontvangers", "")}${n(e.sent, "verstuurd", "s")}${n(e.failed, "mislukt", "f")}</div></div>`;
     }).join("") || '<p class="empty">Nog geen maandoverzicht verstuurd.</p>';
+    // maandrecap (newsletter_status.recap; null = functie nog niet bijgewerkt)
+    const rc = s.recap, rcSw = $("rcEnabled");
+    rcSw.checked = !!(rc && rc.enabled); rcSw.disabled = nlBusy || !rc;
+    $("rcEnabledText").innerHTML = !rc ? "Niet beschikbaar (workflow Backend in iptv-ios-appletv draaien)"
+      : rc.enabled ? (s.enabled ? "<b>Aan</b> · alleen Lifetime, op de 1e om 20:00 lokale tijd" : "<b>Aan</b> · maar de nieuwsbrief staat uit, dus er gaat niets") : "<b>Uit</b> · er wordt geen maandrecap verstuurd";
+    $("rcFacts").innerHTML = rc
+      ? cell("Volgende verzending", rc.next?.at ? fmtNl(rc.next.at) : "—", rc.next?.key ? `over ${moMonth(rc.next.key)} · Nederlandse tijd` : "", " nl-next")
+        + cell("Voor wie", "Lifetime", "met de nieuwsbrief aan en iets gekeken")
+      : "";
+    $("rcHistory").innerHTML = (rc?.history || []).map((h) => {
+      const n = (v, label, cls) => `<span class="ph-n ${cls}"><b>${nf.format(v || 0)}</b> ${label}</span>`;
+      return `<div class="ph"><div class="ph-main"><div class="ph-top"><span class="kind rem">Recap</span><span class="tt">${esc(moMonth(h.month))}</span></div>
+          <div class="meta">${h.open ? '<span class="chip warn">bezig</span>' : ""}</div></div>
+        <div class="ph-nums nl-nums" aria-label="Aantallen">${n(h.sent, "verstuurd", "s")}${n(h.failed, "mislukt", "f")}${n(h.skipped, "overgeslagen", "")}${h.open ? n(h.open, "open", "") : ""}</div></div>`;
+    }).join("") || '<p class="empty">Nog geen maandrecap verstuurd.</p>';
     const w = s.welcome;
     $("wlFacts").innerHTML = w
       ? cell("Verstuurd", nf.format(w.sent_7d || 0), "laatste 7 dagen", " main") + cell("Wachtend", nf.format(w.pending || 0), "gaat binnen 5 minuten")
@@ -3267,6 +3288,8 @@
       $("wlFacts").innerHTML = '<p class="empty">Geen gegevens.</p>';
       $("moEnabled").disabled = true; $("moEnabledText").textContent = "Niet beschikbaar";
       $("moFacts").innerHTML = ""; $("moEditions").innerHTML = '<p class="empty">Geen gegevens.</p>';
+      $("rcEnabled").disabled = true; $("rcEnabledText").textContent = "Niet beschikbaar";
+      $("rcFacts").innerHTML = ""; $("rcHistory").innerHTML = '<p class="empty">Geen gegevens.</p>';
       return;
     }
     nlNotice(""); nlState = r; dd.nl = r; dd.nlErr = null; renderNl();
@@ -3349,6 +3372,50 @@
     finally { btn.disabled = false; }
   }
   $("moShow").onclick = showMoPreview;
+  $("rcEnabled").onchange = async () => {
+    const sw = $("rcEnabled"), on = sw.checked;
+    if (!nlState || nlBusy || !nlState.recap) { sw.checked = !on; return; }
+    if (!on && !confirm("De maandrecap uitzetten? Er gaat dan op de 1e van de maand geen persoonlijke recap.")) { sw.checked = true; return; }
+    nlBusy = true; renderNl();
+    try {
+      const r = await call("newsletter_set_sections", { recap: on });
+      nlState.sections = r.sections || { ...(nlState.sections || {}), recap: on };
+      nlState.recap.enabled = nlState.sections.recap !== false;
+      toast(`Maandrecap staat ${nlState.recap.enabled ? "aan" : "uit"}.`);
+      loadNewsletter();
+    } catch (e) { sw.checked = !on; if (e.code !== "auth") toast(errText(e), true); }
+    finally { nlBusy = false; renderNl(); }
+  };
+  $("rcPreviewForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const to = $("rcTo").value.trim(), err = (m) => { $("rcSendErr").textContent = m; };
+    err("");
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[A-Za-z]{2,}$/.test(to) || to.length > 254) return err(ERR.bad_email);
+    $("rcSend").disabled = true;
+    try {
+      const r = await call("recap_preview", { to, lang: rcSendLang });
+      toast(`Testmail van de maandrecap (${rcSendLang.toUpperCase()}) verstuurd, ${r.own ? "met je eigen kijkgegevens" : "met voorbeeldgegevens"}.`);
+    } catch (x) { if (x.code !== "auth") err(errText(x)); }
+    finally { $("rcSend").disabled = false; }
+  };
+  async function showRcPreview() {
+    const btn = $("rcShow"), lang = rcViewLang;
+    btn.disabled = true;
+    try {
+      if (!rcRender[lang] || Date.now() - rcRender[lang].at > 120000) {
+        const r = await call("recap_render", { lang });
+        rcRender[lang] = { subject: r.subject || "", html: r.html || "", key: r.key || "", at: Date.now() };
+      }
+      if (lang !== rcViewLang) return;
+      const r = rcRender[lang];
+      $("rcSubject").innerHTML = `<span class="sub">Onderwerp</span> <b>${esc(r.subject || "—")}</b> <span class="sub">· voorbeeldgegevens</span>`;
+      $("rcSubject").classList.remove("hidden");
+      $("rcView").classList.remove("hidden");
+      mountMail($("rcView"), r.html);
+    } catch (e) { if (e.code !== "auth") toast(errText(e), true); }
+    finally { btn.disabled = false; }
+  }
+  $("rcShow").onclick = showRcPreview;
   $("nlPreviewForm").onsubmit = async (e) => {
     e.preventDefault();
     const to = $("nlTo").value.trim(), err = (m) => { $("nlSendErr").textContent = m; };

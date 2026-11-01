@@ -381,6 +381,34 @@
         <div id="moEditions" class="ph-list"><p class="empty">Laden…</p></div>
       </div>
       <div class="panel ps-panel">
+        <h2>Maandrecap</h2>
+        <p class="sub">"Jouw maand op Bingr": een persoonlijke mail op de 1e van elke maand om 20:00 lokale tijd van het lid, over wat hij of zij de vorige maand keek (afleveringen, films, uren, eerste en laatste titel, meest bekeken series en films, volgende aflevering). <b>Alleen voor Lifetime</b> (de statistieken horen bij Lifetime) en alleen voor wie de nieuwsbrief aan heeft en die maand iets keek. Eén mail per lid per maand. De eerste gaat op 1 december 2026 over november. Gaat alleen als de nieuwsbrief hierboven ook aan staat. Het beheer ziet alleen aantallen.</p>
+        <label class="switch nl-switch"><input id="rcEnabled" type="checkbox" role="switch" disabled><span class="track"></span><span id="rcEnabledText">Laden…</span></label>
+        <div id="rcFacts" class="ps-grid wl-facts" aria-live="polite"><p class="empty">Laden…</p></div>
+      </div>
+      <div class="grid2">
+        <form id="rcPreviewForm" class="panel" novalidate>
+          <h2>Maandrecap: testmail</h2>
+          <p class="sub">Stuurt de maandrecap van de vorige maand alleen naar dit adres: met je eigen kijkgegevens als dit adres bij een Lifetime-account hoort dat die maand keek, anders met voorbeeldgegevens. Het adres wordt niet bewaard en niet gelogd. Zelfde limiet als het voorbeeld van de nieuwsbrief.</p>
+          <label>Je eigen e-mailadres<input id="rcTo" type="email" inputmode="email" maxlength="254" autocomplete="email" spellcheck="false" required></label>
+          <div class="nl-lang"><span class="sub">Taal</span><div id="rcSendLang" class="seg" role="group" aria-label="Taal van de testmail"><button type="button" data-lang="nl" class="on" aria-pressed="true">NL</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div></div>
+          <div id="rcSendErr" class="err" role="alert"></div>
+          <button id="rcSend" class="btn" type="submit">Testmail sturen</button>
+        </form>
+        <div class="panel">
+          <div class="row-head"><h2>Maandrecap: voorbeeld</h2><div id="rcViewLang" class="seg" role="group" aria-label="Taal van de weergave"><button type="button" data-lang="nl" class="on" aria-pressed="true">NL</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div></div>
+          <p class="sub">De maandrecap met voorbeeldgegevens (niet van een echte gebruiker); posters en namen komen van TMDB.</p>
+          <div class="form-btns"><button id="rcShow" class="btn ghost small" type="button">Voorbeeld tonen</button></div>
+          <p id="rcSubject" class="nl-subject hidden"></p>
+          <div id="rcView" class="nl-view hidden"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Maandrecap: geschiedenis</h2>
+        <p class="sub">Per maand waar de recap over gaat: verstuurd, mislukt, overgeslagen (niets gekeken of intussen afgemeld) en nog open.</p>
+        <div id="rcHistory" class="ph-list"><p class="empty">Laden…</p></div>
+      </div>
+      <div class="panel ps-panel">
         <h2>Welkomstmail</h2>
         <p class="sub">Gaat automatisch naar nieuwe leden zodra ze hun e-mailadres hebben bevestigd (binnen 5 minuten, één keer per account): welkom, de eerste stappen (eigen bron toevoegen, kijken in de browser, tv koppelen, de apps, hulp) en de nieuwsbrief met een uitschrijflink. Staat los van de schakelaar hierboven; de alinea over de nieuwsbrief staat er alleen in als de nieuwsbrief aan staat en het lid ingeschreven is. Ook als iemand alle berichten heeft uitgezet (het is de bevestiging van het account). Leden van vóór de invoering krijgen hem niet.</p>
         <div id="wlFacts" class="ps-grid wl-facts" aria-live="polite"><p class="empty">Laden…</p></div>

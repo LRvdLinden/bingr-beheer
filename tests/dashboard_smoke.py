@@ -117,12 +117,18 @@ def answer(req):
     if str(a).startswith("mailing_"):
         return mailing_answer(req)
     if a == "newsletter_set_sections":
-        keys = [k for k in ("top10", "popular", "monthly") if isinstance(req.get(k), bool)]
-        return (200, {"ok": True, "sections": {k: req.get(k, True) for k in ("top10", "popular", "monthly")}}) if keys else (400, {"error": "bad_sections"})
+        keys = [k for k in ("top10", "popular", "monthly", "recap") if isinstance(req.get(k), bool)]
+        return (200, {"ok": True, "sections": {k: req.get(k, True) for k in ("top10", "popular", "monthly", "recap")}}) if keys else (400, {"error": "bad_sections"})
     if a == "newsletter_status":
         return 200, {"enabled": True, "next": None, "recipients": {"nl": 1000, "en": 234, "total": 1234}, "editions": [], "welcome": None,
                      "monthly": {"enabled": True, "next": {"key": "2026-11", "at": "2026-10-31T17:00:00.000Z"},
-                                 "editions": [{"key": "2026-10", "created_at": "2026-09-30T16:00:03Z", "recipients": 1200, "sent": 1190, "failed": 10, "done": True}]}}
+                                 "editions": [{"key": "2026-10", "created_at": "2026-09-30T16:00:03Z", "recipients": 1200, "sent": 1190, "failed": 10, "done": True}]},
+                     "recap": {"enabled": True, "audience": "lifetime", "next": {"key": "2026-11", "at": "2026-12-01T19:00:00.000Z"},
+                               "history": [{"month": "2026-11", "sent": 321, "failed": 2, "skipped": 4, "open": 0}]}}
+    if a == "recap_render":
+        return 200, {"subject": "Jouw november op Bingr", "html": "<html><body><p>BINGR maandrecap</p></body></html>", "key": "2026-11"}
+    if a == "recap_preview":
+        return 200, {"ok": True, "own": False}
     if a == "monthly_render":
         return 200, {"subject": "Volgende maand op Bingr: Film en meer in november", "html": "<html><body><p>BINGR maandoverzicht</p></body></html>", "key": "2026-11"}
     if a == "monthly_preview":
@@ -176,6 +182,20 @@ def mailing_smoke(b, base, errors, calls):
     page.click("#moEnabled + .track")
     page.wait_for_timeout(400)
     check(calls.count("newsletter_set_sections") == 2 and any("maandoverzicht uitzetten" in d for d in dialogs), "maandoverzicht niet uitgezet")
+    # maandrecap: alleen Lifetime, volgende verzending, geschiedenis, voorbeeld, testmail en uitzetten (met bevestiging)
+    check(page.is_checked("#rcEnabled") and "Lifetime" in page.inner_text("#rcFacts") and "december" not in page.inner_text("#rcHistory")
+          and "321" in page.inner_text("#rcHistory") and "november 2026" in page.inner_text("#rcHistory"), "maandrecap: stand of geschiedenis ontbreekt")
+    page.click("#rcShow")
+    page.wait_for_selector("#rcView:not(.hidden)", timeout=5000)
+    check(page.evaluate("document.getElementById('rcView').shadowRoot.textContent.includes('maandrecap')"), "maandrecap: voorbeeld niet getoond")
+    page.fill("#rcTo", "test@example.com")
+    page.click("#rcSend")
+    page.wait_for_timeout(300)
+    check(calls.count("recap_preview") == 1, "maandrecap: testmail niet aangevraagd")
+    n0 = calls.count("newsletter_set_sections")
+    page.click("#rcEnabled + .track")
+    page.wait_for_timeout(400)
+    check(calls.count("newsletter_set_sections") == n0 + 1 and any("maandrecap uitzetten" in d for d in dialogs), "maandrecap niet uitgezet")
     page.click('input[name="mlAudience"][value="service"] + span')
     check(page.is_visible("#mlWarn"), "geen waarschuwing bij een servicebericht")
     check(not page.is_enabled("#mlSend"), "servicebericht zonder vinkje toch te versturen")
