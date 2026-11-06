@@ -3,7 +3,7 @@
 // of account-id's.
 import {
   allView, cleanAll, cleanGenerate, cleanMailLang, cleanMailMode, cleanSettings, codeView, confirmNeeded, DEFAULT_SETTINGS,
-  defaultCutover, generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, settingsView, statsView,
+  FIXED_CUTOVER, suggestion, generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, settingsView, statsView,
 } from "./lifetime.ts";
 import { breakdown, buildRevenue, revenuePlan } from "./revenue.ts";
 
@@ -21,11 +21,12 @@ Deno.test("instellingen: standaard en opschonen", () => {
   eq(DEFAULT_SETTINGS, { enabled: false, announce_at: null, cutover_at: null, discount_pct: 30, code_valid_until: null, trial_days: 0 }, "contract");
 });
 
-Deno.test("standaard overgang: D + 30 dagen om 00:00 Amsterdam", () => {
-  eq(defaultCutover(NOW), "2026-12-06T00:00:00+01:00", "winter: +01:00");
-  eq(defaultCutover(Date.parse("2026-04-01T10:00:00Z")), "2026-05-01T00:00:00+02:00", "zomer: +02:00");
-  // 23:30 Amsterdam op 31 oktober is al 31 oktober, ook al is het in UTC nog 31 oktober 22:30
-  eq(defaultCutover(Date.parse("2026-10-31T22:30:00Z")), "2026-11-30T00:00:00+01:00", "dag in Amsterdam");
+Deno.test("voorstel: vaste overgang 1 december 2026 00:00 Amsterdam (aanvulling 2)", () => {
+  eq(FIXED_CUTOVER, "2026-12-01T00:00:00+01:00", "vaste datum");
+  eq(new Date(FIXED_CUTOVER).toISOString(), "2026-11-30T23:00:00.000Z", "in UTC");
+  eq(suggestion(), { suggested_cutover_at: FIXED_CUTOVER, suggested_code_valid_until: FIXED_CUTOVER }, "code geldig tot dezelfde datum");
+  const r = cleanSettings({ enabled: true, cutover_at: FIXED_CUTOVER, code_valid_until: FIXED_CUTOVER }, DEFAULT_SETTINGS, NOW);
+  ok(r.ok, "voorstel is geldig om aan te zetten");
 });
 
 Deno.test("instellingen controleren", () => {

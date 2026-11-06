@@ -147,7 +147,8 @@
 //   "Build 167: alleen Lifetime"). Alleen instellingen en aantallen; nooit adressen of account-id's in antwoorden of admin_audit.
 //   lifetime_settings   {token, set?: {lifetime_only?: {enabled?, announce_at?, cutover_at?, discount_pct?, code_valid_until?,
 //                       trial_days?}, iap?: {apple}, upgrade_link?: {apple_eu}}, confirm?} -> {lifetime_only, iap, upgrade_link,
-//                       suggested_cutover_at (alleen lezen: D + 30 dagen 00:00 Amsterdam)} | {ok, …}  (app_settings; aanzetten,
+//                       suggested_cutover_at, suggested_code_valid_until (alleen lezen: vast
+//                       2026-12-01T00:00:00+01:00, aanvulling 2)} | {ok, …}  (app_settings; aanzetten,
 //                       de overgang of proefperiode verzetten terwijl het aan staat, iap.apple aan en apple_eu aan vragen
 //                       confirm: true, anders 409 {error:"confirm_required", confirm:[enable|cutover|trial|iap_apple|apple_eu]})
 //   lifetime_codes_stats {token} -> {created, mailed, mail_error, reminded, redeemed, expired, open, eligible, missing, valid_until,
@@ -276,7 +277,7 @@ import {
   cleanAudience, cleanContent as cleanMailingContent, cleanMailingId, cleanRequestId, cleanTestLang, mailingStatusView, sendAudit,
 } from "./mailing.ts";
 import {
-  allView as lifetimeAll, cleanAll as cleanLifetime, cleanGenerate, cleanMailLang, cleanMailMode, codeView, confirmNeeded, defaultCutover,
+  allView as lifetimeAll, cleanAll as cleanLifetime, cleanGenerate, cleanMailLang, cleanMailMode, codeView, confirmNeeded, suggestion as lifetimeSuggestion,
   generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, statsView,
   assignView, cleanAssign, unclaimedList,
 } from "./lifetime.ts";
@@ -1209,7 +1210,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const val = (k: string) => (rows ?? []).find((r: { key: string }) => r.key === k)?.value;
       const cur = lifetimeAll(val("lifetime_only"), val("iap"), val("upgrade_link"));
       const now = Date.now();
-      if (body.set === undefined) return json({ ...cur, suggested_cutover_at: defaultCutover(now) });
+      if (body.set === undefined) return json({ ...cur, ...lifetimeSuggestion() });
       if (!body.set || typeof body.set !== "object" || Array.isArray(body.set)) return json({ error: "bad_settings" }, 400);
       const r = cleanLifetime(body.set as Record<string, unknown>, cur, now);
       if (!r.ok) return json({ error: r.error }, 400);

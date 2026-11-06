@@ -111,7 +111,7 @@ def lifetime_answer(req):
     a = req.get("action")
     if a == "lifetime_settings":
         if "set" not in req:
-            return 200, {**LT, "suggested_cutover_at": "2026-12-06T00:00:00+01:00"}
+            return 200, {**LT, "suggested_cutover_at": "2026-12-01T00:00:00+01:00", "suggested_code_valid_until": "2026-12-01T00:00:00+01:00"}
         st = req["set"]
         if st["lifetime_only"]["enabled"] and not LT["lifetime_only"]["enabled"] and not req.get("confirm"):
             return 409, {"error": "confirm_required", "confirm": ["enable"]}
@@ -356,11 +356,13 @@ def lifetime_smoke(b, base, errors, calls):
     check("120" in page.inner_text("#ltStats") and "5 nog te maken" in page.inner_text("#ltStats"), "totalen ontbreken")
     # aanzetten met overgang: eerst 409, dan bevestigen en opnieuw met confirm
     page.click("label:has(#ltEnabled) .track")
-    page.fill("#ltCutover", "2026-12-06T00:00")
+    # aanvulling 2: het vaste voorstel (1 december 2026 00:00) staat al ingevuld, ook voor de code
+    check(page.input_value("#ltCutover") == "2026-12-01T00:00" and page.input_value("#ltValid") == "2026-12-01T00:00", "voorstel 1 december niet ingevuld")
     page.click("#ltSave")
     page.wait_for_timeout(500)
     got = LT_SETS[-1] if LT_SETS else {}
-    check(got.get("confirm") is True and got["set"]["lifetime_only"]["cutover_at"] == "2026-12-06T00:00:00+01:00", f"opslaan zonder bevestiging of verkeerde tijd: {got}")
+    check(got.get("confirm") is True and got["set"]["lifetime_only"]["cutover_at"] == "2026-12-01T00:00:00+01:00"
+          and got["set"]["lifetime_only"]["code_valid_until"] == "2026-12-01T00:00:00+01:00", f"opslaan zonder bevestiging of verkeerde tijd: {got}")
     check(any("Lifetime-only gaat AAN" in d for d in dialogs), "geen bevestiging bij aanzetten")
     wait_text(page, "#ltState", "Aangekondigd")
     steps += 1

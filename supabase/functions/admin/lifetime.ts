@@ -39,19 +39,12 @@ export function settingsView(raw: unknown): LifetimeSettings {
   };
 }
 
-/** Standaard overgang: D + 30 dagen, 00:00 Europe/Amsterdam (D = de dag van `now` in Amsterdam). */
-export function defaultCutover(now: number): string {
-  const day = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Amsterdam" }).format(new Date(now));
-  const [y, m, d] = day.split("-").map(Number);
-  const target = Date.UTC(y, m - 1, d + 30);
-  // offset van Amsterdam op die dag (CET +01:00 of CEST +02:00)
-  const probe = new Date(target + 12 * 3600000);
-  const hh = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", hour12: false }).format(probe));
-  const off = hh - 12;
-  const t = new Date(target);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())}T00:00:00+${p(off)}:00`;
-}
+/**
+ * Aanvulling 2: vaste overgang op 1 december 2026, 00:00 Europe/Amsterdam; de code werkt tot en met 30 november 23:59
+ * (code_valid_until = dezelfde datum). Standaardwaarde en voorstel in het beheer (web, BingrBeheer en LRbeheer).
+ */
+export const FIXED_CUTOVER = "2026-12-01T00:00:00+01:00";
+export const suggestion = () => ({ suggested_cutover_at: FIXED_CUTOVER, suggested_code_valid_until: FIXED_CUTOVER });
 
 function dateIn(v: unknown): string | null | undefined {
   if (v === null || v === "") return null;

@@ -2258,9 +2258,10 @@
     $("ltEnabled").checked = l.enabled;
     $("ltAnnounce").value = fromIso(l.announce_at);
     $("ltCutover").value = fromIso(l.cutover_at);
-    $("ltCutHint").textContent = v.suggested_cutover_at ? `Voorstel: ${fmtNl(v.suggested_cutover_at)} (vandaag + 30 dagen, 00:00)` : "";
-    if (!l.cutover_at && v.suggested_cutover_at) $("ltCutover").placeholder = fromIso(v.suggested_cutover_at);
-    $("ltPct").value = l.discount_pct; $("ltValid").value = fromIso(l.code_valid_until); $("ltTrial").value = l.trial_days;
+    // aanvulling 2: vaste overgang 1 december 2026 00:00; lege velden krijgen het voorstel (pas bewaard na Opslaan)
+    $("ltCutHint").textContent = v.suggested_cutover_at ? `Voorstel: ${fmtNl(v.suggested_cutover_at)}` : "";
+    if (!l.cutover_at && v.suggested_cutover_at) $("ltCutover").value = fromIso(v.suggested_cutover_at);
+    $("ltPct").value = l.discount_pct; $("ltValid").value = fromIso(l.code_valid_until || (l.cutover_at ? null : v.suggested_code_valid_until)); $("ltTrial").value = l.trial_days;
     $("ltIap").checked = v.iap.apple; $("ltEu").checked = v.upgrade_link.apple_eu;
     loadLifetimeStats();
     loadUnclaimed();

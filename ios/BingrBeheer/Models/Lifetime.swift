@@ -11,8 +11,9 @@ struct LifetimeSettings: Equatable {
     var trialDays = 0
     var iapApple = false
     var appleEU = false
-    /// Voorstel van de server: vandaag + 30 dagen, 00:00 Nederlandse tijd (alleen bij lezen).
+    /// Voorstel van de server (aanvulling 2): vast 1 december 2026, 00:00 Nederlandse tijd, ook voor de code (alleen bij lezen).
     var suggestedCutover: Date?
+    var suggestedCodeValidUntil: Date?
 
     init() {}
 
@@ -27,6 +28,7 @@ struct LifetimeSettings: Equatable {
         iapApple = j["iap"]["apple"].bool ?? false
         appleEU = j["upgrade_link"]["apple_eu"].bool ?? false
         suggestedCutover = j["suggested_cutover_at"].date
+        suggestedCodeValidUntil = j["suggested_code_valid_until"].date ?? suggestedCutover
     }
 
     /// ISO-tijd in Nederlandse tijd met offset, zoals de server hem opslaat ("2026-12-06T00:00:00+01:00").

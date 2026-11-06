@@ -97,13 +97,13 @@ struct LifetimeView: View {
     }
 
     private var settingsSection: some View {
-        let suggested = settings?.suggestedCutover ?? Date().addingTimeInterval(30 * 86400)
+        let suggested = settings?.suggestedCutover ?? ISO8601DateFormatter().date(from: "2026-11-30T23:00:00Z") ?? Date()
         return Section {
             Toggle("Lifetime-only aan", isOn: binding(\.enabled)).tint(.bingrRed)
             optionalDate("Aankondiging vanaf", \.announceAt, fallback: Date(), emptyText: "Leeg = meteen bij aanzetten")
             optionalDate("Overgangsdatum", \.cutoverAt, fallback: suggested, emptyText: "Voorstel: \(Fmt.dateTimeNL(suggested))")
             Stepper("Korting: \(settings?.discountPct ?? 30)%", value: binding(\.discountPct), in: 1...90)
-            optionalDate("Code geldig tot en met", \.codeValidUntil, fallback: settings?.cutoverAt ?? suggested, emptyText: "Leeg = de overgangsdatum")
+            optionalDate("Code geldig tot en met", \.codeValidUntil, fallback: settings?.suggestedCodeValidUntil ?? settings?.cutoverAt ?? suggested, emptyText: "Leeg = de overgangsdatum")
             Stepper("Proefperiode: \(settings?.trialDays ?? 0) dagen", value: binding(\.trialDays), in: 0...90)
             Toggle(isOn: binding(\.iapApple)) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -203,8 +203,14 @@ struct LifetimeView: View {
 
     private func load() async {
         do {
-            let s = LifetimeSettings(try await session.call("lifetime_settings"))
-            settings = s; original = s; loadError = nil
+            var s = LifetimeSettings(try await session.call("lifetime_settings"))
+            original = s
+            // aanvulling 2: lege datums krijgen het vaste voorstel (1 december 2026); pas bewaard na Opslaan
+            if s.cutoverAt == nil, let c = s.suggestedCutover {
+                s.cutoverAt = c
+                if s.codeValidUntil == nil { s.codeValidUntil = s.suggestedCodeValidUntil ?? c }
+            }
+            settings = s; loadError = nil
         } catch {
             if (error as? APIError)?.code != "auth" { loadError = error.localizedDescription }
             return
