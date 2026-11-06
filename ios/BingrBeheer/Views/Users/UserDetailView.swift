@@ -11,6 +11,11 @@ struct UserDetailView: View {
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var user: UserDetail?
+    // aanvulling 1 (build 167): niet-geclaimde aankoop aan dit account koppelen (purchase_assign)
+    @State private var unclaimed: [UnclaimedPurchase] = []
+    @State private var assignChoice: Int?
+    @State private var assigning = false
+    @State private var confirmAssign = false
     @State private var error: String?
     @State private var confirmReset = false
     @State private var sending = false
@@ -96,10 +101,20 @@ struct UserDetailView: View {
                         InfoRow("Kijkt nu", Fmt.num(u.watchingNow))
                         InfoRow("Berichten per e-mail", u.emailOptOut ? "Afgemeld" : "Aan")
                         newsletterRow(u)
+                        if let c = u.lifetimeCode {
+                            InfoRow(label: "Kortingscode") {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(c.code) · \(c.statusText)").monospaced().textSelection(.enabled)
+                                    if !c.detail.isEmpty { Text(c.detail).font(.caption).foregroundStyle(Color.textDim) }
+                                }
+                            }
+                        }
                     }
                     .card()
 
                     planCard(u)
+
+                    if !u.plan.isLifetime && !unclaimed.isEmpty { assignCard(u) }
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Apparaten (\(u.devices.count))").font(.headline)
@@ -239,6 +254,7 @@ struct UserDetailView: View {
             planNote = u.plan.note ?? ""
             planError = nil
             error = nil
+            if !u.plan.isLifetime { await loadUnclaimed() } else { unclaimed = [] }
         } catch {
             if error is CancellationError { return }
             self.error = (error as? APIError)?.errorDescription ?? APIError.text("server_error")
@@ -304,6 +320,53 @@ struct UserDetailView: View {
     }
 
     // MARK: abonnement
+
+    private func assignCard(_ u: UserDetail) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Aankoop koppelen").font(.headline)
+            Text("Een betaalde aankoop zonder account aan dit account koppelen. Het account krijgt Lifetime. Doe dit alleen als je zeker weet dat deze klant de koper is.")
+                .font(.caption).foregroundStyle(Color.textDim)
+            Picker("Aankoop", selection: $assignChoice) {
+                ForEach(unclaimed) { p in Text(p.text).tag(Optional(p.id)) }
+            }
+            Button {
+                confirmAssign = true
+            } label: {
+                HStack {
+                    if assigning { ProgressView() }
+                    Text("Koppelen aan dit account")
+                }
+            }
+            .disabled(assigning || assignChoice == nil)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+        .alert("Aankoop koppelen?", isPresented: $confirmAssign) {
+            Button("Koppelen", role: .destructive) { Task { await assign() } }
+            Button("Annuleren", role: .cancel) {}
+        } message: {
+            Text("Aankoop #\(assignChoice ?? 0) koppelen aan dit account. Het account krijgt Lifetime.")
+        }
+    }
+
+    private func loadUnclaimed() async {
+        guard let j = try? await session.call("purchases_unclaimed") else { unclaimed = []; return }
+        unclaimed = UnclaimedPurchase.list(j).items.filter { $0.status == "paid" }
+        if assignChoice == nil || !unclaimed.contains(where: { $0.id == assignChoice }) { assignChoice = unclaimed.first?.id }
+    }
+
+    private func assign() async {
+        guard let id = assignChoice else { return }
+        assigning = true
+        defer { assigning = false }
+        do {
+            try await session.call("purchase_assign", ["purchase_id": id, "user_id": userID, "confirm": true])
+            session.show("Aankoop gekoppeld; het account heeft nu Lifetime.")
+            await load()
+        } catch {
+            if (error as? APIError)?.code != "auth" { session.show(error.localizedDescription, bad: true) }
+        }
+    }
 
     private func planCard(_ u: UserDetail) -> some View {
         let d = AccountPlan.defaults[planChoice] ?? AccountPlan.defaults["free"]!

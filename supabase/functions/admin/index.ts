@@ -143,6 +143,30 @@
 //   app_settings_set    {token, upgrade_link:{apple, android, androidtv, web}} -> {ok, upgrade_link} (andere sleutels in de
 //                       database, zoals tizen/webos van de vervallen tv-apps, blijven staan; meegestuurde worden genegeerd)
 //                       Abonnementen: tabellen account_plans en app_settings (schema in iptv-ios-appletv, docs/ACCOUNT.md).
+//   Build 167: Bingr wordt alleen Lifetime (lifetime.ts / lifetime_test.ts; contract in iptv-ios-appletv, docs/ACCOUNT.md
+//   "Build 167: alleen Lifetime"). Alleen instellingen en aantallen; nooit adressen of account-id's in antwoorden of admin_audit.
+//   lifetime_settings   {token, set?: {lifetime_only?: {enabled?, announce_at?, cutover_at?, discount_pct?, code_valid_until?,
+//                       trial_days?}, iap?: {apple}, upgrade_link?: {apple_eu}}, confirm?} -> {lifetime_only, iap, upgrade_link,
+//                       suggested_cutover_at (alleen lezen: D + 30 dagen 00:00 Amsterdam)} | {ok, …}  (app_settings; aanzetten,
+//                       de overgang of proefperiode verzetten terwijl het aan staat, iap.apple aan en apple_eu aan vragen
+//                       confirm: true, anders 409 {error:"confirm_required", confirm:[enable|cutover|trial|iap_apple|apple_eu]})
+//   lifetime_codes_stats {token} -> {created, mailed, mail_error, reminded, redeemed, expired, open, eligible, missing, valid_until,
+//                       stripe_coupon}  (RPC bingr_admin_lifetime_stats, anders de functie billing)
+//   lifetime_codes_generate {token, dry_run? (standaard true), confirm?} -> {dry_run, eligible, existing, to_create, created, failed,
+//                       remaining, done, coupon_created}  (functie billing; echt alleen met dry_run: false en confirm: true)
+//   lifetime_mail       {token, mode: dry_run|test|send|remind, lang? (test: nl|en|both), to? (test; standaard het beheeradres),
+//                       confirm? (send/remind)} -> {mode, recipients:{nl, en, total}, sent, failed, skipped, remaining, done,
+//                       without_code}  (functie lifetime-notice; send/remind in batches: herhalen tot done)
+//   user_detail         build 167: lifetime_code = {code, status: open|mailed|mail_error|redeemed|expired, created_at, expires_at,
+//                       mailed_at, reminded_at, redeemed_at, mail_error} | null
+//   purchases_unclaimed {token} -> {total, paid, items:[{id, provider: stripe|apple, status, amount, currency, paid_at, created_at,
+//                       mode: live|test|null, email_known}]}  (aanvulling 1: gastaankopen met user_id null en user_deleted_at null;
+//                       nooit e-mailadres, hash, claimtoken of Stripe-/Apple-id)
+//   purchase_assign     {token, purchase_id, user_id, confirm: true} -> {ok, plan}  (RPC bingr_admin_purchase_assign; fouten
+//                       already_claimed / not_paid 409, not_found 404, zonder confirm 409 confirm_required; in admin_audit met
+//                       het account en purchase_id)
+//   revenue             build 167: by_provider / by_provider_all [{key: stripe|apple, label, count, gross}] (billing_purchases.provider)
+//                       Server-functies met het geheim LIFETIME_ADMIN_SECRET in de header x-lifetime-secret (LIFETIME_CALLS).
 //   releases_get        {token}           -> {releases:{apple:{live, beta}, android:{live, beta}, updatedAt}}
 //   releases_set        {token, releases:{apple:{live:{version, build, date?}|null, beta:{version, build, date?, label}|null},
 //                       android:{…}}} -> {ok, releases} | 400 {error:"bad_releases", field}  (app_settings.release_channels:
@@ -251,6 +275,11 @@ import {
 import {
   cleanAudience, cleanContent as cleanMailingContent, cleanMailingId, cleanRequestId, cleanTestLang, mailingStatusView, sendAudit,
 } from "./mailing.ts";
+import {
+  allView as lifetimeAll, cleanAll as cleanLifetime, cleanGenerate, cleanMailLang, cleanMailMode, codeView, confirmNeeded, defaultCutover,
+  generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, statsView,
+  assignView, cleanAssign, unclaimedList,
+} from "./lifetime.ts";
 import { checkImageUrl, type CheckResult, cleanUpload, IMAGE_MAX, isOwnAsset, MAIL_BUCKET, objectName, publicUrl } from "./image.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
@@ -645,6 +674,13 @@ async function newsletterPrefs(ids: string[]): Promise<Record<string, boolean> |
 
 // Servers (alleen adres van Xtream-bronnen) van een account, uit account_sources (schema in iptv-ios-appletv). Leesfout of
 // ontsleutelen mislukt = null (onbekend). Bewust geen log: alleen een korte code bij een databasefout, nooit inhoud of adressen.
+// build 167: kortingscode van één account voor de accountdetails (lifetime_codes; zonder Stripe-id's). null = geen code of
+// tabel nog niet aangemaakt (workflow Backend in iptv-ios-appletv).
+async function lifetimeCode(id: string) {
+  const { data, error } = await admin.from("lifetime_codes").select("*").eq("user_id", id).maybeSingle();
+  if (error) return null;
+  return codeView(data, Date.now());
+}
 async function accountServers(id: string) {
   const { data, error } = await admin.from("account_sources").select("data").eq("user_id", id).maybeSingle();
   if (error) { console.error("admin", "servers", error.code ?? "db"); return null; }
@@ -1050,10 +1086,10 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // build 97: inzage van een account in het logboek (wie, geen inhoud)
       await audit("user_view", ip, String(body.id).toLowerCase());
       const uid = String(body.id).toLowerCase();
-      const [newsletter, servers, country] = await Promise.all([newsletterPref(uid), accountServers(uid), userCountry(uid)]);
+      const [newsletter, servers, country, lifetime_code] = await Promise.all([newsletterPref(uid), accountServers(uid), userCountry(uid), lifetimeCode(uid)]);
       const devices = Array.isArray(data.devices) ? data.devices.map((d: Record<string, unknown>) =>
         ({ ...d, country: country.devices.find((x) => Date.parse(String(x.created_at)) === Date.parse(String(d.created_at)) && x.name === d.name)?.country ?? null })) : data.devices;
-      return json({ ...data, devices, email: maskEmail(data.email), newsletter, servers, country: country.account });
+      return json({ ...data, devices, email: maskEmail(data.email), newsletter, servers, country: country.account, lifetime_code });
     }
     case "user_email": {
       // het volledige e-mailadres (oog naast het gemaskeerde adres); in het logboek alleen dat het bekeken is
@@ -1164,6 +1200,105 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       await audit("app_settings_set", ip, null, { upgrade_link: value });
       return json({ ok: true, upgrade_link: value });
+    }
+    // ---- build 167: Bingr wordt alleen Lifetime (lifetime.ts; docs/ACCOUNT.md "Build 167" in iptv-ios-appletv) ----
+    case "lifetime_settings": {
+      // lezen (zonder set) of schrijven (set: {lifetime_only?, iap?, upgrade_link?}); gevolgen voor klanten vragen confirm: true
+      const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", ["lifetime_only", "iap", "upgrade_link"]);
+      if (error) throw new Error(error.message);
+      const val = (k: string) => (rows ?? []).find((r: { key: string }) => r.key === k)?.value;
+      const cur = lifetimeAll(val("lifetime_only"), val("iap"), val("upgrade_link"));
+      const now = Date.now();
+      if (body.set === undefined) return json({ ...cur, suggested_cutover_at: defaultCutover(now) });
+      if (!body.set || typeof body.set !== "object" || Array.isArray(body.set)) return json({ error: "bad_settings" }, 400);
+      const r = cleanLifetime(body.set as Record<string, unknown>, cur, now);
+      if (!r.ok) return json({ error: r.error }, 400);
+      if (!r.changed) return json({ ok: true, ...cur });
+      const need = confirmNeeded(cur, r.value);
+      if (need.length && body.confirm !== true) return json({ error: "confirm_required", confirm: need }, 409);
+      const at = new Date().toISOString();
+      const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
+      // andere sleutels in iap en upgrade_link (apple, android, … van app_settings_set) blijven staan
+      const ups = [
+        { key: "lifetime_only", value: r.value.lifetime_only, updated_at: at },
+        { key: "iap", value: { ...obj(val("iap")), apple: r.value.iap.apple }, updated_at: at },
+        { key: "upgrade_link", value: { ...obj(val("upgrade_link")), apple_eu: r.value.upgrade_link.apple_eu }, updated_at: at },
+      ].filter((u) => JSON.stringify(u.value) !== JSON.stringify(u.key === "lifetime_only" ? cur.lifetime_only : val(u.key)));
+      if (ups.length) {
+        const { error: ue } = await admin.from("app_settings").upsert(ups);
+        if (ue) throw new Error(ue.message);
+      }
+      await audit("lifetime_settings", ip, null, settingsAudit(r.value, need));
+      return json({ ok: true, ...r.value });
+    }
+    case "lifetime_codes_stats": {
+      // alleen totalen (aangemaakt, gemaild, mailfout, herinnerd, gebruikt, verlopen); nooit lijsten of adressen
+      const { data, error } = await admin.rpc("bingr_admin_lifetime_stats");
+      if (!error) return json(statsView(data));
+      if (error.code !== "PGRST202") throw new Error(error.message);
+      // RPC nog niet aangemaakt: dan via de functie (die telt ook hoeveel gratis accounts in aanmerking komen)
+      const { status, out } = await lifetimeCall(env("SUPABASE_URL"), env(LIFETIME_CALLS.secretEnv), LIFETIME_CALLS.stats.fn, LIFETIME_CALLS.stats.action, {});
+      if (status !== 200) return json(status === 503 && out.error === "lifetime_not_deployed" ? { error: "lifetime_not_configured" } : out, status);
+      return json(statsView(out));
+    }
+    case "lifetime_codes_generate": {
+      // codes voor alle gratis accounts (server-side, idempotent, in batches; Stripe-coupon + promotion codes). Standaard droog.
+      const g = cleanGenerate(body);
+      if (!g.dry_run && !g.confirm) return json({ error: "confirm_required", confirm: ["generate"] }, 409);
+      if (!(await rateOk(`admin-lifetime-gen:${ip}`, 60, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+      const { status, out } = await lifetimeCall(env("SUPABASE_URL"), env(LIFETIME_CALLS.secretEnv), LIFETIME_CALLS.generate.fn, LIFETIME_CALLS.generate.action, { dry_run: g.dry_run });
+      if (status !== 200) return json(out, status);
+      const v = generateView(out, g.dry_run);
+      await audit("lifetime_codes_generate", ip, null, v);
+      return json(v);
+    }
+    case "lifetime_mail": {
+      // mail "Bingr wordt Lifetime": dry_run (aantallen), test (naar het beheeradres of `to`), send en remind (in batches,
+      // idempotent via mailed_at / reminded_at; alleen met confirm: true). Adres nooit gelogd of in admin_audit.
+      const mode = cleanMailMode(body.mode);
+      if (!mode) return json({ error: "bad_mode" }, 400);
+      const lang = cleanMailLang(body.lang);
+      if (!lang) return json({ error: "bad_lang" }, 400);
+      let to: string | undefined;
+      if (mode === "test" && body.to !== undefined && body.to !== "") {
+        const t = cleanEmail(body.to);
+        if (!t) return json({ error: "bad_email" }, 400);
+        to = t;
+      }
+      if (mailNeedsConfirm(mode) && body.confirm !== true) return json({ error: "confirm_required", confirm: [mode] }, 409);
+      if (mode === "test" && !(await rateOk(`admin-nlpreview:${ip}`, NL_PREVIEW_MAX, NL_PREVIEW_WINDOW))) {
+        return json({ error: "rate_limited", retry_after: NL_PREVIEW_WINDOW }, 429);
+      }
+      const { status, out } = await lifetimeCall(env("SUPABASE_URL"), env(LIFETIME_CALLS.secretEnv), LIFETIME_CALLS.mail.fn, LIFETIME_CALLS.mail.action,
+        { mode, ...(mode === "test" ? { lang, ...(to ? { to } : {}) } : {}) });
+      if (status !== 200) return json(out, status);
+      const v = mailView(out, mode);
+      await audit("lifetime_mail", ip, null, { mode, lang: mode === "test" ? lang : undefined, to: mode === "test" ? (to ? "custom" : "beheer") : undefined,
+        recipients: v.recipients.total, sent: v.sent, failed: v.failed });
+      return json(v);
+    }
+    // ---- aanvulling 1 (build 167): gastaankopen die nog aan geen account hangen ----
+    case "purchases_unclaimed": {
+      // user_id null en user_deleted_at null; alleen id, aanbieder, status, bedrag, datum en live/test (unclaimedView)
+      const { data, error, count } = await admin.from("billing_purchases").select("*", { count: "exact" })
+        .is("user_id", null).is("user_deleted_at", null).in("status", ["pending", "paid", "refunded", "disputed"])
+        .order("created_at", { ascending: false }).limit(100);
+      if (error) throw new Error(error.message);
+      return json(unclaimedList(data, count ?? null));
+    }
+    case "purchase_assign": {
+      // een niet-geclaimde aankoop handmatig aan een account koppelen (geeft Lifetime); RPC in iptv-ios-appletv, die dezelfde
+      // regels gebruikt als claimen (alleen als de aankoop nog aan geen account hangt)
+      const a = cleanAssign(body);
+      if (!a.ok) return json(a.status === 409 ? { error: a.error, confirm: ["assign"] } : { error: a.error }, a.status);
+      if (!(await authUser(a.user_id))) return json({ error: "not_found" }, 404);
+      const { data, error } = await admin.rpc("bingr_admin_purchase_assign", { p_purchase_id: a.purchase_id, p_user_id: a.user_id });
+      if (error?.code === "PGRST202") return json({ error: "lifetime_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      const r = assignView(data);
+      if (!r.ok) return json({ error: r.error }, r.error === "not_found" ? 404 : 409);
+      await audit("purchase_assign", ip, a.user_id, { purchase_id: a.purchase_id });
+      return json({ ok: true, plan: r.plan });
     }
     case "releases_get": {
       const { data, error } = await admin.from("app_settings").select("value").eq("key", "release_channels").maybeSingle();

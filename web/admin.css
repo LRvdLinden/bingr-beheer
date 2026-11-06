@@ -1064,3 +1064,24 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .diag-phases .pbar{height:6px;border-radius:3px;background:#ffffff14;overflow:hidden}
 .diag-phases .pfill{display:block;height:100%;width:0;background:#8b5cf6;border-radius:3px}
 .diag-fetch .sub{margin:1px 0 3px 4px}
+
+/* ---- build 167: tab Lifetime-only ---- */
+.lt-panel{margin-bottom:16px}
+.lt-panel h3{margin-top:22px;font-size:16px}
+.lt-grid{margin-top:16px}
+.lt-grid label .sub{display:block;margin-top:4px}
+.lt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:16px 0}
+.lt-kpis .kpi{padding:14px 16px}
+.lt-kpis .kpi .v{font-size:26px}
+.lt-btns{flex-wrap:wrap;gap:10px}
+.lt-out{min-height:1.4em;margin-top:10px}
+.lt-state{margin-bottom:16px}
+.lt-state .chip{margin-left:6px}
+.lt-state .lt-steps{margin:10px 0 0;padding-left:20px;color:var(--sec);font-size:14px;line-height:1.6}
+.rev-cols.four{grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr))}
+@media (max-width:1100px){.rev-cols.four{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media (max-width:760px){.rev-cols.four{grid-template-columns:minmax(0,1fr)}}
+.lt-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}
+.lt-list{margin:8px 0 0;padding-left:20px;font-size:14px;line-height:1.7;color:var(--sec)}
+.u-assign{margin-top:12px}
+.u-assign:empty{display:none}

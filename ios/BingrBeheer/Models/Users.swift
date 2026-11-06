@@ -98,9 +98,12 @@ struct UserDetail {
     let block: AccountBlock?
     let blocks: [AccountBlock]
     let plan: AccountPlan
+    /// build 167: persoonlijke kortingscode (`lifetime_code`); nil = geen code.
+    let lifetimeCode: LifetimeCode?
 
     init(_ j: JSON) {
         id = j["id"].text ?? ""
+        lifetimeCode = LifetimeCode(j["lifetime_code"])
         plan = AccountPlan(j["plan"])
         email = j["email"].text ?? ""
         firstName = j["first_name"].text

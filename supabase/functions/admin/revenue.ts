@@ -115,15 +115,18 @@ export function countryLabel(cc: string): string {
   if (cc === "?") return "Onbekend";
   try { return COUNTRY.of(cc) ?? cc; } catch { return cc; }
 }
-export function breakdown(raw: unknown, kind: "method" | "country"): Breakdown[] {
+// build 167: Apple-aankopen (In-app aankoop) apart van Stripe; billing_purchases.provider, standaard 'stripe'
+export const PROVIDER_LABEL: Record<string, string> = { stripe: "Stripe (website)", apple: "Apple (In-app aankoop)", "?": "Onbekend" };
+export function breakdown(raw: unknown, kind: "method" | "country" | "provider"): Breakdown[] {
   if (!Array.isArray(raw)) return [];
   const out: Breakdown[] = [];
   for (const r of raw.slice(0, 40)) {
     if (!r || typeof r !== "object") continue;
     const o = r as Record<string, unknown>;
     const key = String(o.key ?? "?");
-    if (kind === "method" ? !/^([a-z_]{1,32}|\?)$/.test(key) : !/^([A-Z]{2}|\?)$/.test(key)) continue;
-    out.push({ key, label: kind === "method" ? METHOD_LABEL[key] ?? key.replace(/_/g, " ") : countryLabel(key), count: pos(o.count), gross: pos(o.gross) });
+    if (kind === "country" ? !/^([A-Z]{2}|\?)$/.test(key) : !/^([a-z_]{1,32}|\?)$/.test(key)) continue;
+    const label = kind === "method" ? METHOD_LABEL[key] ?? key.replace(/_/g, " ") : kind === "provider" ? PROVIDER_LABEL[key] ?? key : countryLabel(key);
+    out.push({ key, label, count: pos(o.count), gross: pos(o.gross) });
   }
   return out;
 }
@@ -140,6 +143,8 @@ export type RevenueOut = {
   series: RevSeriesOut[];
   totals: Record<string, Totals>;
   by_method: Breakdown[]; by_country: Breakdown[];
+  /** build 167: per aanbieder (stripe, apple) in de periode en in totaal; [] bij een ouder schema zonder provider */
+  by_provider: Breakdown[]; by_provider_all: Breakdown[];
   vat: VatBasis;
   billing: { enabled: boolean; mode: "live" | "test" | null };
   live_count: number; test_count: number; empty: boolean;
@@ -157,6 +162,14 @@ export function vatBasis(rate: number, stripeTax: boolean, all: Totals): VatBasi
     source, rate: r, stripe_tax: stripeTax, text,
     note: "Indicatie op basis van de aankopen in Bingr en de gegevens van Stripe, geen btw-aangifte. Controleer de aangifte met de rapporten in het Stripe-dashboard.",
   };
+}
+
+/** Per aanbieder; ontbreekt hij (schema van vóór build 167), dan is alles Stripe: dan leeg, het dashboard toont dan niets apart. */
+function providers(raw: unknown): Breakdown[] {
+  const b = breakdown(raw, "provider");
+  // vaste volgorde: Stripe, Apple, rest
+  const rank = (k: string) => (k === "stripe" ? 0 : k === "apple" ? 1 : 2);
+  return b.sort((x, y) => rank(x.key) - rank(y.key));
 }
 
 /** Antwoord voor web en app uit het plan en de uitkomst van bingr_admin_revenue. */
@@ -197,6 +210,7 @@ export function buildRevenue(p: RevenuePlan, raw: unknown, now: number, opts: { 
     from: iso(p.cur[0]), to: iso(p.cur[nc]), edges: p.cur.map(iso), prev_from: iso(p.prev[0]), prev_to: iso(p.prev[np]),
     now_index: nowIndex, has_prev: p.hasPrev, has_next: p.offset < 0, series, totals: t,
     by_method: breakdown(rg.period?.by_method, "method"), by_country: breakdown(rg.period?.by_country, "country"),
+    by_provider: providers(rg.period?.by_provider), by_provider_all: providers(rg.all?.by_provider),
     vat: vatBasis(rate, opts.stripeTax, t.all), billing: opts.billing,
     live_count: pos(data.live_count), test_count: pos(data.test_count), empty: t.all.count === 0 && t.all.refunds === 0,
   };

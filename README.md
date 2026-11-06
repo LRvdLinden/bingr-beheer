@@ -135,6 +135,18 @@ Lifetime-aankopen via Stripe, op het web en in de app (onderdeel *Omzet*; op de 
 - **CSV** (actie `revenue_export`): per aankoop en terugbetaling alleen datum, soort, bedrag, btw, kosten, netto, methode en land; geen e-mail, naam, account of Stripe-id.
 - Zonder aankopen (of zonder `STRIPE_SECRET_KEY`): “Nog geen aankopen”. Schema en SQL-functies (`bingr_admin_revenue`, `bingr_admin_revenue_rows`, tabel `billing_refunds`) staan in iptv-ios-appletv (`supabase/schema.sql`, workflow *Backend*); zie `docs/ACCOUNT.md` daar. Logica en tests: `supabase/functions/admin/revenue.ts` / `revenue_test.ts`.
 
+## Tab Lifetime-only (build 167 van de server)
+
+Overgang van Gratis + Lifetime naar alleen Lifetime (contract: docs/ACCOUNT.md in iptv-ios-appletv, sectie *Build 167: alleen Lifetime*). Web: tab **Lifetime-only** in het menu; Beheer-app: Instellingen → Lifetime-only.
+
+- **Instellingen** (`app_settings`): `lifetime_only` {enabled, announce_at, cutover_at, discount_pct, code_valid_until, trial_days}, `iap.apple` (koopknop in de Apple-apps) en `upgrade_link.apple_eu` (EU External Purchase Link). Standaard alles uit. Aanzetten, de overgang of proefperiode verzetten terwijl het aan staat, de koopknop en de EU-link vragen een bevestiging (409 `confirm_required`, daarna opnieuw met `confirm: true`). Tijden in Nederlandse tijd; voorstel voor de overgang: vandaag + 30 dagen, 00:00.
+- **Kortingscodes**: totalen (aangemaakt, gemaild, mailfout, herinnerd, gebruikt, verlopen, open), **Genereren (droog)** en **Codes genereren** (in batches tot klaar). De server maakt de Stripe-coupon en de promotion codes; hier nooit lijsten of adressen. Per account staat de code met de status in de accountdetails (`user_detail.lifetime_code`, zonder Stripe-id's).
+- **Mail “Bingr wordt Lifetime”**: **Aantallen (droog)**, **Mail testen** (naar het beheeradres of een opgegeven adres; adres nooit gelogd), **Mail versturen** en **Herinnering versturen** (eerst de aantallen, dan een bevestiging, dan in batches tot klaar; idempotent via `mailed_at` / `reminded_at`).
+- **Omzet**: tab Omzet toont *Per aanbieder* (Stripe = website, Apple = In-app aankoop) zodra de server `by_provider` meestuurt.
+- Functie `admin` (`lifetime.ts`, tests in `lifetime_test.ts`): `lifetime_settings`, `lifetime_codes_stats` (RPC `bingr_admin_lifetime_stats`, anders de functie `billing`), `lifetime_codes_generate` (→ `billing`) en `lifetime_mail` (→ `lifetime-notice`), met de header `x-lifetime-secret` = function-secret **`LIFETIME_ADMIN_SECRET`** (komt uit iptv-ios-appletv, workflow *Backend*; hier niets voor nodig). Namen staan op één plek: `LIFETIME_CALLS` in `lifetime.ts`.
+- **Niet geclaimde aankopen** (aanvulling 1, eerst betalen en dan het account): aantal en per aankoop alleen id, aanbieder, status, bedrag, datum en live/test (`purchases_unclaimed`: `billing_purchases` met `user_id` null en `user_deleted_at` null; nooit e-mailadres, hash, claimtoken of Stripe-/Apple-id). In de accountdetails van een gratis account: **Aankoop koppelen** (`purchase_assign {purchase_id, user_id, confirm}` → RPC `bingr_admin_purchase_assign` in iptv-ios-appletv; met bevestiging, in `admin_audit` met account en purchase_id).
+- Nooit in de openbare changelog.
+
 ## Gebruikers: blokkeren en verwijderen
 
 Accounts hebben een voor- en achternaam (Supabase `user_metadata` `first_name` / `last_name`, gevraagd bij het aanmelden). De lijst toont de naam boven het gemaskeerde e-mailadres; zoeken werkt op het begin van het e-mailadres en op het begin van een woord in de naam (voornaam, achternaam of "voornaam achternaam"; `bingr_admin_users` in iptv-ios-appletv). In de lade (web en app):

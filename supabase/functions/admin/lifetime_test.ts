@@ -1,0 +1,170 @@
+// deno test supabase/functions/admin/lifetime_test.ts
+// Build 167 (alleen Lifetime): instellingen, bevestiging, totalen, mail en codes. Alleen verzonnen gegevens; geen adressen
+// of account-id's.
+import {
+  allView, cleanAll, cleanGenerate, cleanMailLang, cleanMailMode, cleanSettings, codeView, confirmNeeded, DEFAULT_SETTINGS,
+  defaultCutover, generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, settingsView, statsView,
+} from "./lifetime.ts";
+import { breakdown, buildRevenue, revenuePlan } from "./revenue.ts";
+
+const ok = (c: unknown, m: string) => { if (!c) throw new Error(m); };
+const eq = (a: unknown, b: unknown, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
+// vrijdag 6 november 2026, 15:00 Nederlandse tijd
+const NOW = Date.parse("2026-11-06T14:00:00Z");
+const CUT = "2026-12-06T00:00:00+01:00";
+
+Deno.test("instellingen: standaard en opschonen", () => {
+  eq(settingsView(null), DEFAULT_SETTINGS, "niets opgeslagen = standaard (uit)");
+  eq(settingsView({ enabled: "ja", discount_pct: 300, trial_days: -1, cutover_at: "morgen" }), DEFAULT_SETTINGS, "rommel = standaard");
+  eq(settingsView({ enabled: true, cutover_at: CUT, discount_pct: 25, trial_days: 7 }),
+    { ...DEFAULT_SETTINGS, enabled: true, cutover_at: CUT, discount_pct: 25, trial_days: 7 }, "geldige waarden blijven");
+  eq(DEFAULT_SETTINGS, { enabled: false, announce_at: null, cutover_at: null, discount_pct: 30, code_valid_until: null, trial_days: 0 }, "contract");
+});
+
+Deno.test("standaard overgang: D + 30 dagen om 00:00 Amsterdam", () => {
+  eq(defaultCutover(NOW), "2026-12-06T00:00:00+01:00", "winter: +01:00");
+  eq(defaultCutover(Date.parse("2026-04-01T10:00:00Z")), "2026-05-01T00:00:00+02:00", "zomer: +02:00");
+  // 23:30 Amsterdam op 31 oktober is al 31 oktober, ook al is het in UTC nog 31 oktober 22:30
+  eq(defaultCutover(Date.parse("2026-10-31T22:30:00Z")), "2026-11-30T00:00:00+01:00", "dag in Amsterdam");
+});
+
+Deno.test("instellingen controleren", () => {
+  const cur = DEFAULT_SETTINGS;
+  eq(cleanSettings({ enabled: true }, cur, NOW), { ok: false, error: "cutover_required" }, "aan zonder datum");
+  eq(cleanSettings({ enabled: true, cutover_at: "2026-11-01T00:00:00+01:00" }, cur, NOW), { ok: false, error: "cutover_past" }, "datum voorbij");
+  eq(cleanSettings({ cutover_at: "6 december" }, cur, NOW), { ok: false, error: "bad_cutover_at" }, "geen ISO");
+  eq(cleanSettings({ discount_pct: 0 }, cur, NOW), { ok: false, error: "bad_discount_pct" }, "korting 0");
+  eq(cleanSettings({ discount_pct: 30.5 }, cur, NOW), { ok: false, error: "bad_discount_pct" }, "geen geheel getal");
+  eq(cleanSettings({ trial_days: 91 }, cur, NOW), { ok: false, error: "bad_trial_days" }, "proef te lang");
+  eq(cleanSettings({ enabled: 1 }, cur, NOW), { ok: false, error: "bad_enabled" }, "enabled geen bool");
+  eq(cleanSettings({ cutover_at: CUT, announce_at: "2026-12-07T00:00:00+01:00" }, cur, NOW), { ok: false, error: "announce_after_cutover" }, "aankondiging na overgang");
+  eq(cleanSettings({ cutover_at: CUT, code_valid_until: "2026-12-20T00:00:00+01:00" }, cur, NOW), { ok: false, error: "code_after_cutover" }, "code na overgang");
+  const r = cleanSettings({ enabled: true, announce_at: "2026-11-06T15:00:00+01:00", cutover_at: CUT, code_valid_until: CUT }, cur, NOW);
+  ok(r.ok, "geldig");
+  if (r.ok) eq([r.value.enabled, r.value.discount_pct, r.value.trial_days], [true, 30, 0], "rest blijft standaard");
+  // een lopende overgang (al voorbij) mag blijven staan zolang de datum niet verandert
+  const live = { ...DEFAULT_SETTINGS, enabled: true, cutover_at: "2026-11-01T00:00:00+01:00" };
+  ok(cleanSettings({ trial_days: 3 }, live, NOW).ok, "na de overgang andere velden aanpassen");
+  eq(cleanSettings({ cutover_at: null }, live, NOW), { ok: false, error: "cutover_required" }, "datum weghalen terwijl aan");
+  ok(cleanSettings({ enabled: false, cutover_at: null }, live, NOW).ok, "uitzetten en datum weg");
+  eq(cleanSettings([], cur, NOW), { ok: false, error: "bad_settings" }, "geen object");
+});
+
+Deno.test("bevestiging bij gevolgen voor klanten", () => {
+  const off = allView(null, null, { apple: false, android: true });
+  eq(off, { lifetime_only: DEFAULT_SETTINGS, iap: { apple: false }, upgrade_link: { apple_eu: false } }, "standaard alles uit");
+  const on = cleanAll({ lifetime_only: { enabled: true, cutover_at: CUT }, iap: { apple: true }, upgrade_link: { apple_eu: true } }, off, NOW);
+  ok(on.ok && on.changed, "geldig en veranderd");
+  if (!on.ok) return;
+  eq(confirmNeeded(off, on.value), ["enable", "iap_apple", "apple_eu"], "aanzetten, koopknop en EU-link");
+  const moved = cleanAll({ lifetime_only: { cutover_at: "2026-12-13T00:00:00+01:00", trial_days: 7 } }, on.value, NOW);
+  ok(moved.ok, "verzetten");
+  if (moved.ok) eq(confirmNeeded(on.value, moved.value), ["cutover", "trial"], "verzetten terwijl aan");
+  const offAgain = cleanAll({ lifetime_only: { enabled: false }, iap: { apple: false } }, on.value, NOW);
+  ok(offAgain.ok, "uitzetten");
+  if (offAgain.ok) eq(confirmNeeded(on.value, offAgain.value), [], "uitzetten zonder bevestiging");
+  const pct = cleanAll({ lifetime_only: { discount_pct: 25 } }, off, NOW);
+  if (pct.ok) eq(confirmNeeded(off, pct.value), [], "korting aanpassen terwijl uit");
+  const same = cleanAll({ iap: { apple: false } }, off, NOW);
+  ok(same.ok && !same.changed, "niets veranderd");
+  eq(cleanAll({ iap: { apple: "ja" } }, off, NOW), { ok: false, error: "bad_iap" }, "iap geen bool");
+  eq(cleanAll({ upgrade_link: {} }, off, NOW), { ok: false, error: "bad_apple_eu" }, "apple_eu ontbreekt");
+  eq(settingsAudit(off, []).confirmed, undefined, "logboek zonder bevestiging");
+});
+
+Deno.test("codes: totalen en aanmaken", () => {
+  eq(statsView({ created: 120, mailed: 110, mail_error: 3, reminded: 40, redeemed: 12, expired: 0, eligible: 125 }), {
+    created: 120, mailed: 110, mail_error: 3, reminded: 40, redeemed: 12, expired: 0, open: 108, eligible: 125, missing: 17,
+    valid_until: null, stripe_coupon: null,
+  }, "totalen");
+  eq(statsView(null).created, 0, "niets");
+  eq(statsView({ total: 5, eligible: 5, redeemed: 0 }).missing, 0, "total als alias");
+  eq(cleanGenerate({}), { dry_run: true, confirm: false }, "standaard droog");
+  eq(cleanGenerate({ dry_run: "false" }), { dry_run: true, confirm: false }, "alleen echt false is echt");
+  eq(cleanGenerate({ dry_run: false, confirm: true }), { dry_run: false, confirm: true }, "echt");
+  eq(generateView({ eligible: 10, existing: 4, to_create: 6, created: 6 }, true).created, 0, "droog maakt niets");
+  eq(generateView({ eligible: 10, existing: 4, to_create: 6, created: 6, remaining: 0, user_ids: ["x"] }, false),
+    { dry_run: false, eligible: 10, existing: 4, to_create: 6, created: 6, failed: 0, remaining: 0, done: true, coupon_created: false },
+    "echt; geen lijsten in het antwoord");
+});
+
+Deno.test("mail: modi, bevestiging en alleen aantallen", () => {
+  eq([cleanMailMode(undefined), cleanMailMode("send"), cleanMailMode("remind"), cleanMailMode("all")], ["dry_run", "send", "remind", null], "modi");
+  eq([cleanMailLang(undefined), cleanMailLang("en"), cleanMailLang("de")], ["both", "en", null], "taal testmail");
+  eq(["dry_run", "test", "send", "remind"].map((m) => mailNeedsConfirm(m as "send")), [false, false, true, true], "versturen vraagt bevestiging");
+  const v = mailView({ recipients: { nl: 80, en: 20 }, sent: 50, failed: 1, remaining: 49, done: false, emails: ["niet tonen"] }, "send");
+  eq(v, { mode: "send", recipients: { nl: 80, en: 20, total: 100 }, sent: 50, failed: 1, skipped: 0, remaining: 49, done: false, without_code: 0 }, "versturen");
+  eq(mailView({ recipients: { nl: 3, en: 1 }, sent: 4 }, "dry_run").sent, 0, "droog verstuurt niets");
+  ok(!JSON.stringify(v).includes("@") && !JSON.stringify(v).includes("niet tonen"), "geen adressen");
+});
+
+Deno.test("code bij de accountdetails", () => {
+  const base = { user_id: "00000000-0000-4000-8000-000000000000", code: "BINGR-7K2Q-9FXM", stripe_coupon_id: "co_x", stripe_promotion_code_id: "promo_x",
+    created_at: "2026-11-06T10:00:00Z", expires_at: CUT, mailed_at: null, mail_error: null, redeemed_at: null, purchase_id: 7 };
+  const v = codeView(base, NOW);
+  eq(v?.status, "open", "nog niet gemaild");
+  ok(v && !("stripe_coupon_id" in v) && !("purchase_id" in v) && !("user_id" in v), "geen Stripe-id's of account-id");
+  eq(codeView({ ...base, mailed_at: "2026-11-06T11:00:00Z" }, NOW)?.status, "mailed", "gemaild");
+  eq(codeView({ ...base, mail_error: "smtp 550 <x@y>" }, NOW)?.mail_error, "smtp550xy", "foutcode opgeschoond");
+  eq(codeView({ ...base, mail_error: "smtp_failed" }, NOW)?.status, "mail_error", "mailfout");
+  eq(codeView({ ...base, redeemed_at: "2026-11-10T09:00:00Z" }, NOW)?.status, "redeemed", "gebruikt");
+  eq(codeView({ ...base }, Date.parse("2026-12-07T00:00:00Z"))?.status, "expired", "verlopen");
+  eq(codeView(null, NOW), null, "geen code");
+  eq(codeView({ ...base, code: "bingr-0000" }, NOW), null, "vreemde vorm");
+});
+
+Deno.test("doorgeven aan de server: geheim in de header, fouten vertaald", async () => {
+  eq(await lifetimeCall("https://x.supabase.co", "", "billing", "a", {}), { status: 503, out: { error: "lifetime_not_configured" } }, "zonder geheim");
+  let seen: { url: string; init: RequestInit } | null = null;
+  const fake = (status: number, body: unknown) => (url: string, init?: RequestInit) => {
+    seen = { url, init: init ?? {} };
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
+  };
+  const r = await lifetimeCall("https://x.supabase.co/", "geheim", "billing", "admin_codes_generate", { dry_run: true }, fake(200, { eligible: 3 }));
+  eq(r, { status: 200, out: { eligible: 3 } }, "ok");
+  const s = seen as unknown as { url: string; init: RequestInit };
+  eq(s.url, "https://x.supabase.co/functions/v1/billing", "url");
+  eq((s.init.headers as Record<string, string>)[LIFETIME_CALLS.header], "geheim", "header");
+  eq(JSON.parse(String(s.init.body)), { dry_run: true, action: "admin_codes_generate" }, "body met actie");
+  eq((await lifetimeCall("https://x", "g", "billing", "a", {}, fake(403, {}))).out, { error: "lifetime_forbidden" }, "403");
+  eq(await lifetimeCall("https://x", "g", "lifetime-notice", "a", {}, fake(404, {})), { status: 503, out: { error: "lifetime_not_deployed" } }, "404");
+  eq(await lifetimeCall("https://x", "g", "billing", "a", {}, fake(400, { error: "stripe_unavailable" })), { status: 400, out: { error: "stripe_unavailable" } }, "eigen fout");
+  eq((await lifetimeCall("https://x", "g", "billing", "a", {}, fake(500, { error: "Fout met <x@y>" }))).out, { error: "server_error" }, "rare fout");
+  eq((await lifetimeCall("https://x", "g", "billing", "a", {}, () => Promise.reject(new TypeError("net")))).out, { error: "lifetime_unreachable" }, "onbereikbaar");
+});
+
+Deno.test("omzet per aanbieder (Stripe en Apple)", () => {
+  eq(breakdown([{ key: "apple", count: 2, gross: 998 }, { key: "Stripe!", count: 1, gross: 1 }], "provider"),
+    [{ key: "apple", label: "Apple (In-app aankoop)", count: 2, gross: 998 }], "geldige sleutels");
+  const now = Date.parse("2026-10-18T12:37:00Z");
+  const p = revenuePlan({ period: "month", offset: 0, step: "day", mode: null }, now);
+  const out = buildRevenue(p, { ranges: { period: { by_provider: [{ key: "apple", count: 1, gross: 499 }, { key: "stripe", count: 3, gross: 1497 }] } } }, now,
+    { mode: "all", stripeTax: false, billing: { enabled: false, mode: null } });
+  eq(out.by_provider.map((b) => b.key), ["stripe", "apple"], "Stripe eerst");
+  eq(out.by_provider_all, [], "ouder schema: leeg");
+});
+
+Deno.test("niet geclaimde aankopen: alleen status en bedrag, nooit e-mail of id's", async () => {
+  const { unclaimedList, cleanAssign, assignView } = await import("./lifetime.ts");
+  const rows = [
+    { id: 12, provider: "stripe", status: "paid", amount: 499, currency: "eur", paid_at: "2026-12-08T10:00:00Z", stripe_session_id: "cs_live_abc",
+      payment_intent: "pi_x", claim_email_hash: "ab12", claim_token_hash: "cd34", user_id: null },
+    { id: 13, provider: "apple", status: "paid", amount: 499, environment: "Sandbox" },
+    { id: 14, status: "refunded", amount: 349, stripe_session_id: "cs_test_x" },
+    { id: "x" },
+  ];
+  const v = unclaimedList(rows, 3);
+  eq([v.total, v.paid, v.items.length], [3, 2, 3], "aantallen");
+  eq(v.items[0], { id: 12, provider: "stripe", status: "paid", amount: 499, currency: "eur", paid_at: "2026-12-08T10:00:00Z", created_at: null, mode: "live", email_known: true }, "stripe");
+  eq([v.items[1]?.provider, v.items[1]?.mode, v.items[2]?.mode], ["apple", "test", "test"], "apple sandbox = test");
+  const s = JSON.stringify(v);
+  ok(!s.includes("cs_") && !s.includes("pi_") && !s.includes("ab12") && !s.includes("cd34"), "geen id's of hashes");
+  eq(cleanAssign({ purchase_id: 12, user_id: "00000000-0000-4000-8000-000000000000" }), { ok: false, error: "confirm_required", status: 409 }, "bevestiging");
+  eq(cleanAssign({ purchase_id: 0, user_id: "x", confirm: true }), { ok: false, error: "bad_purchase_id", status: 400 }, "id");
+  eq(cleanAssign({ purchase_id: "12", user_id: "nee", confirm: true }), { ok: false, error: "bad_id", status: 400 }, "account");
+  eq(cleanAssign({ purchase_id: "12", user_id: "00000000-0000-4000-8000-00000000000A", confirm: true }),
+    { ok: true, purchase_id: 12, user_id: "00000000-0000-4000-8000-00000000000a" }, "geldig");
+  eq(assignView({ ok: true, plan: "lifetime" }), { ok: true, plan: "lifetime" }, "gelukt");
+  eq(assignView({ error: "already_claimed" }), { ok: false, error: "already_claimed" }, "al geclaimd");
+  eq(assignView(null), { ok: false, error: "assign_failed" }, "leeg");
+});

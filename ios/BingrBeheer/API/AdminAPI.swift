@@ -168,6 +168,27 @@ struct APIError: Error, LocalizedError {
         "upload_not_configured": "Uploaden is nog niet ingericht (bucket mail-assets ontbreekt: workflow Backend in iptv-ios-appletv draaien).",
         "upload_failed": "Uploaden is mislukt. Probeer het opnieuw.",
         "too_large": "Het bestand is te groot.",
+        // build 167: Lifetime-only (lifetime_*), zelfde teksten als web/admin.js
+        "lifetime_not_configured": "Lifetime-only is nog niet ingericht op de server (workflow Backend in iptv-ios-appletv, geheim LIFETIME_ADMIN_SECRET).",
+        "lifetime_not_deployed": "De serverfunctie voor Lifetime-only staat nog niet online (workflow Backend in iptv-ios-appletv).",
+        "lifetime_forbidden": "De server weigerde de aanvraag (LIFETIME_ADMIN_SECRET klopt niet).",
+        "lifetime_unreachable": "De server is niet bereikbaar. Probeer het later opnieuw.",
+        "cutover_required": "Kies een overgangsdatum voordat je Lifetime-only aanzet.",
+        "cutover_past": "De overgangsdatum moet in de toekomst liggen.",
+        "bad_cutover_at": "Ongeldige overgangsdatum.",
+        "bad_announce_at": "Ongeldige aankondigingsdatum.",
+        "bad_code_valid_until": "Ongeldige geldigheidsdatum van de code.",
+        "announce_after_cutover": "De aankondiging moet vóór de overgangsdatum liggen.",
+        "code_after_cutover": "De code mag niet langer geldig zijn dan de overgangsdatum.",
+        "bad_discount_pct": "Korting: een heel getal van 1 tot 90.",
+        "bad_trial_days": "Proefperiode: een heel getal van 0 tot 90 dagen.",
+        "bad_iap": "Ongeldige instelling voor de koopknop.",
+        "bad_apple_eu": "Ongeldige instelling voor de EU-link.",
+        "stripe_unavailable": "Stripe is niet ingesteld op de server (geen STRIPE_SECRET_KEY).",
+        "bad_purchase_id": "Kies een aankoop.",
+        "already_claimed": "Deze aankoop hangt al aan een account.",
+        "not_paid": "Deze aankoop is (nog) niet betaald.",
+        "assign_failed": "Koppelen is mislukt. Probeer het opnieuw.",
     ]
 }
 
