@@ -16,6 +16,8 @@ struct LifetimeView: View {
     @State private var mailText = ""
     @State private var testTo = ""
     @State private var testLang = "both"
+    @State private var mailKind = "notice"
+    @State private var preview: LifetimePreview?
     // bevestiging: tekst en de actie die daarna met confirm: true opnieuw gaat
     @State private var confirmMessage = ""
     @State private var confirmAction: (() async -> Void)?
@@ -39,6 +41,14 @@ struct LifetimeView: View {
         .environment(\.timeZone, Fmt.amsterdam)
         .task { await load() }
         .refreshable { await load() }
+        .sheet(item: $preview) { p in
+            NavigationStack {
+                MailPreview(html: p.html)
+                    .navigationTitle(p.subject)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Klaar") { preview = nil } } }
+            }
+        }
         .alert("Weet je het zeker?", isPresented: $confirmShown) {
             Button("Doorgaan", role: .destructive) {
                 let a = confirmAction
@@ -138,12 +148,14 @@ struct LifetimeView: View {
     private var codesSection: some View {
         Section {
             if let s = stats {
-                LabeledContent("Aangemaakt", value: Fmt.num(s.created) + (s.missing.map { $0 > 0 ? " (\(Fmt.num($0)) nog te maken)" : "" } ?? ""))
-                LabeledContent("Gemaild", value: Fmt.num(s.mailed) + (s.reminded > 0 ? " (\(Fmt.num(s.reminded)) herinnerd)" : ""))
-                LabeledContent("Mailfout", value: Fmt.num(s.mailError))
+                LabeledContent("Aangemaakt", value: Fmt.num(s.created) + (s.candidates > 0 ? " (\(Fmt.num(s.candidates)) nog te maken)" : ""))
+                LabeledContent("Klaar in Stripe", value: Fmt.num(s.ready) + (s.pendingStripe > 0 ? " (\(Fmt.num(s.pendingStripe)) nog niet)" : ""))
+                LabeledContent("Gemaild", value: Fmt.num(s.mailed) + (s.mailPending > 0 ? " (\(Fmt.num(s.mailPending)) nog te mailen)" : ""))
+                LabeledContent("Herinnerd", value: Fmt.num(s.reminded) + (s.remindPending > 0 ? " (\(Fmt.num(s.remindPending)) nog)" : ""))
+                LabeledContent("Mailfout", value: Fmt.num(s.mailError + s.remindError))
                 LabeledContent("Gebruikt", value: Fmt.num(s.redeemed))
                 LabeledContent("Verlopen", value: Fmt.num(s.expired))
-                LabeledContent("Open", value: Fmt.num(s.open))
+                LabeledContent("Niet geclaimd", value: Fmt.num(s.unclaimed))
             }
             Button("Genereren (droog)") { Task { await generate(real: false) } }.disabled(busy)
             Button("Codes genereren") {
@@ -160,14 +172,19 @@ struct LifetimeView: View {
 
     private var mailSection: some View {
         Section {
-            TextField("Testmail naar (leeg = beheeradres)", text: $testTo)
+            TextField("Testmail naar (leeg = beheeradres, support@)", text: $testTo)
                 .textContentType(.emailAddress).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Picker("Welke mail", selection: $mailKind) {
+                Text("Bingr wordt Lifetime").tag("notice")
+                Text("Herinnering").tag("remind")
+            }
             Picker("Taal testmail", selection: $testLang) {
                 Text("Nederlands en Engels").tag("both")
                 Text("Nederlands").tag("nl")
                 Text("Engels").tag("en")
             }
             Button("Aantallen (droog)") { Task { await mailDry() } }.disabled(busy)
+            Button("Voorbeeld bekijken") { Task { await showPreview() } }.disabled(busy)
             Button("Mail testen") { Task { await mailTest() } }.disabled(busy)
             Button("Mail versturen") { Task { await prepareSend("send") } }.disabled(busy)
             Button("Herinnering versturen") { Task { await prepareSend("remind") } }.disabled(busy)
@@ -240,17 +257,22 @@ struct LifetimeView: View {
         do {
             if !real {
                 let r = try await session.call("lifetime_codes_generate", ["dry_run": true])
-                genText = "Droog: \(Fmt.num(r["eligible"].int)) gratis accounts, \(Fmt.num(r["existing"].int)) hebben al een code, \(Fmt.num(r["to_create"].int)) codes zouden worden aangemaakt."
+                let pending = r["pending_stripe"].int ?? 0
+                genText = "Droog: \(Fmt.num(r["candidates"].int)) nieuwe codes" + (pending > 0 ? " en \(Fmt.num(pending)) nog in Stripe te zetten" : "")
+                    + (r["mode"].text.map { ", Stripe \($0)" } ?? "") + "."
+                    + (r["mode"].text == "test" ? " Let op: codes uit de testmodus werken niet in live." : "")
                 return
             }
-            var total = 0, failed = 0
-            for _ in 0..<200 {
+            var total = 0, inStripe = 0, failed = 0
+            for _ in 0..<400 {
                 let r = try await session.call("lifetime_codes_generate", ["dry_run": false, "confirm": true])
                 total += r["created"].int ?? 0
-                failed += r["failed"].int ?? 0
+                inStripe += r["stripe_created"].int ?? 0
+                failed += r["stripe_errors"].int ?? 0
                 let done = r["done"].bool ?? true
-                genText = "Aangemaakt: \(Fmt.num(total))" + (failed > 0 ? ", mislukt: \(Fmt.num(failed))" : "") + (done ? "." : ", nog \(Fmt.num(r["remaining"].int)) te gaan…")
-                if done || ((r["created"].int ?? 0) == 0 && (r["remaining"].int ?? 0) == 0) { break }
+                genText = "Aangemaakt: \(Fmt.num(total)), in Stripe: \(Fmt.num(inStripe))" + (failed > 0 ? ", Stripe-fouten: \(Fmt.num(failed))" : "")
+                    + (done ? "." : ", nog \(Fmt.num(r["remaining"].int)) te gaan…")
+                if done || ((r["created"].int ?? 0) == 0 && (r["stripe_created"].int ?? 0) == 0) { break }
             }
             session.show("Codes aangemaakt.")
             stats = (try? await session.call("lifetime_codes_stats")).map(LifetimeStats.init)
@@ -262,7 +284,7 @@ struct LifetimeView: View {
     private func mailDry() async {
         busy = true
         defer { busy = false }
-        do { mailText = "Droog: " + LifetimeMailResult(try await session.call("lifetime_mail", ["mode": "dry_run"])).recipientsText + "." }
+        do { mailText = LifetimeMailResult(try await session.call("lifetime_mail", ["mode": "dry_run"])).dryText }
         catch { if (error as? APIError)?.code != "auth" { mailText = error.localizedDescription } }
     }
 
@@ -271,8 +293,17 @@ struct LifetimeView: View {
         defer { busy = false }
         let to = testTo.trimmingCharacters(in: .whitespaces)
         do {
-            let r = LifetimeMailResult(try await session.call("lifetime_mail", ["mode": "test", "lang": testLang, "to": to.isEmpty ? nil : to]))
+            let r = LifetimeMailResult(try await session.call("lifetime_mail", ["mode": "test", "kind": mailKind, "lang": testLang, "to": to.isEmpty ? nil : to]))
             mailText = "Testmail verstuurd (\(max(1, r.sent))×) naar \(to.isEmpty ? "het beheeradres" : "het opgegeven adres")."
+        } catch { if (error as? APIError)?.code != "auth" { mailText = error.localizedDescription } }
+    }
+
+    private func showPreview() async {
+        busy = true
+        defer { busy = false }
+        do {
+            let r = try await session.call("lifetime_mail", ["mode": "preview", "kind": mailKind, "lang": testLang == "en" ? "en" : "nl"])
+            preview = LifetimePreview(subject: r["subject"].text ?? "", html: r["html"].string ?? "")
         } catch { if (error as? APIError)?.code != "auth" { mailText = error.localizedDescription } }
     }
 
@@ -281,7 +312,7 @@ struct LifetimeView: View {
         do {
             let d = LifetimeMailResult(try await session.call("lifetime_mail", ["mode": "dry_run"]))
             busy = false
-            ask([mode], extra: "Nu: \(d.recipientsText).") { await send(mode) }
+            ask([mode], extra: "Nu: \(d.recipientsText(mode)).") { await send(mode) }
         } catch {
             busy = false
             if (error as? APIError)?.code != "auth" { mailText = error.localizedDescription }
@@ -293,11 +324,14 @@ struct LifetimeView: View {
         defer { busy = false }
         var sent = 0, failed = 0
         do {
-            for _ in 0..<500 {
+            for _ in 0..<1000 {
                 let r = LifetimeMailResult(try await session.call("lifetime_mail", ["mode": mode, "confirm": true]))
                 sent += r.sent; failed += r.failed
-                mailText = "Verstuurd: \(Fmt.num(sent))" + (failed > 0 ? ", mislukt: \(Fmt.num(failed))" : "") + (r.done ? "." : ", nog \(Fmt.num(r.remaining)) te gaan…")
-                if r.done || (r.sent == 0 && r.remaining == 0) { break }
+                let errs = r.errors.map { "\($0.key) \($0.value)×" }.sorted().joined(separator: ", ")
+                mailText = "Verstuurd: \(Fmt.num(sent))" + (failed > 0 ? ", mislukt: \(Fmt.num(failed))" + (errs.isEmpty ? "" : " (\(errs))") : "")
+                    + (r.done ? "." : ", nog \(Fmt.num(r.remaining)) te gaan…")
+                if r.done { break }
+                if r.retry > 0 && r.sent == 0 { try await Task.sleep(for: .seconds(5)) }
             }
             session.show(mode == "remind" ? "Herinnering verstuurd." : "Mail verstuurd.")
             stats = (try? await session.call("lifetime_codes_stats")).map(LifetimeStats.init)
@@ -305,4 +339,11 @@ struct LifetimeView: View {
             if (error as? APIError)?.code != "auth" { mailText = error.localizedDescription }
         }
     }
+}
+
+/// Voorbeeld van de mail (lifetime-notice admin_preview, met de voorbeeldcode).
+struct LifetimePreview: Identifiable {
+    let id = UUID()
+    let subject: String
+    let html: String
 }

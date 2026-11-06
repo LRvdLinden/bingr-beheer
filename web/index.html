@@ -199,16 +199,20 @@
         <h2>Mail “Bingr wordt Lifetime”</h2>
         <p class="sub">Dienstmelding (wijziging van de voorwaarden) aan gratis accounts met een bevestigd e-mailadres, niet geblokkeerd, in de taal van het account, met de persoonlijke code. Lifetime-accounts krijgen hem niet. De herinnering gaat 7 dagen voor de overgang naar wie nog niet gekocht heeft.</p>
         <div class="grid2 lt-grid">
-          <label>Testmail naar <span class="sub">leeg = het beheeradres</span><input id="ltTo" type="email" autocomplete="off" maxlength="254"></label>
+          <label>Testmail naar <span class="sub">leeg = het beheeradres (support@)</span><input id="ltTo" type="email" autocomplete="off" maxlength="254"></label>
           <label>Taal testmail<select id="ltLang"><option value="both">Nederlands en Engels</option><option value="nl">Nederlands</option><option value="en">Engels</option></select></label>
+          <label>Welke mail (test en voorbeeld)<select id="ltKind"><option value="notice">Bingr wordt Lifetime</option><option value="remind">Herinnering (7 dagen voor de overgang)</option></select></label>
         </div>
         <div class="form-btns lt-btns">
           <button id="ltMailDry" class="btn ghost" type="button">Aantallen (droog)</button>
+          <button id="ltPreview" class="btn ghost" type="button">Voorbeeld bekijken</button>
           <button id="ltMailTest" class="btn ghost" type="button">Mail testen</button>
           <button id="ltMailSend" class="btn" type="button">Mail versturen</button>
           <button id="ltRemind" class="btn" type="button">Herinnering versturen</button>
         </div>
         <div id="ltMailOut" class="sub lt-out" aria-live="polite"></div>
+        <p id="ltSubject" class="nl-subject hidden"></p>
+        <div id="ltView" class="nl-view hidden"></div>
         <p class="sub">De melding in de apps zet je klaar als bericht (announcements); de tekst staat in docs/ACCOUNT.md van iptv-ios-appletv, sectie Build 167.</p>
       </div>
       <div class="panel lt-panel">

@@ -146,20 +146,22 @@ export const settingsAudit = (v: LifetimeAll, confirmed: string[]) => ({ ...v, c
 
 // ---- codes ----
 
-/** Totalen van lifetime_codes (RPC bingr_admin_lifetime_codes_stats of de functie): alleen aantallen. */
+/**
+ * Totalen van lifetime_codes (RPC bingr_admin_lifetime_stats, docs/ACCOUNT.md "Build 167"): alleen aantallen.
+ * created = rijen; ready = met promotion code in Stripe; pending_stripe = nog zonder promotion code; candidates = gratis
+ * accounts die nog geen code hebben; mail_pending / remind_pending = nog te mailen; unclaimed = gastaankopen zonder account.
+ */
 export type CodeStats = {
-  created: number; mailed: number; mail_error: number; reminded: number; redeemed: number; expired: number; open: number;
-  eligible: number | null; missing: number | null; valid_until: string | null; stripe_coupon: boolean | null;
+  created: number; ready: number; pending_stripe: number; mailed: number; mail_error: number; reminded: number; remind_error: number;
+  redeemed: number; expired: number; open: number; candidates: number; mail_pending: number; remind_pending: number; unclaimed: number;
 };
 export function statsView(raw: unknown): CodeStats {
   const o = obj(raw);
-  const created = nat(o.created ?? o.total), redeemed = nat(o.redeemed), expired = nat(o.expired);
-  const eligible = typeof o.eligible === "number" ? nat(o.eligible) : null;
+  const created = nat(o.created), redeemed = nat(o.redeemed), expired = nat(o.expired);
   return {
-    created, mailed: nat(o.mailed), mail_error: nat(o.mail_error), reminded: nat(o.reminded), redeemed, expired,
-    open: typeof o.open === "number" ? nat(o.open) : Math.max(0, created - redeemed - expired),
-    eligible, missing: typeof o.missing === "number" ? nat(o.missing) : eligible === null ? null : Math.max(0, eligible - created + redeemed),
-    valid_until: isoOrNull(o.valid_until ?? o.expires_at), stripe_coupon: typeof o.stripe_coupon === "boolean" ? o.stripe_coupon : null,
+    created, ready: nat(o.ready), pending_stripe: nat(o.pending_stripe), mailed: nat(o.mailed), mail_error: nat(o.mail_error),
+    reminded: nat(o.reminded), remind_error: nat(o.remind_error), redeemed, expired, open: Math.max(0, created - redeemed - expired),
+    candidates: nat(o.candidates), mail_pending: nat(o.mail_pending), remind_pending: nat(o.remind_pending), unclaimed: nat(o.unclaimed),
   };
 }
 
@@ -168,51 +170,76 @@ export function cleanGenerate(body: J): { dry_run: boolean; confirm: boolean } {
   return { dry_run: body.dry_run !== false, confirm: body.confirm === true };
 }
 
-/** Antwoord van het aanmaken: alleen aantallen. */
+const shortCode = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9_]{1,60}$/.test(v) ? v : null);
+/**
+ * Antwoord van billing admin_codes_generate: droog {candidates, pending_stripe, coupon, valid_until, discount_pct, mode};
+ * echt één batch {created, stripe_created, stripe_errors, remaining, coupon}. Herhalen tot remaining 0 (done).
+ */
 export function generateView(raw: unknown, dry_run: boolean) {
   const o = obj(raw);
+  const errs = typeof o.stripe_errors === "number" ? nat(o.stripe_errors) : Array.isArray(o.stripe_errors) ? o.stripe_errors.length : 0;
   return {
-    dry_run, eligible: nat(o.eligible), existing: nat(o.existing), to_create: nat(o.to_create ?? o.would_create),
-    created: dry_run ? 0 : nat(o.created), failed: nat(o.failed), remaining: nat(o.remaining), done: dry_run ? true : o.done !== false,
-    coupon_created: o.coupon_created === true,
+    dry_run, candidates: nat(o.candidates), pending_stripe: nat(o.pending_stripe),
+    created: dry_run ? 0 : nat(o.created), stripe_created: dry_run ? 0 : nat(o.stripe_created), stripe_errors: dry_run ? 0 : errs,
+    remaining: dry_run ? 0 : nat(o.remaining), done: dry_run ? true : nat(o.remaining) === 0,
+    coupon: shortCode(o.coupon), valid_until: isoOrNull(o.valid_until), discount_pct: typeof o.discount_pct === "number" ? nat(o.discount_pct) : null,
+    mode: o.mode === "live" || o.mode === "test" ? o.mode : null,
   };
 }
 
-// ---- mail "Bingr wordt Lifetime" en de herinnering ----
+// ---- mail "Bingr wordt Lifetime" en de herinnering (functie lifetime-notice) ----
 
-export type MailMode = "dry_run" | "test" | "send" | "remind";
-export const MAIL_MODES: readonly MailMode[] = ["dry_run", "test", "send", "remind"];
+export type MailMode = "dry_run" | "test" | "send" | "remind" | "preview";
+export const MAIL_MODES: readonly MailMode[] = ["dry_run", "test", "send", "remind", "preview"];
 export const cleanMailMode = (v: unknown): MailMode | null =>
   v === undefined || v === null || v === "" ? "dry_run" : (MAIL_MODES as readonly unknown[]).includes(v) ? v as MailMode : null;
 /** Taal van de testmail: nl, en of both. */
 export const cleanMailLang = (v: unknown): "nl" | "en" | "both" | null =>
   v === undefined || v === null || v === "" ? "both" : v === "nl" || v === "en" || v === "both" ? v : null;
-/** Echt versturen (send, remind) vraagt confirm: true; dry_run en test niet. */
+/** Welke mail bij test en voorbeeld: notice ("Bingr wordt Lifetime") of remind (herinnering). */
+export const cleanMailKind = (v: unknown): "notice" | "remind" | null =>
+  v === undefined || v === null || v === "" ? "notice" : v === "notice" || v === "remind" ? v : null;
+/** Echt versturen (send, remind) vraagt confirm: true; dry_run, test en preview niet. */
 export const mailNeedsConfirm = (m: MailMode) => m === "send" || m === "remind";
 
-/** Antwoord van de mailfunctie: alleen aantallen (nooit adressen). */
-export function mailView(raw: unknown, mode: MailMode) {
-  const o = obj(raw), r = obj(o.recipients);
-  const nl = nat(r.nl), en = nat(r.en);
+/** Fouttellingen per korte code (smtp_…), zonder adressen. */
+function errorCounts(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, n] of Object.entries(obj(v)).slice(0, 20)) if (/^[a-z0-9_]{1,40}$/.test(k)) out[k] = nat(n);
+  return out;
+}
+/**
+ * Antwoord van lifetime-notice admin_send: dry_run {notice_pending, remind_pending, remind_window, enabled, smtp};
+ * test {sent}; send/remind één batch {sent, failed, retry, errors, remaining}. Alleen aantallen (nooit adressen).
+ */
+export function mailView(raw: unknown, mode: Exclude<MailMode, "preview">) {
+  const o = obj(raw);
+  const batch = mode === "send" || mode === "remind";
   return {
-    mode, recipients: { nl, en, total: typeof r.total === "number" ? nat(r.total) : nl + en },
-    sent: mode === "dry_run" ? 0 : nat(o.sent), failed: nat(o.failed), skipped: nat(o.skipped), remaining: nat(o.remaining),
-    done: mode === "dry_run" || mode === "test" ? true : o.done !== false,
-    without_code: nat(o.without_code),
+    mode, notice_pending: nat(o.notice_pending), remind_pending: nat(o.remind_pending), remind_window: o.remind_window === true,
+    enabled: o.enabled === true, smtp: o.smtp !== false,
+    sent: mode === "dry_run" ? 0 : nat(o.sent), failed: nat(o.failed), retry: nat(o.retry), errors: errorCounts(o.errors),
+    remaining: batch ? nat(o.remaining) : 0, done: batch ? nat(o.remaining) === 0 || (nat(o.sent) === 0 && nat(o.retry) === 0) : true,
   };
 }
+/** Voorbeeld (admin_preview): alleen onderwerp en HTML doorgeven. */
+export function previewView(raw: unknown) {
+  const o = obj(raw);
+  return { subject: typeof o.subject === "string" ? o.subject.slice(0, 300) : "", html: typeof o.html === "string" ? o.html.slice(0, 300_000) : "" };
+}
 
-// ---- code bij de accountdetails (user_detail.lifetime_code) ----
+// ---- code bij de accountdetails (bingr_admin_user.lifetime_code / bingr_lifetime_code_of) ----
 
-export type CodeStatus = "open" | "mailed" | "mail_error" | "redeemed" | "expired";
-/** Rij uit lifetime_codes voor één account, zonder Stripe-id's en purchase_id. null = geen code. */
+export type CodeStatus = "ready" | "pending_stripe" | "mailed" | "mail_error" | "redeemed" | "expired";
+const CODE_STATUS: readonly CodeStatus[] = ["ready", "pending_stripe", "mailed", "mail_error", "redeemed", "expired"];
+/** Code van één account zonder Stripe-id's en purchase_id. Status van de server; anders afgeleid. null = geen code. */
 export function codeView(row: unknown, now: number) {
   const o = obj(row);
   if (typeof o.code !== "string" || !/^BINGR-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(o.code)) return null;
   const expires = isoOrNull(o.expires_at), redeemed = isoOrNull(o.redeemed_at), mailed = isoOrNull(o.mailed_at);
   const err = typeof o.mail_error === "string" && o.mail_error ? o.mail_error.replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "error" : null;
-  const status: CodeStatus = redeemed ? "redeemed" : expires && Date.parse(expires) <= now ? "expired"
-    : err && !mailed ? "mail_error" : mailed ? "mailed" : "open";
+  const status: CodeStatus = (CODE_STATUS as readonly unknown[]).includes(o.status) ? o.status as CodeStatus
+    : redeemed ? "redeemed" : expires && Date.parse(expires) <= now ? "expired" : err ? "mail_error" : mailed ? "mailed" : "ready";
   return {
     code: o.code, status, created_at: isoOrNull(o.created_at), expires_at: expires, mailed_at: mailed,
     reminded_at: isoOrNull(o.reminded_at), redeemed_at: redeemed, mail_error: err,
@@ -220,14 +247,20 @@ export function codeView(row: unknown, now: number) {
 }
 
 // ---- doorgeven aan de server ----
-// Aanname tot de server-agent het vastlegt in docs/ACCOUNT.md (build 167): één geheim voor beide functies, in de header
-// x-lifetime-secret. Pas het alleen hier aan als de server iets anders kiest.
+// Vastgelegd in docs/ACCOUNT.md van iptv-ios-appletv, sectie "Build 167" (Beheer): het geheim LIFETIME_ADMIN_SECRET in de
+// header x-lifetime-secret, voor billing (codes) en lifetime-notice (mail); verder RPC's met de service role.
 export const LIFETIME_CALLS = {
   secretEnv: "LIFETIME_ADMIN_SECRET",
   header: "x-lifetime-secret",
   generate: { fn: "billing", action: "admin_codes_generate" },
   stats: { fn: "billing", action: "admin_codes_stats" },
   mail: { fn: "lifetime-notice", action: "admin_send" },
+  preview: { fn: "lifetime-notice", action: "admin_preview" },
+  mailStats: { fn: "lifetime-notice", action: "admin_stats" },
+  rpc: {
+    settings: "bingr_admin_lifetime_settings", stats: "bingr_admin_lifetime_stats", codeOf: "bingr_lifetime_code_of",
+    unclaimed: "bingr_admin_unclaimed", assign: "bingr_admin_purchase_assign",
+  },
 } as const;
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -268,26 +301,25 @@ export async function lifetimeCall(
 // een hash, een claimtoken of een Stripe-/Apple-id.
 
 const PURCHASE_STATUS = ["pending", "paid", "failed", "refunded", "disputed"] as const;
-/** Eén niet-geclaimde aankoop voor het beheer. null = onbruikbare rij. */
+/** Eén niet-geclaimde aankoop uit bingr_admin_unclaimed. null = onbruikbare rij. */
 export function unclaimedView(row: unknown) {
   const o = obj(row);
   const id = typeof o.id === "number" && Number.isSafeInteger(o.id) && o.id > 0 ? o.id : null;
   if (id === null) return null;
-  const provider = o.provider === "apple" ? "apple" : "stripe";
-  const status = (PURCHASE_STATUS as readonly unknown[]).includes(o.status) ? o.status as string : "paid";
-  const sid = typeof o.stripe_session_id === "string" ? o.stripe_session_id : "";
-  const env = typeof o.environment === "string" ? o.environment.toLowerCase() : typeof o.mode === "string" ? o.mode.toLowerCase() : "";
-  const mode = sid.startsWith("cs_test_") || env === "test" || env === "sandbox" ? "test" : sid.startsWith("cs_live_") || env === "live" || env === "production" ? "live" : null;
   return {
-    id, provider, status, amount: nat(o.amount), currency: typeof o.currency === "string" && /^[a-z]{3}$/.test(o.currency) ? o.currency : "eur",
-    paid_at: isoOrNull(o.paid_at), created_at: isoOrNull(o.created_at), mode,
-    // de server kent het e-mailadres van de koper (alleen als hash): automatisch claimen kan dan bij bevestigen/inloggen
-    email_known: typeof o.claim_email_hash === "string" && o.claim_email_hash.length > 0,
+    id, provider: o.provider === "apple" ? "apple" : "stripe",
+    status: (PURCHASE_STATUS as readonly unknown[]).includes(o.status) ? o.status as string : "paid",
+    amount: nat(o.amount), currency: typeof o.currency === "string" && /^[a-z]{3}$/.test(o.currency) ? o.currency : "eur",
+    paid_at: isoOrNull(o.paid_at), created_at: isoOrNull(o.created_at), mode: o.mode === "live" || o.mode === "test" ? o.mode : null,
+    // de server kent het e-mailadres van de koper (alleen als hash): claimen gaat dan vanzelf bij bevestigen/inloggen
+    email_known: o.has_email_hash === true, claim_mailed: o.claim_mailed === true, token_valid: o.token_valid === true,
   };
 }
-export function unclaimedList(rows: unknown, total: number | null) {
-  const items = (Array.isArray(rows) ? rows : []).slice(0, 100).map(unclaimedView).filter((x) => x !== null);
-  return { total: total ?? items.length, paid: items.filter((x) => x!.status === "paid").length, items };
+/** Antwoord van bingr_admin_unclaimed: {total, items}. */
+export function unclaimedList(raw: unknown) {
+  const o = obj(raw);
+  const items = (Array.isArray(o.items) ? o.items : []).slice(0, 200).map(unclaimedView).filter((x) => x !== null);
+  return { total: typeof o.total === "number" ? nat(o.total) : items.length, paid: items.filter((x) => x!.status === "paid").length, items };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -299,10 +331,11 @@ export function cleanAssign(body: J): { ok: true; purchase_id: number; user_id: 
   if (body.confirm !== true) return { ok: false, error: "confirm_required", status: 409 };
   return { ok: true, purchase_id: pid, user_id: body.user_id.toLowerCase() };
 }
-/** Uitkomst van de RPC bingr_admin_purchase_assign: {ok, plan} of een foutcode (already_claimed, not_paid, not_found). */
-export function assignView(raw: unknown): { ok: true; plan: string } | { ok: false; error: string } {
+/** Uitkomst van bingr_admin_purchase_assign: {ok, result: assigned | not_assignable | no_user}. */
+export function assignView(raw: unknown): { ok: true } | { ok: false; error: "not_assignable" | "not_found" | "assign_failed"; status: number } {
   const o = obj(raw);
-  if (o.ok === true) return { ok: true, plan: "lifetime" };
-  const e = typeof o.error === "string" && /^[a-z_]{1,40}$/.test(o.error) ? o.error : "assign_failed";
-  return { ok: false, error: e };
+  if (o.ok === true && o.result === "assigned") return { ok: true };
+  if (o.result === "no_user") return { ok: false, error: "not_found", status: 404 };
+  if (o.result === "not_assignable") return { ok: false, error: "not_assignable", status: 409 };
+  return { ok: false, error: "assign_failed", status: 502 };
 }

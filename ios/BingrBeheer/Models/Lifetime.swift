@@ -77,43 +77,60 @@ struct LifetimeSettings: Equatable {
     }
 }
 
-/// Totalen van de kortingscodes (lifetime_codes_stats).
+/// Totalen van de kortingscodes (lifetime_codes_stats; bingr_admin_lifetime_stats).
 struct LifetimeStats {
-    let created, mailed, mailError, reminded, redeemed, expired, open: Int
-    let missing: Int?
-    let validUntil: Date?
+    let created, ready, pendingStripe, mailed, mailError, reminded, remindError, redeemed, expired, open: Int
+    let candidates, mailPending, remindPending, unclaimed: Int
 
     init(_ j: JSON) {
         created = j["created"].int ?? 0
+        ready = j["ready"].int ?? 0
+        pendingStripe = j["pending_stripe"].int ?? 0
         mailed = j["mailed"].int ?? 0
         mailError = j["mail_error"].int ?? 0
         reminded = j["reminded"].int ?? 0
+        remindError = j["remind_error"].int ?? 0
         redeemed = j["redeemed"].int ?? 0
         expired = j["expired"].int ?? 0
         open = j["open"].int ?? 0
-        missing = j["missing"].int
-        validUntil = j["valid_until"].date
+        candidates = j["candidates"].int ?? 0
+        mailPending = j["mail_pending"].int ?? 0
+        remindPending = j["remind_pending"].int ?? 0
+        unclaimed = j["unclaimed"].int ?? 0
     }
 }
 
-/// Aantallen van lifetime_mail (dry_run, test, send, remind).
+/// Aantallen van lifetime_mail (lifetime-notice admin_send): dry_run, test, send, remind.
 struct LifetimeMailResult {
-    let nl, en, total, sent, failed, remaining, withoutCode: Int
-    let done: Bool
+    let noticePending, remindPending, sent, failed, retry, remaining: Int
+    let remindWindow, enabled, smtp, done: Bool
+    let errors: [String: Int]
 
     init(_ j: JSON) {
-        nl = j["recipients"]["nl"].int ?? 0
-        en = j["recipients"]["en"].int ?? 0
-        total = j["recipients"]["total"].int ?? (nl + en)
+        noticePending = j["notice_pending"].int ?? 0
+        remindPending = j["remind_pending"].int ?? 0
         sent = j["sent"].int ?? 0
         failed = j["failed"].int ?? 0
+        retry = j["retry"].int ?? 0
         remaining = j["remaining"].int ?? 0
-        withoutCode = j["without_code"].int ?? 0
+        remindWindow = j["remind_window"].bool ?? false
+        enabled = j["enabled"].bool ?? false
+        smtp = j["smtp"].bool ?? true
         done = j["done"].bool ?? true
+        var e: [String: Int] = [:]
+        for (k, v) in j["errors"].object ?? [:] { e[k] = v.int ?? 0 }
+        errors = e
     }
 
-    var recipientsText: String {
-        "\(Fmt.num(total)) ontvangers (\(Fmt.num(nl)) NL, \(Fmt.num(en)) EN)" + (withoutCode > 0 ? ", \(Fmt.num(withoutCode)) nog zonder code" : "")
+    var dryText: String {
+        "Droog: mail \(Fmt.num(noticePending)) te versturen, herinnering \(Fmt.num(remindPending))"
+            + (remindWindow ? "" : " (alleen in de 7 dagen voor de overgang)")
+            + (enabled ? "" : ". Lifetime-only staat uit: versturen kan pas als het aan staat")
+            + (smtp ? "" : ". E-mail is niet ingesteld op de server") + "."
+    }
+
+    func recipientsText(_ mode: String) -> String {
+        "\(Fmt.num(mode == "remind" ? remindPending : noticePending)) ontvangers"
     }
 }
 
@@ -127,7 +144,7 @@ struct LifetimeCode {
     init?(_ j: JSON) {
         guard let c = j["code"].text else { return nil }
         code = c
-        status = j["status"].text ?? "open"
+        status = j["status"].text ?? "ready"
         expiresAt = j["expires_at"].date
         mailedAt = j["mailed_at"].date
         remindedAt = j["reminded_at"].date
@@ -136,7 +153,8 @@ struct LifetimeCode {
     }
 
     var statusText: String {
-        ["open": "nog niet gemaild", "mailed": "gemaild", "mail_error": "mailfout", "redeemed": "gebruikt", "expired": "verlopen"][status] ?? status
+        ["ready": "klaar, nog niet gemaild", "pending_stripe": "nog niet in Stripe", "mailed": "gemaild", "mail_error": "mailfout",
+         "redeemed": "gebruikt", "expired": "verlopen"][status] ?? status
     }
 
     var detail: String {

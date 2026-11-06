@@ -107,7 +107,7 @@ LT_SETS, LT_GEN, LT_MAIL = [], [], []
 
 
 def lifetime_answer(req):
-    """Nep-antwoorden in de vorm van lifetime.ts; alleen aantallen."""
+    """Nep-antwoorden in de vorm van lifetime.ts (zoals docs/ACCOUNT.md Build 167); alleen aantallen."""
     a = req.get("action")
     if a == "lifetime_settings":
         if "set" not in req:
@@ -119,29 +119,34 @@ def lifetime_answer(req):
         LT["lifetime_only"].update(st["lifetime_only"]); LT["iap"] = st["iap"]; LT["upgrade_link"] = st["upgrade_link"]
         return 200, {"ok": True, **LT}
     if a == "lifetime_codes_stats":
-        return 200, {"created": 120, "mailed": 100, "mail_error": 2, "reminded": 0, "redeemed": 9, "expired": 0, "open": 111,
-                     "eligible": 125, "missing": 5, "valid_until": "2026-12-06T00:00:00+01:00", "stripe_coupon": True}
+        return 200, {"created": 120, "ready": 118, "pending_stripe": 2, "mailed": 100, "mail_error": 2, "reminded": 0, "remind_error": 0,
+                     "redeemed": 9, "expired": 0, "open": 111, "candidates": 5, "mail_pending": 18, "remind_pending": 0, "unclaimed": 1}
     if a == "lifetime_codes_generate":
         LT_GEN.append(req)
         if req.get("dry_run", True):
-            return 200, {"dry_run": True, "eligible": 125, "existing": 120, "to_create": 5, "created": 0, "failed": 0, "remaining": 0, "done": True}
+            return 200, {"dry_run": True, "candidates": 5, "pending_stripe": 0, "created": 0, "stripe_created": 0, "stripe_errors": 0,
+                         "remaining": 0, "done": True, "coupon": "bingr_lifetime_30_20261201", "valid_until": "2026-12-01T00:00:00+01:00",
+                         "discount_pct": 30, "mode": "live"}
         if not req.get("confirm"):
             return 409, {"error": "confirm_required", "confirm": ["generate"]}
         n = sum(1 for g in LT_GEN if g.get("dry_run") is False)
-        return 200, {"dry_run": False, "eligible": 125, "existing": 120, "to_create": 5, "created": 3 if n == 1 else 2, "failed": 0,
-                     "remaining": 2 if n == 1 else 0, "done": n > 1}
+        return 200, {"dry_run": False, "candidates": 0, "pending_stripe": 0, "created": 3 if n == 1 else 2, "stripe_created": 3 if n == 1 else 2,
+                     "stripe_errors": 0, "remaining": 2 if n == 1 else 0, "done": n > 1, "coupon": None, "valid_until": None, "discount_pct": None, "mode": None}
     if a == "lifetime_mail":
         LT_MAIL.append(req)
         m = req.get("mode")
+        base = {"mode": m, "notice_pending": 100, "remind_pending": 0, "remind_window": False, "enabled": True, "smtp": True,
+                "sent": 0, "failed": 0, "retry": 0, "errors": {}, "remaining": 0, "done": True}
         if m == "dry_run":
-            return 200, {"mode": m, "recipients": {"nl": 80, "en": 20, "total": 100}, "sent": 0, "failed": 0, "skipped": 0, "remaining": 0, "done": True, "without_code": 0}
+            return 200, base
+        if m == "preview":
+            return 200, {"subject": "Bingr wordt Lifetime – met 30% korting voor jou", "html": "<html><body><p>BINGR-ABCD-EFGH</p></body></html>"}
         if m == "test":
-            return 200, {"mode": m, "recipients": {"nl": 1, "en": 1, "total": 2}, "sent": 2, "failed": 0, "skipped": 0, "remaining": 0, "done": True, "without_code": 0}
+            return 200, {**base, "sent": 2}
         if not req.get("confirm"):
             return 409, {"error": "confirm_required", "confirm": [m]}
         n = sum(1 for x in LT_MAIL if x.get("mode") == m)
-        return 200, {"mode": m, "recipients": {"nl": 80, "en": 20, "total": 100}, "sent": 50, "failed": 0, "skipped": 0,
-                     "remaining": 50 if n == 1 else 0, "done": n > 1, "without_code": 0}
+        return 200, {**base, "sent": 50, "remaining": 50 if n == 1 else 0, "done": n > 1}
     return 400, {"error": "unknown_action"}
 
 
@@ -367,13 +372,16 @@ def lifetime_smoke(b, base, errors, calls):
     wait_text(page, "#ltState", "Aangekondigd")
     steps += 1
     page.click("#ltGenDry")
-    wait_text(page, "#ltGenOut", "5 codes")
+    wait_text(page, "#ltGenOut", "5 nieuwe codes")
     steps += 1
     page.click("#ltGen")
-    wait_text(page, "#ltGenOut", "Aangemaakt: 5.")
+    wait_text(page, "#ltGenOut", "Aangemaakt: 5, in Stripe: 5.")
+    steps += 1
+    page.click("#ltPreview")
+    wait_text(page, "#ltSubject", "Bingr wordt Lifetime")
     steps += 1
     page.click("#ltMailDry")
-    wait_text(page, "#ltMailOut", "100 ontvangers")
+    wait_text(page, "#ltMailOut", "mail 100 te versturen")
     steps += 1
     page.click("#ltMailSend")
     wait_text(page, "#ltMailOut", "Verstuurd: 100.")

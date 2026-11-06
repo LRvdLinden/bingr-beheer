@@ -2,6 +2,7 @@
 // Build 167 (alleen Lifetime): instellingen, bevestiging, totalen, mail en codes. Alleen verzonnen gegevens; geen adressen
 // of account-id's.
 import {
+  assignView, cleanAssign, cleanMailKind, previewView, unclaimedList,
   allView, cleanAll, cleanGenerate, cleanMailLang, cleanMailMode, cleanSettings, codeView, confirmNeeded, DEFAULT_SETTINGS,
   FIXED_CUTOVER, suggestion, generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, settingsView, statsView,
 } from "./lifetime.ts";
@@ -73,45 +74,60 @@ Deno.test("bevestiging bij gevolgen voor klanten", () => {
   eq(settingsAudit(off, []).confirmed, undefined, "logboek zonder bevestiging");
 });
 
-Deno.test("codes: totalen en aanmaken", () => {
-  eq(statsView({ created: 120, mailed: 110, mail_error: 3, reminded: 40, redeemed: 12, expired: 0, eligible: 125 }), {
-    created: 120, mailed: 110, mail_error: 3, reminded: 40, redeemed: 12, expired: 0, open: 108, eligible: 125, missing: 17,
-    valid_until: null, stripe_coupon: null,
-  }, "totalen");
+Deno.test("codes: totalen en aanmaken (vormen van bingr_admin_lifetime_stats en billing)", () => {
+  const st = statsView({ created: 120, ready: 118, pending_stripe: 2, mailed: 110, mail_error: 3, reminded: 40, remind_error: 1, redeemed: 12,
+    expired: 0, candidates: 5, mail_pending: 7, remind_pending: 60, unclaimed: 2 });
+  eq(st, { created: 120, ready: 118, pending_stripe: 2, mailed: 110, mail_error: 3, reminded: 40, remind_error: 1, redeemed: 12, expired: 0,
+    open: 108, candidates: 5, mail_pending: 7, remind_pending: 60, unclaimed: 2 }, "totalen");
   eq(statsView(null).created, 0, "niets");
-  eq(statsView({ total: 5, eligible: 5, redeemed: 0 }).missing, 0, "total als alias");
   eq(cleanGenerate({}), { dry_run: true, confirm: false }, "standaard droog");
   eq(cleanGenerate({ dry_run: "false" }), { dry_run: true, confirm: false }, "alleen echt false is echt");
   eq(cleanGenerate({ dry_run: false, confirm: true }), { dry_run: false, confirm: true }, "echt");
-  eq(generateView({ eligible: 10, existing: 4, to_create: 6, created: 6 }, true).created, 0, "droog maakt niets");
-  eq(generateView({ eligible: 10, existing: 4, to_create: 6, created: 6, remaining: 0, user_ids: ["x"] }, false),
-    { dry_run: false, eligible: 10, existing: 4, to_create: 6, created: 6, failed: 0, remaining: 0, done: true, coupon_created: false },
-    "echt; geen lijsten in het antwoord");
+  const dry = generateView({ ok: true, dry_run: true, candidates: 6, pending_stripe: 1, coupon: "bingr_lifetime_30_20261201",
+    valid_until: "2026-12-01T00:00:00+01:00", discount_pct: 30, mode: "live" }, true);
+  eq([dry.candidates, dry.pending_stripe, dry.created, dry.done, dry.coupon, dry.mode], [6, 1, 0, true, "bingr_lifetime_30_20261201", "live"], "droog");
+  const b1 = generateView({ ok: true, created: 50, stripe_created: 50, stripe_errors: 0, remaining: 12, coupon: "bingr_lifetime_30_20261201", user_ids: ["x"] }, false);
+  eq([b1.created, b1.stripe_created, b1.remaining, b1.done], [50, 50, 12, false], "batch, nog niet klaar");
+  ok(!JSON.stringify(b1).includes("user_ids"), "geen lijsten in het antwoord");
+  eq(generateView({ created: 12, stripe_created: 11, stripe_errors: 1, remaining: 0 }, false).done, true, "klaar bij remaining 0");
+  eq(generateView({ coupon: "x y <z>" }, true).coupon, null, "vreemde coupon-id niet doorgeven");
 });
-
-Deno.test("mail: modi, bevestiging en alleen aantallen", () => {
-  eq([cleanMailMode(undefined), cleanMailMode("send"), cleanMailMode("remind"), cleanMailMode("all")], ["dry_run", "send", "remind", null], "modi");
+Deno.test("mail: modi, bevestiging en alleen aantallen (vormen van lifetime-notice)", () => {
+  eq([cleanMailMode(undefined), cleanMailMode("send"), cleanMailMode("remind"), cleanMailMode("preview"), cleanMailMode("all")],
+    ["dry_run", "send", "remind", "preview", null], "modi");
   eq([cleanMailLang(undefined), cleanMailLang("en"), cleanMailLang("de")], ["both", "en", null], "taal testmail");
-  eq(["dry_run", "test", "send", "remind"].map((m) => mailNeedsConfirm(m as "send")), [false, false, true, true], "versturen vraagt bevestiging");
-  const v = mailView({ recipients: { nl: 80, en: 20 }, sent: 50, failed: 1, remaining: 49, done: false, emails: ["niet tonen"] }, "send");
-  eq(v, { mode: "send", recipients: { nl: 80, en: 20, total: 100 }, sent: 50, failed: 1, skipped: 0, remaining: 49, done: false, without_code: 0 }, "versturen");
-  eq(mailView({ recipients: { nl: 3, en: 1 }, sent: 4 }, "dry_run").sent, 0, "droog verstuurt niets");
+  eq([cleanMailKind(undefined), cleanMailKind("remind"), cleanMailKind("x")], ["notice", "remind", null], "soort mail");
+  eq(["dry_run", "test", "send", "remind", "preview"].map((m) => mailNeedsConfirm(m as "send")), [false, false, true, true, false], "versturen vraagt bevestiging");
+  const d = mailView({ ok: true, notice_pending: 100, remind_pending: 0, remind_window: false, enabled: true, smtp: true }, "dry_run");
+  eq([d.notice_pending, d.remind_window, d.enabled, d.smtp, d.sent, d.done], [100, false, true, true, 0, true], "droog");
+  const v = mailView({ ok: true, sent: 50, failed: 1, retry: 0, errors: { smtp_550: 1, "<x@y>": 3 }, remaining: 49, emails: ["niet tonen"] }, "send");
+  eq([v.sent, v.failed, v.remaining, v.done, v.errors], [50, 1, 49, false, { smtp_550: 1 }], "batch");
+  eq(mailView({ sent: 1, remaining: 0 }, "remind").done, true, "klaar");
+  eq(mailView({ sent: 0, retry: 0, remaining: 5 }, "send").done, true, "niets meer te doen: stoppen");
+  eq(mailView({ sent: 0, retry: 3, remaining: 5 }, "send").done, false, "tijdelijke fout: nog een ronde");
   ok(!JSON.stringify(v).includes("@") && !JSON.stringify(v).includes("niet tonen"), "geen adressen");
+  eq(previewView({ subject: "Bingr wordt Lifetime", html: "<p>x</p>", to: "y" }), { subject: "Bingr wordt Lifetime", html: "<p>x</p>" }, "voorbeeld");
 });
-
-Deno.test("code bij de accountdetails", () => {
-  const base = { user_id: "00000000-0000-4000-8000-000000000000", code: "BINGR-7K2Q-9FXM", stripe_coupon_id: "co_x", stripe_promotion_code_id: "promo_x",
-    created_at: "2026-11-06T10:00:00Z", expires_at: CUT, mailed_at: null, mail_error: null, redeemed_at: null, purchase_id: 7 };
+Deno.test("code bij de accountdetails (bingr_lifetime_code_of)", () => {
+  const base = { code: "BINGR-7K2Q-9FXM", created_at: "2026-11-06T10:00:00Z", expires_at: FIXED_CUTOVER, mailed_at: null, mail_error: null,
+    reminded_at: null, redeemed_at: null, status: "ready", stripe_promotion_code_id: "promo_x", purchase_id: 7, user_id: "00000000-0000-4000-8000-000000000000" };
   const v = codeView(base, NOW);
-  eq(v?.status, "open", "nog niet gemaild");
-  ok(v && !("stripe_coupon_id" in v) && !("purchase_id" in v) && !("user_id" in v), "geen Stripe-id's of account-id");
-  eq(codeView({ ...base, mailed_at: "2026-11-06T11:00:00Z" }, NOW)?.status, "mailed", "gemaild");
-  eq(codeView({ ...base, mail_error: "smtp 550 <x@y>" }, NOW)?.mail_error, "smtp550xy", "foutcode opgeschoond");
-  eq(codeView({ ...base, mail_error: "smtp_failed" }, NOW)?.status, "mail_error", "mailfout");
-  eq(codeView({ ...base, redeemed_at: "2026-11-10T09:00:00Z" }, NOW)?.status, "redeemed", "gebruikt");
-  eq(codeView({ ...base }, Date.parse("2026-12-07T00:00:00Z"))?.status, "expired", "verlopen");
+  eq(v?.status, "ready", "status van de server");
+  ok(v && !("stripe_promotion_code_id" in v) && !("purchase_id" in v) && !("user_id" in v), "geen Stripe-id's of account-id");
+  eq(codeView({ ...base, status: "pending_stripe" }, NOW)?.status, "pending_stripe", "nog niet in Stripe");
+  eq(codeView({ ...base, status: undefined, mailed_at: "2026-11-06T11:00:00Z" }, NOW)?.status, "mailed", "afgeleid: gemaild");
+  eq(codeView({ ...base, status: "x", mail_error: "smtp 550 <x@y>" }, NOW)?.mail_error, "smtp550xy", "foutcode opgeschoond");
+  eq(codeView({ ...base, status: undefined }, Date.parse("2026-12-02T00:00:00Z"))?.status, "expired", "afgeleid: verlopen");
   eq(codeView(null, NOW), null, "geen code");
   eq(codeView({ ...base, code: "bingr-0000" }, NOW), null, "vreemde vorm");
+});
+Deno.test("namen zoals docs/ACCOUNT.md Build 167", () => {
+  eq([LIFETIME_CALLS.secretEnv, LIFETIME_CALLS.header], ["LIFETIME_ADMIN_SECRET", "x-lifetime-secret"], "geheim");
+  eq([LIFETIME_CALLS.generate, LIFETIME_CALLS.stats], [{ fn: "billing", action: "admin_codes_generate" }, { fn: "billing", action: "admin_codes_stats" }], "billing");
+  eq([LIFETIME_CALLS.mail, LIFETIME_CALLS.preview, LIFETIME_CALLS.mailStats],
+    [{ fn: "lifetime-notice", action: "admin_send" }, { fn: "lifetime-notice", action: "admin_preview" }, { fn: "lifetime-notice", action: "admin_stats" }], "lifetime-notice");
+  eq(LIFETIME_CALLS.rpc, { settings: "bingr_admin_lifetime_settings", stats: "bingr_admin_lifetime_stats", codeOf: "bingr_lifetime_code_of",
+    unclaimed: "bingr_admin_unclaimed", assign: "bingr_admin_purchase_assign" }, "RPC's");
 });
 
 Deno.test("doorgeven aan de server: geheim in de header, fouten vertaald", async () => {
@@ -145,27 +161,28 @@ Deno.test("omzet per aanbieder (Stripe en Apple)", () => {
   eq(out.by_provider_all, [], "ouder schema: leeg");
 });
 
-Deno.test("niet geclaimde aankopen: alleen status en bedrag, nooit e-mail of id's", async () => {
-  const { unclaimedList, cleanAssign, assignView } = await import("./lifetime.ts");
-  const rows = [
-    { id: 12, provider: "stripe", status: "paid", amount: 499, currency: "eur", paid_at: "2026-12-08T10:00:00Z", stripe_session_id: "cs_live_abc",
-      payment_intent: "pi_x", claim_email_hash: "ab12", claim_token_hash: "cd34", user_id: null },
-    { id: 13, provider: "apple", status: "paid", amount: 499, environment: "Sandbox" },
-    { id: 14, status: "refunded", amount: 349, stripe_session_id: "cs_test_x" },
+Deno.test("niet geclaimde aankopen: vorm van bingr_admin_unclaimed, nooit e-mail of id's", () => {
+  const raw = { total: 3, items: [
+    { id: 12, provider: "stripe", created_at: "2026-12-08T09:59:00Z", paid_at: "2026-12-08T10:00:00Z", amount: 499, currency: "eur", status: "paid",
+      mode: "live", claim_mailed: true, token_valid: true, has_email_hash: true, claim_email_hash: "ab12", stripe_session_id: "cs_live_abc" },
+    { id: 13, provider: "apple", amount: 499, status: "paid", mode: "test", has_email_hash: false },
     { id: "x" },
-  ];
-  const v = unclaimedList(rows, 3);
-  eq([v.total, v.paid, v.items.length], [3, 2, 3], "aantallen");
-  eq(v.items[0], { id: 12, provider: "stripe", status: "paid", amount: 499, currency: "eur", paid_at: "2026-12-08T10:00:00Z", created_at: null, mode: "live", email_known: true }, "stripe");
-  eq([v.items[1]?.provider, v.items[1]?.mode, v.items[2]?.mode], ["apple", "test", "test"], "apple sandbox = test");
+  ] };
+  const v = unclaimedList(raw);
+  eq([v.total, v.paid, v.items.length], [3, 2, 2], "aantallen");
+  eq(v.items[0], { id: 12, provider: "stripe", status: "paid", amount: 499, currency: "eur", paid_at: "2026-12-08T10:00:00Z",
+    created_at: "2026-12-08T09:59:00Z", mode: "live", email_known: true, claim_mailed: true, token_valid: true }, "stripe");
+  eq([v.items[1]?.provider, v.items[1]?.mode, v.items[1]?.email_known], ["apple", "test", false], "apple");
   const s = JSON.stringify(v);
-  ok(!s.includes("cs_") && !s.includes("pi_") && !s.includes("ab12") && !s.includes("cd34"), "geen id's of hashes");
+  ok(!s.includes("cs_") && !s.includes("ab12"), "geen id's of hashes");
+  eq(unclaimedList(null), { total: 0, paid: 0, items: [] }, "leeg");
   eq(cleanAssign({ purchase_id: 12, user_id: "00000000-0000-4000-8000-000000000000" }), { ok: false, error: "confirm_required", status: 409 }, "bevestiging");
   eq(cleanAssign({ purchase_id: 0, user_id: "x", confirm: true }), { ok: false, error: "bad_purchase_id", status: 400 }, "id");
   eq(cleanAssign({ purchase_id: "12", user_id: "nee", confirm: true }), { ok: false, error: "bad_id", status: 400 }, "account");
   eq(cleanAssign({ purchase_id: "12", user_id: "00000000-0000-4000-8000-00000000000A", confirm: true }),
     { ok: true, purchase_id: 12, user_id: "00000000-0000-4000-8000-00000000000a" }, "geldig");
-  eq(assignView({ ok: true, plan: "lifetime" }), { ok: true, plan: "lifetime" }, "gelukt");
-  eq(assignView({ error: "already_claimed" }), { ok: false, error: "already_claimed" }, "al geclaimd");
-  eq(assignView(null), { ok: false, error: "assign_failed" }, "leeg");
+  eq(assignView({ ok: true, result: "assigned" }), { ok: true }, "gekoppeld");
+  eq(assignView({ ok: false, result: "not_assignable" }), { ok: false, error: "not_assignable", status: 409 }, "kan niet");
+  eq(assignView({ ok: false, result: "no_user" }), { ok: false, error: "not_found", status: 404 }, "geen account");
+  eq(assignView(null), { ok: false, error: "assign_failed", status: 502 }, "leeg");
 });

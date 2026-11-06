@@ -186,9 +186,18 @@ struct APIError: Error, LocalizedError {
         "bad_apple_eu": "Ongeldige instelling voor de EU-link.",
         "stripe_unavailable": "Stripe is niet ingesteld op de server (geen STRIPE_SECRET_KEY).",
         "bad_purchase_id": "Kies een aankoop.",
-        "already_claimed": "Deze aankoop hangt al aan een account.",
-        "not_paid": "Deze aankoop is (nog) niet betaald.",
+        "not_assignable": "Deze aankoop kan niet (meer) gekoppeld worden: al geclaimd, niet betaald of terugbetaald.",
         "assign_failed": "Koppelen is mislukt. Probeer het opnieuw.",
+        "bad_kind": "Kies welke mail.",
+        "settings_incomplete": "Vul eerst de overgangsdatum en de geldigheid van de code in.",
+        "valid_until_past": "De geldigheid van de code ligt in het verleden.",
+        "coupon_mismatch": "Er bestaat al een Stripe-coupon met deze naam maar met andere waarden. Controleer de korting en de datum.",
+        "stripe_mode_mismatch": "Er bestaan al codes uit de andere Stripe-modus (test/live). Maak de codes alleen met de live-sleutel.",
+        "stripe_error": "Stripe gaf een fout. Probeer het later opnieuw.",
+        "not_enabled": "Lifetime-only staat uit: zet het eerst aan.",
+        "after_cutover": "De overgangsdatum is al voorbij; deze mail gaat niet meer.",
+        "not_remind_window": "De herinnering kan alleen in de 7 dagen voor de overgang.",
+        "smtp_error": "De testmail kon niet worden verstuurd (mailserver).",
     ]
 }
 

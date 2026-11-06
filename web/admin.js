@@ -114,8 +114,14 @@
     bad_iap: "Ongeldige instelling voor de koopknop.", bad_apple_eu: "Ongeldige instelling voor de EU-link.",
     bad_email: "Vul een geldig e-mailadres in.", bad_lang: "Kies een taal.",
     stripe_unavailable: "Stripe is niet ingesteld op de server (geen STRIPE_SECRET_KEY).",
-    bad_purchase_id: "Kies een aankoop.", already_claimed: "Deze aankoop hangt al aan een account.",
-    not_paid: "Deze aankoop is (nog) niet betaald.", assign_failed: "Koppelen is mislukt. Probeer het opnieuw.",
+    bad_purchase_id: "Kies een aankoop.", not_assignable: "Deze aankoop kan niet (meer) gekoppeld worden: al geclaimd, niet betaald of terugbetaald.",
+    assign_failed: "Koppelen is mislukt. Probeer het opnieuw.", bad_kind: "Kies welke mail.",
+    settings_incomplete: "Vul eerst de overgangsdatum en de geldigheid van de code in.", valid_until_past: "De geldigheid van de code ligt in het verleden.",
+    coupon_mismatch: "Er bestaat al een Stripe-coupon met deze naam maar met andere waarden. Controleer de korting en de datum.",
+    stripe_mode_mismatch: "Er bestaan al codes uit de andere Stripe-modus (test/live). Maak de codes alleen met de live-sleutel.",
+    stripe_error: "Stripe gaf een fout. Probeer het later opnieuw.", not_enabled: "Lifetime-only staat uit: zet het eerst aan.",
+    after_cutover: "De overgangsdatum is al voorbij; deze mail gaat niet meer.", not_remind_window: "De herinnering kan alleen in de 7 dagen voor de overgang.",
+    smtp_error: "De testmail kon niet worden verstuurd (mailserver).",
   };
   // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
   const PLAN_DEFAULTS = { free: { streams: 1, devices: 2 }, lifetime: { streams: 3, devices: 15 } };
@@ -2195,10 +2201,10 @@
   // ---- build 167: Lifetime-only (lifetime_settings, lifetime_codes_stats, lifetime_codes_generate, lifetime_mail) ----
   // Alleen instellingen en aantallen; nooit adressen. Aanzetten, verzetten, koopknop en EU-link vragen een bevestiging
   // (de functie geeft 409 confirm_required met de lijst; daarna opnieuw met confirm: true).
-  const LT_CODE_STATUS = { open: "nog niet gemaild", mailed: "gemaild", mail_error: "mailfout", redeemed: "gebruikt", expired: "verlopen" };
+  const LT_CODE_STATUS = { ready: "klaar, nog niet gemaild", pending_stripe: "nog niet in Stripe", mailed: "gemaild", mail_error: "mailfout", redeemed: "gebruikt", expired: "verlopen" };
   function ltCodeText(c) {
     const st = LT_CODE_STATUS[c.status] || c.status;
-    const cls = c.status === "redeemed" ? "ok" : c.status === "mail_error" || c.status === "expired" ? "warn" : "";
+    const cls = c.status === "redeemed" ? "ok" : c.status === "mail_error" || c.status === "expired" || c.status === "pending_stripe" ? "warn" : "";
     const when = c.status === "redeemed" ? ` op ${fmtDate(c.redeemed_at)}` : c.status === "mailed" ? ` op ${fmtDate(c.mailed_at)}${c.reminded_at ? `, herinnerd ${fmtDate(c.reminded_at)}` : ""}` : c.status === "mail_error" && c.mail_error ? ` (${c.mail_error})` : "";
     return `<span class="lt-code">${esc(c.code)}</span> <span class="chip ${cls}">${esc(st)}</span><br><span class="sub">${esc(when.trim() ? st + when : "")}${c.expires_at ? `${when.trim() ? " · " : ""}geldig t/m ${esc(fmtDate(c.expires_at))}` : ""}</span>`;
   }
@@ -2302,9 +2308,12 @@
     let s;
     try { s = await call("lifetime_codes_stats"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
     const tile = (l, n, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${n == null ? "—" : nf.format(n)}</div><div class="h">${esc(h)}</div></div>`;
-    el.innerHTML = tile("Aangemaakt", s.created, s.missing ? `${nf.format(s.missing)} nog te maken` : s.valid_until ? `geldig t/m ${fmtDate(s.valid_until)}` : "")
-      + tile("Gemaild", s.mailed, s.reminded ? `${nf.format(s.reminded)} herinnerd` : "") + tile("Mailfout", s.mail_error)
-      + tile("Gebruikt", s.redeemed, s.created ? `${Math.round((s.redeemed / s.created) * 100)}%` : "") + tile("Verlopen", s.expired) + tile("Open", s.open);
+    el.innerHTML = tile("Aangemaakt", s.created, s.candidates ? `${nf.format(s.candidates)} nog te maken` : s.pending_stripe ? `${nf.format(s.pending_stripe)} nog niet in Stripe` : `${nf.format(s.ready)} klaar in Stripe`)
+      + tile("Gemaild", s.mailed, s.mail_pending ? `${nf.format(s.mail_pending)} nog te mailen` : "")
+      + tile("Herinnerd", s.reminded, s.remind_pending ? `${nf.format(s.remind_pending)} nog te herinneren` : "")
+      + tile("Mailfout", s.mail_error + s.remind_error, s.remind_error ? `${nf.format(s.remind_error)} bij de herinnering` : "")
+      + tile("Gebruikt", s.redeemed, s.created ? `${Math.round((s.redeemed / s.created) * 100)}%` : "") + tile("Verlopen", s.expired)
+      + tile("Niet geclaimd", s.unclaimed, "aankopen zonder account");
   }
   $("ltRefresh").onclick = loadLifetime;
   $("ltForm").onsubmit = async (e) => {
@@ -2328,36 +2337,43 @@
   const ltBusy = (on) => ["ltGenDry", "ltGen", "ltMailDry", "ltMailTest", "ltMailSend", "ltRemind"].forEach((id) => { $(id).disabled = on; });
   $("ltGenDry").onclick = async () => {
     ltBusy(true); $("ltGenOut").textContent = "Tellen…";
-    try { const r = await call("lifetime_codes_generate", { dry_run: true }); $("ltGenOut").textContent = `Droog: ${nf.format(r.eligible)} gratis accounts, ${nf.format(r.existing)} hebben al een code, ${nf.format(r.to_create)} codes zouden worden aangemaakt.`; }
+    try {
+      const r = await call("lifetime_codes_generate", { dry_run: true });
+      $("ltGenOut").textContent = `Droog: ${nf.format(r.candidates)} nieuwe codes${r.pending_stripe ? ` en ${nf.format(r.pending_stripe)} nog in Stripe te zetten` : ""}`
+        + `${r.discount_pct != null ? `, ${nf.format(r.discount_pct)}% korting` : ""}${r.valid_until ? ` t/m ${fmtNl(r.valid_until)}` : ""}${r.mode ? `, Stripe ${r.mode === "live" ? "live" : "test"}` : ""}.`
+        + (r.mode === "test" ? " Let op: codes uit de testmodus werken niet in live." : "");
+    }
     catch (e) { if (e.code !== "auth") $("ltGenOut").textContent = errText(e); }
     finally { ltBusy(false); }
   };
   $("ltGen").onclick = async () => {
     if (!ltConfirm(["generate"])) return;
     ltBusy(true);
-    let total = 0, failed = 0;
+    let total = 0, inStripe = 0, failed = 0;
     try {
-      for (let i = 0; i < 200; i++) {
+      for (let i = 0; i < 400; i++) {
         const r = await call("lifetime_codes_generate", { dry_run: false, confirm: true });
-        total += r.created; failed += r.failed;
-        $("ltGenOut").textContent = `Aangemaakt: ${nf.format(total)}${failed ? `, mislukt: ${nf.format(failed)}` : ""}${r.done ? "." : `, nog ${nf.format(r.remaining)} te gaan…`}`;
-        if (r.done || (!r.created && !r.remaining)) break;
+        total += r.created; inStripe += r.stripe_created; failed += r.stripe_errors;
+        $("ltGenOut").textContent = `Aangemaakt: ${nf.format(total)}, in Stripe: ${nf.format(inStripe)}${failed ? `, Stripe-fouten: ${nf.format(failed)} (volgende ronde opnieuw)` : ""}${r.done ? "." : `, nog ${nf.format(r.remaining)} te gaan…`}`;
+        if (r.done || (!r.created && !r.stripe_created)) break;
       }
       toast("Codes aangemaakt."); loadLifetimeStats();
     } catch (e) { if (e.code !== "auth") $("ltGenOut").textContent = errText(e); }
     finally { ltBusy(false); }
   };
-  const ltRecip = (r) => `${nf.format(r.recipients.total)} ontvangers (${nf.format(r.recipients.nl)} NL, ${nf.format(r.recipients.en)} EN)${r.without_code ? `, ${nf.format(r.without_code)} nog zonder code` : ""}`;
+  const ltRecip = (r, mode = "send") => `${nf.format(mode === "remind" ? r.remind_pending : r.notice_pending)} ontvangers${mode === "remind" && !r.remind_window ? " (herinneren kan alleen in de 7 dagen voor de overgang)" : ""}`;
+  const ltDry = (r) => `Droog: mail ${nf.format(r.notice_pending)} te versturen, herinnering ${nf.format(r.remind_pending)}${r.remind_window ? "" : " (nog niet: alleen in de 7 dagen voor de overgang)"}`
+    + `${r.enabled ? "" : ". Lifetime-only staat uit: versturen kan pas als het aan staat"}${r.smtp ? "" : ". E-mail is niet ingesteld op de server"}.`;
   $("ltMailDry").onclick = async () => {
     ltBusy(true); $("ltMailOut").textContent = "Tellen…";
-    try { const r = await call("lifetime_mail", { mode: "dry_run" }); $("ltMailOut").textContent = `Droog: ${ltRecip(r)}.`; }
+    try { const r = await call("lifetime_mail", { mode: "dry_run" }); $("ltMailOut").textContent = ltDry(r); }
     catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
     finally { ltBusy(false); }
   };
   $("ltMailTest").onclick = async () => {
     const to = $("ltTo").value.trim();
     ltBusy(true); $("ltMailOut").textContent = "Testmail versturen…";
-    try { const r = await call("lifetime_mail", { mode: "test", lang: $("ltLang").value, ...(to ? { to } : {}) }); $("ltMailOut").textContent = `Testmail verstuurd (${nf.format(r.sent || 1)}×) naar ${to ? "het opgegeven adres" : "het beheeradres"}.`; }
+    try { const r = await call("lifetime_mail", { mode: "test", kind: $("ltKind").value, lang: $("ltLang").value, ...(to ? { to } : {}) }); $("ltMailOut").textContent = `Testmail verstuurd (${nf.format(r.sent || 1)}×) naar ${to ? "het opgegeven adres" : "het beheeradres"}.`; }
     catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
     finally { ltBusy(false); }
   };
@@ -2365,19 +2381,32 @@
     ltBusy(true); $("ltMailOut").textContent = "Tellen…";
     try {
       const d = await call("lifetime_mail", { mode: "dry_run" });
-      if (!ltConfirm([mode], `Nu: ${ltRecip(d)}.`)) { $("ltMailOut").textContent = ""; return; }
+      if (!ltConfirm([mode], `Nu: ${ltRecip(d, mode)}.`)) { $("ltMailOut").textContent = ""; return; }
       let sent = 0, failed = 0;
-      for (let i = 0; i < 500; i++) {
+      for (let i = 0; i < 1000; i++) {
         const r = await call("lifetime_mail", { mode, confirm: true });
         sent += r.sent; failed += r.failed;
-        $("ltMailOut").textContent = `Verstuurd: ${nf.format(sent)}${failed ? `, mislukt: ${nf.format(failed)}` : ""}${r.done ? "." : `, nog ${nf.format(r.remaining)} te gaan…`}`;
-        if (r.done || (!r.sent && !r.remaining)) break;
+        const errs = Object.entries(r.errors || {}).map(([k, n]) => `${k} ${n}×`).join(", ");
+        $("ltMailOut").textContent = `Verstuurd: ${nf.format(sent)}${failed ? `, mislukt: ${nf.format(failed)}${errs ? ` (${errs})` : ""}` : ""}${r.done ? "." : `, nog ${nf.format(r.remaining)} te gaan…`}`;
+        if (r.done) break;
+        if (r.retry && !r.sent) await new Promise((ok) => setTimeout(ok, 5000));
       }
       toast(mode === "remind" ? "Herinnering verstuurd." : "Mail verstuurd."); loadLifetimeStats();
     } catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
     finally { ltBusy(false); }
   }
   $("ltMailSend").onclick = () => ltSendLoop("send");
+  // voorbeeld van de mail (lifetime-notice admin_preview, met de voorbeeldcode), veilig in de Shadow DOM zoals de nieuwsbrief
+  $("ltPreview").onclick = async () => {
+    const btn = $("ltPreview"); btn.disabled = true;
+    try {
+      const r = await call("lifetime_mail", { mode: "preview", kind: $("ltKind").value, lang: $("ltLang").value === "en" ? "en" : "nl" });
+      $("ltSubject").innerHTML = `<span class="sub">Onderwerp</span> <b>${esc(r.subject || "—")}</b>`;
+      $("ltSubject").classList.remove("hidden"); $("ltView").classList.remove("hidden");
+      mountMail($("ltView"), r.html || "");
+    } catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
+    finally { btn.disabled = false; }
+  };
   $("ltRemind").onclick = () => ltSendLoop("remind");
 
   // build 97: overal uitloggen (alle browsers en de app): de functie verhoogt de tokenversie, alle tokens vervallen
