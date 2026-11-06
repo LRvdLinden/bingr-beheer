@@ -75,6 +75,17 @@ struct SettingsView: View {
 
             pushSection
 
+            // build 167: Bingr wordt alleen Lifetime (instellingen, kortingscodes en de mail)
+            Section {
+                NavigationLink {
+                    LifetimeView()
+                } label: {
+                    Label("Lifetime-only", systemImage: "star.circle")
+                }
+            } footer: {
+                Text("Overgang naar alleen Lifetime: aankondiging, overgangsdatum, kortingscodes, de mail “Bingr wordt Lifetime” en de Apple-koopknop.")
+            }
+
             Section {
                 if let links {
                     ForEach(Self.linkPlatforms, id: \.key) { p in

@@ -365,6 +365,7 @@ struct RevenueView: View {
             HStack(alignment: .top, spacing: 14) {
                 breakCard(d)
                 VStack(spacing: 14) {
+                    if !d.byProvider.isEmpty || !d.byProviderAll.isEmpty { providers(d) }
                     shares("Per betaalmethode", d.byMethod)
                     shares("Per land", d.byCountry)
                 }
@@ -373,6 +374,7 @@ struct RevenueView: View {
             moneyCard
             countCard
             breakCard(d)
+            if !d.byProvider.isEmpty || !d.byProviderAll.isEmpty { providers(d) }
             shares("Per betaalmethode", d.byMethod)
             shares("Per land", d.byCountry)
         }
@@ -493,6 +495,18 @@ struct RevenueView: View {
             if !last { Divider().overlay(Color.white.opacity(0.08)) }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// build 167: website (Stripe) en Apple (In-app aankoop) apart, met het totaal sinds het begin eronder.
+    private func providers(_ d: RevenueData) -> some View {
+        VStack(spacing: 6) {
+            shares("Per aanbieder", d.byProvider)
+            if !d.byProviderAll.isEmpty {
+                Text("Totaal: " + d.byProviderAll.map { "\($0.label) \(Fmt.euro($0.gross)) (\($0.count)×)" }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(Color.textDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 
     private func shares(_ title: String, _ list: [RevShare]) -> some View {

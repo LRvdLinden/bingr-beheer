@@ -112,6 +112,9 @@ struct RevenueData: Hashable {
     let totals: [String: RevTotals]
     let byMethod: [RevShare]
     let byCountry: [RevShare]
+    /// build 167: per aanbieder (Stripe = website, Apple = In-app aankoop); leeg zolang de server geen provider meestuurt
+    let byProvider: [RevShare]
+    let byProviderAll: [RevShare]
     let vatText: String
     let vatNote: String
     let vatSource: String
@@ -149,6 +152,8 @@ struct RevenueData: Hashable {
         }
         byMethod = j["by_method"].array.compactMap(share)
         byCountry = j["by_country"].array.compactMap(share)
+        byProvider = j["by_provider"].array.compactMap(share)
+        byProviderAll = j["by_provider_all"].array.compactMap(share)
         vatText = j["vat"]["text"].text ?? ""
         vatNote = j["vat"]["note"].text ?? ""
         vatSource = j["vat"]["source"].text ?? "fixed"

@@ -5,6 +5,8 @@ Serveert web/ lokaal, onderschept alle aanroepen naar functions/v1/admin en geef
 actuele contracten (insights.ts: metrics en series worden uit supabase/functions/admin/insights.ts gelezen). Opent de
 tab Insights met alle bronnen aangevinkt en faalt bij JS-fouten, console-errors of ontbrekende bronnen/periodes/grafieken.
 Daarna de tab Downloads, kaart Versies (releases.ts): laden, "Neem nieuwste build", voorbeeldbadge en opslaan.
+Daarna de tab Lifetime-only (lifetime.ts, build 167): laden, opslaan met bevestiging, codes droog en echt, mail droog en
+versturen in batches (nep-antwoorden; er gaat niets naar Stripe of naar een mailbox).
 Daarna de tab Nieuwsbrief, blok Eigen mailing (mailing.ts): doelgroep met waarschuwing bij een servicebericht, voorbeeld,
 testmail, versturen met bevestiging, voortgang en annuleren (alleen nep-antwoorden; er gaat nergens een mail heen).
 
@@ -99,8 +101,63 @@ RELEASES = {"apple": {"live": {"version": "1.0.2", "build": 152}, "beta": None},
 SAVED = []
 
 
+LT = {"lifetime_only": {"enabled": False, "announce_at": None, "cutover_at": None, "discount_pct": 30, "code_valid_until": None, "trial_days": 0},
+      "iap": {"apple": False}, "upgrade_link": {"apple_eu": False}}
+LT_SETS, LT_GEN, LT_MAIL = [], [], []
+
+
+def lifetime_answer(req):
+    """Nep-antwoorden in de vorm van lifetime.ts (zoals docs/ACCOUNT.md Build 167); alleen aantallen."""
+    a = req.get("action")
+    if a == "lifetime_settings":
+        if "set" not in req:
+            return 200, {**LT, "suggested_cutover_at": "2026-12-01T00:00:00+01:00", "suggested_code_valid_until": "2026-12-01T00:00:00+01:00"}
+        st = req["set"]
+        if st["lifetime_only"]["enabled"] and not LT["lifetime_only"]["enabled"] and not req.get("confirm"):
+            return 409, {"error": "confirm_required", "confirm": ["enable"]}
+        LT_SETS.append(req)
+        LT["lifetime_only"].update(st["lifetime_only"]); LT["iap"] = st["iap"]; LT["upgrade_link"] = st["upgrade_link"]
+        return 200, {"ok": True, **LT}
+    if a == "lifetime_codes_stats":
+        return 200, {"created": 120, "ready": 118, "pending_stripe": 2, "mailed": 100, "mail_error": 2, "reminded": 0, "remind_error": 0,
+                     "redeemed": 9, "expired": 0, "open": 111, "candidates": 5, "mail_pending": 18, "remind_pending": 0, "unclaimed": 1}
+    if a == "lifetime_codes_generate":
+        LT_GEN.append(req)
+        if req.get("dry_run", True):
+            return 200, {"dry_run": True, "candidates": 5, "pending_stripe": 0, "created": 0, "stripe_created": 0, "stripe_errors": 0,
+                         "remaining": 0, "done": True, "coupon": "bingr_lifetime_30_20261201", "valid_until": "2026-12-01T00:00:00+01:00",
+                         "discount_pct": 30, "mode": "live"}
+        if not req.get("confirm"):
+            return 409, {"error": "confirm_required", "confirm": ["generate"]}
+        n = sum(1 for g in LT_GEN if g.get("dry_run") is False)
+        return 200, {"dry_run": False, "candidates": 0, "pending_stripe": 0, "created": 3 if n == 1 else 2, "stripe_created": 3 if n == 1 else 2,
+                     "stripe_errors": 0, "remaining": 2 if n == 1 else 0, "done": n > 1, "coupon": None, "valid_until": None, "discount_pct": None, "mode": None}
+    if a == "lifetime_mail":
+        LT_MAIL.append(req)
+        m = req.get("mode")
+        base = {"mode": m, "notice_pending": 100, "remind_pending": 0, "remind_window": False, "enabled": True, "smtp": True,
+                "sent": 0, "failed": 0, "retry": 0, "errors": {}, "remaining": 0, "done": True}
+        if m == "dry_run":
+            return 200, base
+        if m == "preview":
+            return 200, {"subject": "Bingr wordt Lifetime – met 30% korting voor jou", "html": "<html><body><p>BINGR-ABCD-EFGH</p></body></html>"}
+        if m == "test":
+            return 200, {**base, "sent": 2}
+        if not req.get("confirm"):
+            return 409, {"error": "confirm_required", "confirm": [m]}
+        n = sum(1 for x in LT_MAIL if x.get("mode") == m)
+        return 200, {**base, "sent": 50, "remaining": 50 if n == 1 else 0, "done": n > 1}
+    return 400, {"error": "unknown_action"}
+
+
 def answer(req):
     a = req.get("action")
+    if str(a).startswith("lifetime_"):
+        return lifetime_answer(req)
+    if a == "purchases_unclaimed":
+        return 200, {"total": 2, "paid": 1, "items": [
+            {"id": 12, "provider": "stripe", "status": "paid", "amount": 499, "currency": "eur", "paid_at": "2026-12-08T10:00:00Z", "created_at": None, "mode": "live", "email_known": True},
+            {"id": 13, "provider": "apple", "status": "pending", "amount": 499, "currency": "eur", "paid_at": None, "created_at": "2026-12-08T11:00:00Z", "mode": "test", "email_known": False}]}
     if a == "releases_get":
         return 200, {"releases": RELEASES}
     if a == "releases_set":
@@ -264,6 +321,76 @@ def releases_smoke(b, base, errors, calls):
     return steps
 
 
+def wait_text(page, sel, text, timeout=5.0):
+    """Wachten tot de tekst er staat (geen wait_for_function: de CSP van het dashboard staat geen eval toe)."""
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        if text in page.inner_text(sel):
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError(f"{sel}: {text!r} niet gevonden in {page.inner_text(sel)!r}")
+
+
+def lifetime_smoke(b, base, errors, calls):
+    """Tab Lifetime-only. Vult errors aan; geeft het aantal geslaagde stappen terug."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    # 409 confirm_required hoort erbij (eerst zonder bevestiging, dan met)
+    page.on("console", lambda m: m.type == "error" and "status of 409" not in m.text and errors.append(f"console: {m.text}"))
+    dialogs = []
+    page.on("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'lifetime');
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"lifetime: {msg}")
+    page.goto(base + "#lifetime")
+    page.wait_for_selector("#tab-lifetime:not(.hidden) #ltStats .kpi", timeout=10000)
+    check("Uit" in page.inner_text("#ltState"), "stand niet Uit")
+    wait_text(page, "#ltUnclaimed", "2 niet geclaimd")
+    check("#12 · Website (Stripe)" in page.inner_text("#ltUnclaimed") and "@" not in page.inner_text("#ltUnclaimed"), "niet geclaimde aankopen")
+    check("120" in page.inner_text("#ltStats") and "5 nog te maken" in page.inner_text("#ltStats"), "totalen ontbreken")
+    # aanzetten met overgang: eerst 409, dan bevestigen en opnieuw met confirm
+    page.click("label:has(#ltEnabled) .track")
+    # aanvulling 2: het vaste voorstel (1 december 2026 00:00) staat al ingevuld, ook voor de code
+    check(page.input_value("#ltCutover") == "2026-12-01T00:00" and page.input_value("#ltValid") == "2026-12-01T00:00", "voorstel 1 december niet ingevuld")
+    page.click("#ltSave")
+    page.wait_for_timeout(500)
+    got = LT_SETS[-1] if LT_SETS else {}
+    check(got.get("confirm") is True and got["set"]["lifetime_only"]["cutover_at"] == "2026-12-01T00:00:00+01:00"
+          and got["set"]["lifetime_only"]["code_valid_until"] == "2026-12-01T00:00:00+01:00", f"opslaan zonder bevestiging of verkeerde tijd: {got}")
+    check(any("Lifetime-only gaat AAN" in d for d in dialogs), "geen bevestiging bij aanzetten")
+    wait_text(page, "#ltState", "Aangekondigd")
+    steps += 1
+    page.click("#ltGenDry")
+    wait_text(page, "#ltGenOut", "5 nieuwe codes")
+    steps += 1
+    page.click("#ltGen")
+    wait_text(page, "#ltGenOut", "Aangemaakt: 5, in Stripe: 5.")
+    steps += 1
+    page.click("#ltPreview")
+    wait_text(page, "#ltSubject", "Bingr wordt Lifetime")
+    steps += 1
+    page.click("#ltMailDry")
+    wait_text(page, "#ltMailOut", "mail 100 te versturen")
+    steps += 1
+    page.click("#ltMailSend")
+    wait_text(page, "#ltMailOut", "Verstuurd: 100.")
+    sends = [m for m in LT_MAIL if m.get("mode") == "send"]
+    check(len(sends) == 2 and all(m.get("confirm") is True for m in sends), f"versturen niet in batches met bevestiging: {sends}")
+    page.close()
+    return steps
+
+
 def route_to(r, calls):
     if r.request.method == "OPTIONS":
         return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
@@ -324,6 +451,7 @@ def main():
             page.wait_for_timeout(500)
         rel_steps = releases_smoke(b, base, errors, calls)
         ml_steps = mailing_smoke(b, base, errors, calls)
+        lt_steps = lifetime_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
     n = calls.count("insights")
@@ -333,6 +461,7 @@ def main():
         sys.exit(1)
     print(f"Insights-rooktest OK: {len(srcs)} bronnen, {len(periods)} periodes, {n} insights-aanroepen, geen JS-fouten")
     print(f"Versies OK: {rel_steps} stappen (laden, nieuwste build, voorbeeldbadge, opslaan)")
+    print(f"Lifetime-only OK: {lt_steps} stappen (laden, opslaan met bevestiging, codes droog en echt, mail droog en in batches)")
     print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 
 

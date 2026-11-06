@@ -102,6 +102,26 @@
     // naam van een account (user_set_name)
     bad_name: "Ongeldige naam: gebruik geen regeleinden of tekens als < en >.", name_too_long: "Een naam mag hoogstens 50 tekens zijn.",
     name_failed: "De naam kon niet worden opgeslagen. Probeer het opnieuw.",
+    // build 167: Lifetime-only
+    lifetime_not_configured: "Lifetime-only is nog niet ingericht op de server (workflow Backend in iptv-ios-appletv, geheim LIFETIME_ADMIN_SECRET).",
+    lifetime_not_deployed: "De serverfunctie voor Lifetime-only staat nog niet online (workflow Backend in iptv-ios-appletv).",
+    lifetime_forbidden: "De server weigerde de aanvraag (LIFETIME_ADMIN_SECRET klopt niet).",
+    lifetime_unreachable: "De server is niet bereikbaar. Probeer het later opnieuw.",
+    cutover_required: "Kies een overgangsdatum voordat je Lifetime-only aanzet.", cutover_past: "De overgangsdatum moet in de toekomst liggen.",
+    bad_cutover_at: "Ongeldige overgangsdatum.", bad_announce_at: "Ongeldige aankondigingsdatum.", bad_code_valid_until: "Ongeldige geldigheidsdatum van de code.",
+    announce_after_cutover: "De aankondiging moet vóór de overgangsdatum liggen.", code_after_cutover: "De code mag niet langer geldig zijn dan de overgangsdatum.",
+    bad_discount_pct: "Korting: een heel getal van 1 tot 90.", bad_trial_days: "Proefperiode: een heel getal van 0 tot 90 dagen.",
+    bad_iap: "Ongeldige instelling voor de koopknop.", bad_apple_eu: "Ongeldige instelling voor de EU-link.",
+    bad_email: "Vul een geldig e-mailadres in.", bad_lang: "Kies een taal.",
+    stripe_unavailable: "Stripe is niet ingesteld op de server (geen STRIPE_SECRET_KEY).",
+    bad_purchase_id: "Kies een aankoop.", not_assignable: "Deze aankoop kan niet (meer) gekoppeld worden: al geclaimd, niet betaald of terugbetaald.",
+    assign_failed: "Koppelen is mislukt. Probeer het opnieuw.", bad_kind: "Kies welke mail.",
+    settings_incomplete: "Vul eerst de overgangsdatum en de geldigheid van de code in.", valid_until_past: "De geldigheid van de code ligt in het verleden.",
+    coupon_mismatch: "Er bestaat al een Stripe-coupon met deze naam maar met andere waarden. Controleer de korting en de datum.",
+    stripe_mode_mismatch: "Er bestaan al codes uit de andere Stripe-modus (test/live). Maak de codes alleen met de live-sleutel.",
+    stripe_error: "Stripe gaf een fout. Probeer het later opnieuw.", not_enabled: "Lifetime-only staat uit: zet het eerst aan.",
+    after_cutover: "De overgangsdatum is al voorbij; deze mail gaat niet meer.", not_remind_window: "De herinnering kan alleen in de 7 dagen voor de overgang.",
+    smtp_error: "De testmail kon niet worden verstuurd (mailserver).",
   };
   // ---- abonnementen (zelfde standaarden als de server, docs/ACCOUNT.md in iptv-ios-appletv) ----
   const PLAN_DEFAULTS = { free: { streams: 1, devices: 2 }, lifetime: { streams: 3, devices: 15 } };
@@ -230,7 +250,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -241,7 +261,7 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "insights", "revenue", "users", "support", "messages", "newsletter", "server", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "revenue", "lifetime", "users", "support", "messages", "newsletter", "server", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -1314,6 +1334,15 @@
     revDraws.money = paintMoney(); revDraws.count = paintCount();
     renderRevBreak(d);
     revBars($("revMethods"), d.by_method);
+    // build 167: per aanbieder (Stripe en Apple); verborgen zolang de server nog geen provider meestuurt
+    const prov = Array.isArray(d.by_provider) ? d.by_provider : [], provAll = Array.isArray(d.by_provider_all) ? d.by_provider_all : [];
+    const showProv = prov.length > 0 || provAll.length > 0;
+    $("revProvBox").classList.toggle("hidden", !showProv);
+    $("revProvBox").parentElement.classList.toggle("four", showProv);
+    if (showProv) {
+      revBars($("revProviders"), prov);
+      $("revProvAll").textContent = provAll.length ? `Totaal: ${provAll.map((r) => `${r.label} ${euro(r.gross)} (${nf.format(r.count)}×)`).join(" · ")}` : "";
+    }
     revBars($("revCountries"), d.by_country);
     $("revLive").textContent = `${insRangeText(d)}: bruto ${euro(T.period.gross)}, opbrengst ${euro(T.period.proceeds)}`;
   }
@@ -1837,6 +1866,7 @@
         <dt>Actief (30 d)</dt><dd>${nf.format(u.active_days_30d || 0)} dagen</dd>
         <dt>Kijkt nu</dt><dd>${nf.format(u.watching_now || 0)}</dd>
         <dt>Berichten per e-mail</dt><dd>${u.email_opt_out ? "Afgemeld" : "Aan"}</dd>
+        ${u.lifetime_code ? `<dt>Kortingscode</dt><dd>${ltCodeText(u.lifetime_code)}</dd>` : ""}
         <dt>Nieuwsbrief</dt><dd id="uNl"></dd>
       </dl>
       <form id="nameForm" class="name-form hidden" novalidate>
@@ -1850,6 +1880,7 @@
         <div class="form-btns"><button id="nSave" class="btn" type="submit">Naam opslaan</button><button id="nCancel" class="btn ghost" type="button">Annuleren</button></div>
       </form>
       ${planSection(u)}
+      ${planObj(u.plan).plan !== "lifetime" ? '<div id="uAssign" class="plan-box u-assign"></div>' : ""}
       <h3>Apparaten (${(u.devices || []).length})</h3>
       ${(u.devices || []).map((d) => `<div class="dev"><div class="ic">${icon(d.platform)}</div><div>
         <div class="nm">${esc(d.name || pname(d.platform))}</div>
@@ -1928,6 +1959,7 @@
       };
     } else wireBlockForm(u);
     wirePlan(u);
+    wireAssign(u);
     wireDelete(u);
   }
   // servers van dit account (user_detail.servers): alleen het adres van Xtream-bronnen (schema + host + poort), de naam die de
@@ -2165,6 +2197,218 @@
       finally { $("linkSave").disabled = false; }
     };
   }
+
+  // ---- build 167: Lifetime-only (lifetime_settings, lifetime_codes_stats, lifetime_codes_generate, lifetime_mail) ----
+  // Alleen instellingen en aantallen; nooit adressen. Aanzetten, verzetten, koopknop en EU-link vragen een bevestiging
+  // (de functie geeft 409 confirm_required met de lijst; daarna opnieuw met confirm: true).
+  const LT_CODE_STATUS = { ready: "klaar, nog niet gemaild", pending_stripe: "nog niet in Stripe", mailed: "gemaild", mail_error: "mailfout", redeemed: "gebruikt", expired: "verlopen" };
+  function ltCodeText(c) {
+    const st = LT_CODE_STATUS[c.status] || c.status;
+    const cls = c.status === "redeemed" ? "ok" : c.status === "mail_error" || c.status === "expired" || c.status === "pending_stripe" ? "warn" : "";
+    const when = c.status === "redeemed" ? ` op ${fmtDate(c.redeemed_at)}` : c.status === "mailed" ? ` op ${fmtDate(c.mailed_at)}${c.reminded_at ? `, herinnerd ${fmtDate(c.reminded_at)}` : ""}` : c.status === "mail_error" && c.mail_error ? ` (${c.mail_error})` : "";
+    return `<span class="lt-code">${esc(c.code)}</span> <span class="chip ${cls}">${esc(st)}</span><br><span class="sub">${esc(when.trim() ? st + when : "")}${c.expires_at ? `${when.trim() ? " · " : ""}geldig t/m ${esc(fmtDate(c.expires_at))}` : ""}</span>`;
+  }
+  // datetime-local <-> ISO in Nederlandse tijd (met de juiste offset voor die dag)
+  const AMS = "Europe/Amsterdam";
+  function amsOffset(t) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: AMS, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+    return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(t / 60000) * 60000) / 60000;
+  }
+  function toAmsIso(v) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(v || "");
+    if (!m) return null;
+    const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    let off = amsOffset(wall - 60 * 60000); off = amsOffset(wall - off * 60000);
+    const sign = off >= 0 ? "+" : "-", a = Math.abs(off), pad = (n) => String(n).padStart(2, "0");
+    return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00${sign}${pad(Math.floor(a / 60))}:${pad(a % 60)}`;
+  }
+  const fromIso = (iso) => (iso ? new Intl.DateTimeFormat("sv-SE", { timeZone: AMS, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)).replace(" ", "T") : "");
+  const LT_CONFIRM = {
+    enable: "Lifetime-only gaat AAN. Gratis accounts krijgen de aankondiging; na de overgangsdatum zien ze alleen nog Activeer Lifetime.",
+    cutover: "De overgangsdatum verandert terwijl Lifetime-only aan staat.",
+    trial: "De proefperiode voor nieuwe accounts verandert terwijl Lifetime-only aan staat.",
+    iap_apple: "De koopknop (In-app aankoop) verschijnt in de Apple-apps.",
+    apple_eu: "De EU-link naar bingr.online/upgrade/ verschijnt in de Apple-apps (alleen met de entitlement van Apple).",
+    generate: "Codes echt aanmaken in Stripe (coupon en een promotion code per gratis account).",
+    send: "De mail echt versturen aan alle gratis accounts die hem nog niet kregen.",
+    remind: "De herinnering echt versturen aan wie nog niet gekocht heeft.",
+  };
+  const ltConfirm = (keys, extra = "") => confirm(`Weet je het zeker?\n\n${keys.map((k) => "• " + (LT_CONFIRM[k] || k)).join("\n")}${extra ? "\n\n" + extra : ""}`);
+  // call met bevestiging: eerst zonder; bij 409 confirm_required vragen en opnieuw met confirm: true
+  async function ltCall(action, data) {
+    try { return await call(action, data); }
+    catch (e) {
+      if (e.code !== "confirm_required") throw e;
+      if (!ltConfirm(e.body?.confirm || [])) return null;
+      return call(action, { ...data, confirm: true });
+    }
+  }
+  let ltCur = null;
+  function ltStateHtml(v) {
+    const l = v.lifetime_only, now = Date.now();
+    const cut = l.cutover_at ? Date.parse(l.cutover_at) : null, ann = l.announce_at ? Date.parse(l.announce_at) : null;
+    const phase = !l.enabled ? ["Uit", ""] : cut !== null && now >= cut ? ["Overgang voorbij: alleen Lifetime", "bad"]
+      : ann === null || now >= ann ? ["Aangekondigd", "warn"] : ["Aan, aankondiging gepland", "warn"];
+    return `<h2>Stand <span class="chip ${phase[1]}">${esc(phase[0])}</span></h2>
+      <p class="sub">${l.enabled ? `Aankondiging ${esc(l.announce_at ? fmtNl(l.announce_at) : "meteen")} · overgang ${esc(fmtNl(l.cutover_at))} · ${nf.format(l.discount_pct)}% korting tot ${esc(fmtNl(l.code_valid_until || l.cutover_at))} · proefperiode ${l.trial_days ? nf.format(l.trial_days) + " dagen" : "geen"}` : "Alles werkt zoals nu (Gratis en Lifetime)."}
+        · Apple-koopknop ${v.iap.apple ? "aan" : "uit"} · EU-link ${v.upgrade_link.apple_eu ? "aan" : "uit"}</p>
+      <ol class="lt-steps"><li>Instellingen invullen (nog uit laten).</li><li>Codes genereren (eerst droog).</li><li>Mail testen.</li><li>Op dag D: Lifetime-only aan, mail versturen en de melding in de apps klaarzetten.</li><li>7 dagen voor de overgang: herinnering versturen.</li></ol>`;
+  }
+  async function loadLifetime() {
+    $("ltState").innerHTML = '<p class="sub">Laden…</p>';
+    let v;
+    try { v = await call("lifetime_settings"); } catch (e) { if (e.code !== "auth") $("ltState").innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    ltCur = v;
+    const l = v.lifetime_only;
+    $("ltState").innerHTML = ltStateHtml(v);
+    $("ltEnabled").checked = l.enabled;
+    $("ltAnnounce").value = fromIso(l.announce_at);
+    $("ltCutover").value = fromIso(l.cutover_at);
+    // aanvulling 2: vaste overgang 1 december 2026 00:00; lege velden krijgen het voorstel (pas bewaard na Opslaan)
+    $("ltCutHint").textContent = v.suggested_cutover_at ? `Voorstel: ${fmtNl(v.suggested_cutover_at)}` : "";
+    if (!l.cutover_at && v.suggested_cutover_at) $("ltCutover").value = fromIso(v.suggested_cutover_at);
+    $("ltPct").value = l.discount_pct; $("ltValid").value = fromIso(l.code_valid_until || (l.cutover_at ? null : v.suggested_code_valid_until)); $("ltTrial").value = l.trial_days;
+    $("ltIap").checked = v.iap.apple; $("ltEu").checked = v.upgrade_link.apple_eu;
+    loadLifetimeStats();
+    loadUnclaimed();
+  }
+  // aanvulling 1: aankopen zonder account (purchases_unclaimed); per aankoop alleen status, bedrag, datum en aanbieder
+  const PROVIDER = { stripe: "Website (Stripe)", apple: "Apple" };
+  const unclaimedText = (p) => `#${p.id} · ${PROVIDER[p.provider] || p.provider} · ${euro(p.amount)} · ${PURCHASE_STATUS[p.status] || p.status} ${fmtDate(p.paid_at || p.created_at)}${p.mode === "test" ? " · test" : ""}`;
+  async function loadUnclaimed() {
+    const el = $("ltUnclaimed");
+    el.innerHTML = '<p class="sub">Laden…</p>';
+    let r;
+    try { r = await call("purchases_unclaimed"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    el.innerHTML = `<p><b>${nf.format(r.total)}</b> niet geclaimd${r.total ? ` (${nf.format(r.paid)} betaald)` : ""}</p>` + (r.items.length
+      ? `<ul class="lt-list">${r.items.map((p) => `<li>${esc(unclaimedText(p))}${p.email_known ? ' <span class="chip">e-mail bekend</span>' : ""}</li>`).join("")}</ul>` : "");
+  }
+  $("ltUnRefresh").onclick = loadUnclaimed;
+  // in de lade van een account: een niet-geclaimde, betaalde aankoop aan dit account koppelen (purchase_assign)
+  async function wireAssign(u) {
+    const box = $("uAssign");
+    if (!box) return;
+    let r;
+    try { r = await call("purchases_unclaimed"); } catch { box.innerHTML = ""; return; }
+    const paid = r.items.filter((p) => p.status === "paid");
+    if (!paid.length) { box.innerHTML = '<p class="sub">Geen niet-geclaimde aankopen om te koppelen.</p>'; return; }
+    box.innerHTML = `<label>Aankoop koppelen <span class="sub">geeft dit account Lifetime</span><select id="uAsSel">${paid.map((p) => `<option value="${p.id}">${esc(unclaimedText(p))}</option>`).join("")}</select></label>
+      <div id="uAsErr" class="err" role="alert"></div><div class="form-btns"><button id="uAsBtn" class="btn ghost" type="button">Koppelen aan dit account</button></div>`;
+    $("uAsBtn").onclick = async () => {
+      const id = Number($("uAsSel").value);
+      if (!confirm(`Aankoop #${id} koppelen aan ${u.email}? Het account krijgt Lifetime. Doe dit alleen als je zeker weet dat deze klant de koper is.`)) return;
+      $("uAsBtn").disabled = true; $("uAsErr").textContent = "";
+      try { await call("purchase_assign", { purchase_id: id, user_id: u.id, confirm: true }); toast("Aankoop gekoppeld; het account heeft nu Lifetime."); refreshUserViews(u.id); openUser(u.id); }
+      catch (e) { if (e.code !== "auth") $("uAsErr").textContent = errText(e); $("uAsBtn").disabled = false; }
+    };
+  }
+  async function loadLifetimeStats() {
+    const el = $("ltStats");
+    el.innerHTML = '<p class="sub">Laden…</p>';
+    let s;
+    try { s = await call("lifetime_codes_stats"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    const tile = (l, n, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${n == null ? "—" : nf.format(n)}</div><div class="h">${esc(h)}</div></div>`;
+    el.innerHTML = tile("Aangemaakt", s.created, s.candidates ? `${nf.format(s.candidates)} nog te maken` : s.pending_stripe ? `${nf.format(s.pending_stripe)} nog niet in Stripe` : `${nf.format(s.ready)} klaar in Stripe`)
+      + tile("Gemaild", s.mailed, s.mail_pending ? `${nf.format(s.mail_pending)} nog te mailen` : "")
+      + tile("Herinnerd", s.reminded, s.remind_pending ? `${nf.format(s.remind_pending)} nog te herinneren` : "")
+      + tile("Mailfout", s.mail_error + s.remind_error, s.remind_error ? `${nf.format(s.remind_error)} bij de herinnering` : "")
+      + tile("Gebruikt", s.redeemed, s.created ? `${Math.round((s.redeemed / s.created) * 100)}%` : "") + tile("Verlopen", s.expired)
+      + tile("Niet geclaimd", s.unclaimed, "aankopen zonder account");
+  }
+  $("ltRefresh").onclick = loadLifetime;
+  $("ltForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $("ltErr"); err.textContent = "";
+    const num = (id) => Number($(id).value);
+    const lifetime_only = {
+      enabled: $("ltEnabled").checked,
+      announce_at: $("ltAnnounce").value ? toAmsIso($("ltAnnounce").value) : null,
+      cutover_at: $("ltCutover").value ? toAmsIso($("ltCutover").value) : null,
+      code_valid_until: $("ltValid").value ? toAmsIso($("ltValid").value) : null,
+      discount_pct: num("ltPct"), trial_days: num("ltTrial"),
+    };
+    $("ltSave").disabled = true;
+    try {
+      const r = await ltCall("lifetime_settings", { set: { lifetime_only, iap: { apple: $("ltIap").checked }, upgrade_link: { apple_eu: $("ltEu").checked } } });
+      if (r) { toast("Lifetime-only opgeslagen. De apps nemen het binnen een paar minuten over."); loadLifetime(); }
+    } catch (x) { if (x.code !== "auth") err.textContent = errText(x); }
+    finally { $("ltSave").disabled = false; }
+  };
+  const ltBusy = (on) => ["ltGenDry", "ltGen", "ltMailDry", "ltMailTest", "ltMailSend", "ltRemind"].forEach((id) => { $(id).disabled = on; });
+  $("ltGenDry").onclick = async () => {
+    ltBusy(true); $("ltGenOut").textContent = "Tellen…";
+    try {
+      const r = await call("lifetime_codes_generate", { dry_run: true });
+      $("ltGenOut").textContent = `Droog: ${nf.format(r.candidates)} nieuwe codes${r.pending_stripe ? ` en ${nf.format(r.pending_stripe)} nog in Stripe te zetten` : ""}`
+        + `${r.discount_pct != null ? `, ${nf.format(r.discount_pct)}% korting` : ""}${r.valid_until ? ` t/m ${fmtNl(r.valid_until)}` : ""}${r.mode ? `, Stripe ${r.mode === "live" ? "live" : "test"}` : ""}.`
+        + (r.mode === "test" ? " Let op: codes uit de testmodus werken niet in live." : "");
+    }
+    catch (e) { if (e.code !== "auth") $("ltGenOut").textContent = errText(e); }
+    finally { ltBusy(false); }
+  };
+  $("ltGen").onclick = async () => {
+    if (!ltConfirm(["generate"])) return;
+    ltBusy(true);
+    let total = 0, inStripe = 0, failed = 0;
+    try {
+      for (let i = 0; i < 400; i++) {
+        const r = await call("lifetime_codes_generate", { dry_run: false, confirm: true });
+        total += r.created; inStripe += r.stripe_created; failed += r.stripe_errors;
+        $("ltGenOut").textContent = `Aangemaakt: ${nf.format(total)}, in Stripe: ${nf.format(inStripe)}${failed ? `, Stripe-fouten: ${nf.format(failed)} (volgende ronde opnieuw)` : ""}${r.done ? "." : `, nog ${nf.format(r.remaining)} te gaan…`}`;
+        if (r.done || (!r.created && !r.stripe_created)) break;
+      }
+      toast("Codes aangemaakt."); loadLifetimeStats();
+    } catch (e) { if (e.code !== "auth") $("ltGenOut").textContent = errText(e); }
+    finally { ltBusy(false); }
+  };
+  const ltRecip = (r, mode = "send") => `${nf.format(mode === "remind" ? r.remind_pending : r.notice_pending)} ontvangers${mode === "remind" && !r.remind_window ? " (herinneren kan alleen in de 7 dagen voor de overgang)" : ""}`;
+  const ltDry = (r) => `Droog: mail ${nf.format(r.notice_pending)} te versturen, herinnering ${nf.format(r.remind_pending)}${r.remind_window ? "" : " (nog niet: alleen in de 7 dagen voor de overgang)"}`
+    + `${r.enabled ? "" : ". Lifetime-only staat uit: versturen kan pas als het aan staat"}${r.smtp ? "" : ". E-mail is niet ingesteld op de server"}.`;
+  $("ltMailDry").onclick = async () => {
+    ltBusy(true); $("ltMailOut").textContent = "Tellen…";
+    try { const r = await call("lifetime_mail", { mode: "dry_run" }); $("ltMailOut").textContent = ltDry(r); }
+    catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
+    finally { ltBusy(false); }
+  };
+  $("ltMailTest").onclick = async () => {
+    const to = $("ltTo").value.trim();
+    ltBusy(true); $("ltMailOut").textContent = "Testmail versturen…";
+    try { const r = await call("lifetime_mail", { mode: "test", kind: $("ltKind").value, lang: $("ltLang").value, ...(to ? { to } : {}) }); $("ltMailOut").textContent = `Testmail verstuurd (${nf.format(r.sent || 1)}×) naar ${to ? "het opgegeven adres" : "het beheeradres"}.`; }
+    catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
+    finally { ltBusy(false); }
+  };
+  async function ltSendLoop(mode) {
+    ltBusy(true); $("ltMailOut").textContent = "Tellen…";
+    try {
+      const d = await call("lifetime_mail", { mode: "dry_run" });
+      if (!ltConfirm([mode], `Nu: ${ltRecip(d, mode)}.`)) { $("ltMailOut").textContent = ""; return; }
+      let sent = 0, failed = 0;
+      for (let i = 0; i < 1000; i++) {
+        const r = await call("lifetime_mail", { mode, confirm: true });
+        sent += r.sent; failed += r.failed;
+        const errs = Object.entries(r.errors || {}).map(([k, n]) => `${k} ${n}×`).join(", ");
+        $("ltMailOut").textContent = `Verstuurd: ${nf.format(sent)}${failed ? `, mislukt: ${nf.format(failed)}${errs ? ` (${errs})` : ""}` : ""}${r.done ? "." : `, nog ${nf.format(r.remaining)} te gaan…`}`;
+        if (r.done) break;
+        if (r.retry && !r.sent) await new Promise((ok) => setTimeout(ok, 5000));
+      }
+      toast(mode === "remind" ? "Herinnering verstuurd." : "Mail verstuurd."); loadLifetimeStats();
+    } catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
+    finally { ltBusy(false); }
+  }
+  $("ltMailSend").onclick = () => ltSendLoop("send");
+  // voorbeeld van de mail (lifetime-notice admin_preview, met de voorbeeldcode), veilig in de Shadow DOM zoals de nieuwsbrief
+  $("ltPreview").onclick = async () => {
+    const btn = $("ltPreview"); btn.disabled = true;
+    try {
+      const r = await call("lifetime_mail", { mode: "preview", kind: $("ltKind").value, lang: $("ltLang").value === "en" ? "en" : "nl" });
+      $("ltSubject").innerHTML = `<span class="sub">Onderwerp</span> <b>${esc(r.subject || "—")}</b>`;
+      $("ltSubject").classList.remove("hidden"); $("ltView").classList.remove("hidden");
+      mountMail($("ltView"), r.html || "");
+    } catch (e) { if (e.code !== "auth") $("ltMailOut").textContent = errText(e); }
+    finally { btn.disabled = false; }
+  };
+  $("ltRemind").onclick = () => ltSendLoop("remind");
+
   // build 97: overal uitloggen (alle browsers en de app): de functie verhoogt de tokenversie, alle tokens vervallen
   // (ook vanuit het menu rechtsboven)
   async function logoutAll() {
