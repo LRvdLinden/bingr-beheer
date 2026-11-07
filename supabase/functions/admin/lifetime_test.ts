@@ -5,6 +5,7 @@ import {
   assignView, cleanAssign, cleanMailKind, previewView, unclaimedList,
   allView, cleanAll, cleanGenerate, cleanMailLang, cleanMailMode, cleanSettings, codeView, confirmNeeded, DEFAULT_SETTINGS,
   FIXED_CUTOVER, suggestion, generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, settingsView, statsView,
+  warnings, writeValue,
 } from "./lifetime.ts";
 import { breakdown, buildRevenue, revenuePlan } from "./revenue.ts";
 
@@ -19,7 +20,8 @@ Deno.test("instellingen: standaard en opschonen", () => {
   eq(settingsView({ enabled: "ja", discount_pct: 300, trial_days: -1, cutover_at: "morgen" }), DEFAULT_SETTINGS, "rommel = standaard");
   eq(settingsView({ enabled: true, cutover_at: CUT, discount_pct: 25, trial_days: 7 }),
     { ...DEFAULT_SETTINGS, enabled: true, cutover_at: CUT, discount_pct: 25, trial_days: 7 }, "geldige waarden blijven");
-  eq(DEFAULT_SETTINGS, { enabled: false, announce_at: null, cutover_at: null, discount_pct: 30, code_valid_until: null, trial_days: 0 }, "contract");
+  eq(DEFAULT_SETTINGS, { enabled: false, announce_at: null, cutover_at: null, discount_pct: 30, code_valid_until: null, trial_days: 0,
+    new_paid_from: null, new_paid_from_apple: null }, "contract (build 168: new_paid_from* standaard null)");
 });
 
 Deno.test("voorstel: vaste overgang 1 december 2026 00:00 Amsterdam (aanvulling 2)", () => {
@@ -185,4 +187,48 @@ Deno.test("niet geclaimde aankopen: vorm van bingr_admin_unclaimed, nooit e-mail
   eq(assignView({ ok: false, result: "not_assignable" }), { ok: false, error: "not_assignable", status: 409 }, "kan niet");
   eq(assignView({ ok: false, result: "no_user" }), { ok: false, error: "not_found", status: 404 }, "geen account");
   eq(assignView(null), { ok: false, error: "assign_failed", status: 502 }, "leeg");
+});
+
+// ---------------- build 168: nieuwe accounts eerst kopen ----------------
+Deno.test("168: new_paid_from en new_paid_from_apple controleren", () => {
+  const live = { ...DEFAULT_SETTINGS, enabled: true, cutover_at: FIXED_CUTOVER };
+  const NP = "2026-11-08T12:00:00+01:00";
+  eq(settingsView({ new_paid_from: "morgen", new_paid_from_apple: 3 }), DEFAULT_SETTINGS, "rommel = null");
+  eq(cleanSettings({ new_paid_from: "8 november" }, live, NOW), { ok: false, error: "bad_new_paid_from" }, "geen ISO");
+  eq(cleanSettings({ new_paid_from_apple: "x" }, live, NOW), { ok: false, error: "bad_new_paid_from_apple" }, "geen ISO (Apple)");
+  eq(cleanSettings({ new_paid_from: NP }, DEFAULT_SETTINGS, NOW), { ok: false, error: "new_paid_requires_enabled" }, "alleen met Lifetime-only aan");
+  ok(cleanSettings({ enabled: true, cutover_at: FIXED_CUTOVER, new_paid_from: NP }, DEFAULT_SETTINGS, NOW).ok, "tegelijk aanzetten mag");
+  eq(cleanSettings({ new_paid_from: "2026-12-02T00:00:00+01:00" }, live, NOW), { ok: false, error: "new_paid_after_cutover" }, "na de overgang");
+  const r = cleanSettings({ new_paid_from: NP }, live, NOW);
+  ok(r.ok && r.value.new_paid_from === NP && r.value.new_paid_from_apple === null, "web en Android apart van Apple");
+  ok(cleanSettings({ new_paid_from: "2026-11-01T00:00:00+01:00" }, live, NOW).ok, "datum in het verleden mag (geldt vanaf aanmaken op of na die datum)");
+  // uitzetten kan altijd, ook als Lifetime-only uit gaat
+  const set = { ...live, new_paid_from: NP };
+  ok(cleanSettings({ new_paid_from: null }, set, NOW).ok, "datum weg");
+  ok(cleanSettings({ enabled: false }, set, NOW).ok, "Lifetime-only uit met datum blijft mogelijk");
+});
+Deno.test("168: bevestiging en waarschuwingen", () => {
+  const live = allView({ enabled: true, cutover_at: FIXED_CUTOVER }, { apple: false }, {});
+  const web = cleanAll({ lifetime_only: { new_paid_from: "2026-11-08T12:00:00+01:00" } }, live, NOW);
+  ok(web.ok, "web");
+  if (!web.ok) return;
+  eq(confirmNeeded(live, web.value), ["new_paid"], "web en Android vraagt bevestiging");
+  eq(warnings(web.value), [], "geen waarschuwing voor web");
+  const apple = cleanAll({ lifetime_only: { new_paid_from_apple: "2026-11-20T12:00:00+01:00" } }, web.value, NOW);
+  ok(apple.ok, "apple");
+  if (!apple.ok) return;
+  eq(confirmNeeded(web.value, apple.value), ["new_paid_apple"], "Apple apart bevestigen");
+  eq(warnings(apple.value), ["new_paid_apple_no_iap"], "Apple-datum zonder koopknop: waarschuwing");
+  eq(warnings({ ...apple.value, iap: { apple: true } }), [], "met koopknop geen waarschuwing");
+  const off = cleanAll({ lifetime_only: { new_paid_from: null, new_paid_from_apple: null } }, apple.value, NOW);
+  if (off.ok) eq(confirmNeeded(apple.value, off.value), [], "uitzetten zonder bevestiging");
+  eq(warnings(allView({ enabled: false, new_paid_from: "2026-11-08T12:00:00+01:00" }, {}, {})), ["new_paid_disabled"], "datum zonder Lifetime-only");
+});
+Deno.test("168: opslaan werkt ook met een database van vóór build 168", () => {
+  const cur = settingsView({ enabled: true, cutover_at: FIXED_CUTOVER });
+  const w = writeValue({ ...cur, trial_days: 3 }, cur);
+  ok(!("new_paid_from" in w) && !("new_paid_from_apple" in w), "null en ongewijzigd: sleutels niet meesturen");
+  eq(writeValue({ ...cur, new_paid_from: "2026-11-08T12:00:00+01:00" }, cur).new_paid_from, "2026-11-08T12:00:00+01:00", "gezet: wel");
+  const set = { ...cur, new_paid_from: "2026-11-08T12:00:00+01:00" };
+  ok("new_paid_from" in writeValue({ ...set, new_paid_from: null }, set), "uitzetten: null meesturen");
 });

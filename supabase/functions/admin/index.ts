@@ -150,7 +150,9 @@
 //                       suggested_cutover_at, suggested_code_valid_until (alleen lezen: vast 2026-12-01T00:00:00+01:00)} | {ok, …}
 //                       (RPC bingr_admin_lifetime_settings(p_lifetime, p_iap, p_apple_eu); aanzetten, de overgang of proefperiode
 //                       verzetten terwijl het aan staat, iap.apple aan en apple_eu aan vragen confirm: true, anders 409
-//                       {error:"confirm_required", confirm:[enable|cutover|trial|iap_apple|apple_eu]})
+//                       {error:"confirm_required", confirm:[enable|cutover|trial|iap_apple|apple_eu|new_paid|new_paid_apple], warnings})
+//                       Build 168: lifetime_only ook new_paid_from? / new_paid_from_apple? (nieuwe accounts eerst kopen, web en
+//                       Android / Apple-apps; null = uit); elk antwoord heeft warnings [new_paid_apple_no_iap|new_paid_disabled].
 //   lifetime_codes_stats {token} -> {created, ready, pending_stripe, mailed, mail_error, reminded, remind_error, redeemed, expired,
 //                       open, candidates, mail_pending, remind_pending, unclaimed}  (RPC bingr_admin_lifetime_stats)
 //   lifetime_codes_generate {token, dry_run? (standaard true), confirm?} -> {dry_run, candidates, pending_stripe, created,
@@ -278,6 +280,7 @@ import {
 } from "./mailing.ts";
 import {
   allView as lifetimeAll, cleanAll as cleanLifetime, cleanGenerate, cleanMailLang, cleanMailMode, codeView, confirmNeeded, suggestion as lifetimeSuggestion,
+  warnings as lifetimeWarnings, writeValue as lifetimeWrite,
   generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, statsView,
   assignView, cleanAssign, cleanMailKind, previewView, unclaimedList,
 } from "./lifetime.ts";
@@ -1213,16 +1216,16 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       const view = (d: unknown) => { const o = (d ?? {}) as Record<string, unknown>; return lifetimeAll(o.lifetime_only, o.iap, o.upgrade_link); };
       const cur = view(curRaw);
-      if (body.set === undefined) return json({ ...cur, ...lifetimeSuggestion() });
+      if (body.set === undefined) return json({ ...cur, ...lifetimeSuggestion(), warnings: lifetimeWarnings(cur) });
       if (!body.set || typeof body.set !== "object" || Array.isArray(body.set)) return json({ error: "bad_settings" }, 400);
       const r = cleanLifetime(body.set as Record<string, unknown>, cur, Date.now());
       if (!r.ok) return json({ error: r.error }, 400);
       if (!r.changed) return json({ ok: true, ...cur });
       const need = confirmNeeded(cur, r.value);
-      if (need.length && body.confirm !== true) return json({ error: "confirm_required", confirm: need }, 409);
+      if (need.length && body.confirm !== true) return json({ error: "confirm_required", confirm: need, warnings: lifetimeWarnings(r.value) }, 409);
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
       const { data: out, error: we } = await admin.rpc(R, {
-        p_lifetime: same(r.value.lifetime_only, cur.lifetime_only) ? null : r.value.lifetime_only,
+        p_lifetime: same(r.value.lifetime_only, cur.lifetime_only) ? null : lifetimeWrite(r.value.lifetime_only, cur.lifetime_only),
         p_iap: same(r.value.iap, cur.iap) ? null : r.value.iap,
         p_apple_eu: r.value.upgrade_link.apple_eu === cur.upgrade_link.apple_eu ? null : r.value.upgrade_link.apple_eu,
       });
@@ -1231,7 +1234,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (we) throw new Error(we.message);
       const saved = view(out);
       await audit("lifetime_settings", ip, null, settingsAudit(saved, need));
-      return json({ ok: true, ...saved });
+      return json({ ok: true, ...saved, warnings: lifetimeWarnings(saved) });
     }
     case "lifetime_codes_stats": {
       // alleen totalen; nooit lijsten of adressen

@@ -4,7 +4,8 @@
 // e-mailadressen, account-id's of Stripe-id's in een antwoord of log; een code alleen bij de accountdetails (user_detail).
 //
 // Instellingen (app_settings):
-//   lifetime_only        {enabled, announce_at, cutover_at, discount_pct, code_valid_until, trial_days}
+//   lifetime_only        {enabled, announce_at, cutover_at, discount_pct, code_valid_until, trial_days,
+//                         new_paid_from, new_paid_from_apple}   (build 168: nieuwe accounts eerst kopen, per platformgroep)
 //   iap                  {apple}            (koopknop in de Apple-apps; pas aan als de server Apple-aankopen verwerkt)
 //   upgrade_link         {…, apple_eu}      (EU External Purchase Link in de Apple-apps; de andere sleutels blijven staan)
 // Codes en mail: de server (functie `billing` voor codes, `lifetime-notice` voor de mail; iptv-ios-appletv) doet het werk,
@@ -19,9 +20,14 @@ const isoOrNull = (v: unknown): string | null =>
 export type LifetimeSettings = {
   enabled: boolean; announce_at: string | null; cutover_at: string | null; discount_pct: number;
   code_valid_until: string | null; trial_days: number;
+  /** build 168: nieuwe accounts eerst kopen op web en Android (android, androidtv, web/Windows); null = uit */
+  new_paid_from: string | null;
+  /** build 168: hetzelfde voor de Apple-apps (ios, ipados, tvos, macos), pas na de goedkeuring van Apple; null = uit */
+  new_paid_from_apple: string | null;
 };
 export const DEFAULT_SETTINGS: LifetimeSettings = {
   enabled: false, announce_at: null, cutover_at: null, discount_pct: 30, code_valid_until: null, trial_days: 0,
+  new_paid_from: null, new_paid_from_apple: null,
 };
 export const LIMITS = { discount_min: 1, discount_max: 90, trial_max: 90 } as const;
 const DAY = 86400000;
@@ -36,6 +42,7 @@ export function settingsView(raw: unknown): LifetimeSettings {
   return {
     enabled: o.enabled === true, announce_at: isoOrNull(o.announce_at), cutover_at: isoOrNull(o.cutover_at),
     discount_pct: pct, code_valid_until: isoOrNull(o.code_valid_until), trial_days: trial,
+    new_paid_from: isoOrNull(o.new_paid_from), new_paid_from_apple: isoOrNull(o.new_paid_from_apple),
   };
 }
 
@@ -59,12 +66,14 @@ function dateIn(v: unknown): string | null | undefined {
  * bad_enabled, bad_announce_at, bad_cutover_at, bad_discount_pct, bad_code_valid_until, bad_trial_days,
  * cutover_required (aanzetten zonder overgangsdatum), cutover_past (aanzetten met een datum in het verleden),
  * announce_after_cutover, code_after_cutover.
+ * Build 168: bad_new_paid_from, bad_new_paid_from_apple, new_paid_requires_enabled (een datum zetten kan alleen als
+ * Lifetime-only aan staat of tegelijk aan gaat), new_paid_after_cutover (de datum moet vóór de overgang liggen).
  */
 export function cleanSettings(input: unknown, current: LifetimeSettings, now: number): { ok: true; value: LifetimeSettings } | { ok: false; error: string } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return { ok: false, error: "bad_settings" };
   const o = input as J, v: LifetimeSettings = { ...current };
   if ("enabled" in o) { if (typeof o.enabled !== "boolean") return { ok: false, error: "bad_enabled" }; v.enabled = o.enabled; }
-  for (const k of ["announce_at", "cutover_at", "code_valid_until"] as const) {
+  for (const k of ["announce_at", "cutover_at", "code_valid_until", "new_paid_from", "new_paid_from_apple"] as const) {
     if (!(k in o)) continue;
     const d = dateIn(o[k]);
     if (d === undefined) return { ok: false, error: `bad_${k}` };
@@ -88,6 +97,11 @@ export function cleanSettings(input: unknown, current: LifetimeSettings, now: nu
   }
   if (cut !== null && v.announce_at && Date.parse(v.announce_at) > cut) return { ok: false, error: "announce_after_cutover" };
   if (cut !== null && v.code_valid_until && Date.parse(v.code_valid_until) > cut + DAY) return { ok: false, error: "code_after_cutover" };
+  for (const k of ["new_paid_from", "new_paid_from_apple"] as const) {
+    if (!v[k] || v[k] === current[k]) continue; // alleen bij een nieuwe datum; uitzetten (null) kan altijd
+    if (!v.enabled) return { ok: false, error: "new_paid_requires_enabled" };
+    if (cut !== null && Date.parse(v[k]!) >= cut) return { ok: false, error: "new_paid_after_cutover" };
+  }
   return { ok: true, value: v };
 }
 
@@ -104,7 +118,8 @@ export function allView(lifetime: unknown, iap: unknown, link: unknown): Lifetim
 /**
  * Wijzigingen die directe gevolgen hebben voor klanten; die vragen `confirm: true` (anders 409 confirm_required met deze lijst):
  * enable (Lifetime-only aan), cutover (overgangsdatum verzet terwijl het aan staat), trial (proefperiode veranderd terwijl het
- * aan staat), iap_apple (koopknop Apple aan), apple_eu (EU-link aan).
+ * aan staat), iap_apple (koopknop Apple aan), apple_eu (EU-link aan), new_paid / new_paid_apple (build 168: de datum
+ * "nieuwe accounts eerst kopen" voor web en Android / de Apple-apps gezet of verzet; uitzetten vraagt niets).
  */
 export function confirmNeeded(before: LifetimeAll, after: LifetimeAll): string[] {
   const out: string[] = [];
@@ -114,6 +129,21 @@ export function confirmNeeded(before: LifetimeAll, after: LifetimeAll): string[]
   if (b.enabled && a.enabled && b.trial_days !== a.trial_days) out.push("trial");
   if (!before.iap.apple && after.iap.apple) out.push("iap_apple");
   if (!before.upgrade_link.apple_eu && after.upgrade_link.apple_eu) out.push("apple_eu");
+  if (a.new_paid_from && a.new_paid_from !== b.new_paid_from) out.push("new_paid");
+  if (a.new_paid_from_apple && a.new_paid_from_apple !== b.new_paid_from_apple) out.push("new_paid_apple");
+  return out;
+}
+
+/**
+ * Build 168: waarschuwingen bij de instellingen (in het antwoord van lifetime_settings en bij confirm_required):
+ *   new_paid_apple_no_iap: de Apple-datum staat (of gaat) aan terwijl de koopknop in de Apple-apps (iap.apple) uit staat.
+ *     Een nieuw account kan dan in de Apple-apps niets: geen koopknop en geen gratis toegang.
+ *   new_paid_disabled: een datum staat gezet, maar Lifetime-only staat uit (de datum doet dan niets).
+ */
+export function warnings(v: LifetimeAll): string[] {
+  const out: string[] = [], l = v.lifetime_only;
+  if (l.new_paid_from_apple && !v.iap.apple) out.push("new_paid_apple_no_iap");
+  if (!l.enabled && (l.new_paid_from || l.new_paid_from_apple)) out.push("new_paid_disabled");
   return out;
 }
 
@@ -139,6 +169,16 @@ export function cleanAll(body: J, current: LifetimeAll, now: number): { ok: true
   }
   const value = { lifetime_only: lifetime, iap, upgrade_link: link };
   return { ok: true, value, changed: JSON.stringify(value) !== JSON.stringify(current) };
+}
+
+/**
+ * Build 168: wat naar bingr_admin_lifetime_settings gaat. new_paid_from en new_paid_from_apple alleen als ze gezet zijn of
+ * veranderen; zo blijft opslaan werken met een database van vóór build 168 (die kent de sleutels nog niet).
+ */
+export function writeValue(v: LifetimeSettings, current: LifetimeSettings): Partial<LifetimeSettings> {
+  const out: Partial<LifetimeSettings> = { ...v };
+  for (const k of ["new_paid_from", "new_paid_from_apple"] as const) if (v[k] === null && current[k] === null) delete out[k];
+  return out;
 }
 
 /** Wat er in admin_audit komt: de nieuwe instellingen (geen persoonsgegevens), en wat bevestigd is. */

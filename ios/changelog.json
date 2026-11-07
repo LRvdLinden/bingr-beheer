@@ -2,6 +2,15 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 48,
+   "version": "1.0.0",
+   "date": "2026-11-07",
+   "items": [
+    {"type": "new", "nl": "Lifetime-only: Nieuwe accounts eerst kopen, apart voor web en Android en voor de Apple-apps, met een bevestiging"},
+    {"type": "new", "nl": "Lifetime-only: waarschuwing als de datum voor de Apple-apps staat terwijl de Apple-koopknop uit staat"}
+   ]
+  },
+  {
    "build": 47,
    "version": "1.0.0",
    "date": "2026-11-06",

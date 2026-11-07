@@ -101,7 +101,8 @@ RELEASES = {"apple": {"live": {"version": "1.0.2", "build": 152}, "beta": None},
 SAVED = []
 
 
-LT = {"lifetime_only": {"enabled": False, "announce_at": None, "cutover_at": None, "discount_pct": 30, "code_valid_until": None, "trial_days": 0},
+LT = {"lifetime_only": {"enabled": False, "announce_at": None, "cutover_at": None, "discount_pct": 30, "code_valid_until": None, "trial_days": 0,
+                        "new_paid_from": None, "new_paid_from_apple": None},
       "iap": {"apple": False}, "upgrade_link": {"apple_eu": False}}
 LT_SETS, LT_GEN, LT_MAIL = [], [], []
 
@@ -115,6 +116,12 @@ def lifetime_answer(req):
         st = req["set"]
         if st["lifetime_only"]["enabled"] and not LT["lifetime_only"]["enabled"] and not req.get("confirm"):
             return 409, {"error": "confirm_required", "confirm": ["enable"]}
+        # build 168: een nieuwe datum "nieuwe accounts eerst kopen" vraagt bevestiging, met de waarschuwing zonder koopknop
+        need = [k for k, f in (("new_paid", "new_paid_from"), ("new_paid_apple", "new_paid_from_apple"))
+                if st["lifetime_only"].get(f) and st["lifetime_only"].get(f) != LT["lifetime_only"].get(f)]
+        if need and not req.get("confirm"):
+            warn = ["new_paid_apple_no_iap"] if st["lifetime_only"].get("new_paid_from_apple") and not st["iap"]["apple"] else []
+            return 409, {"error": "confirm_required", "confirm": need, "warnings": warn}
         LT_SETS.append(req)
         LT["lifetime_only"].update(st["lifetime_only"]); LT["iap"] = st["iap"]; LT["upgrade_link"] = st["upgrade_link"]
         return 200, {"ok": True, **LT}
@@ -387,6 +394,27 @@ def lifetime_smoke(b, base, errors, calls):
     wait_text(page, "#ltMailOut", "Verstuurd: 100.")
     sends = [m for m in LT_MAIL if m.get("mode") == "send"]
     check(len(sends) == 2 and all(m.get("confirm") is True for m in sends), f"versturen niet in batches met bevestiging: {sends}")
+    # build 168: nieuwe accounts eerst kopen, web en Android nu; daarna Apple met de waarschuwing (koopknop uit)
+    page.click("#ltRefresh")
+    page.wait_for_function("document.querySelector('#ltNpWeb') && document.querySelector('#ltNpWeb').value === ''", timeout=5000)
+    page.click("#ltNpWebNow")
+    check(page.input_value("#ltNpWeb") != "" and page.input_value("#ltNpApple") == "", "knop Nu vult alleen web en Android")
+    n0 = len(dialogs)
+    page.click("#ltSave")
+    page.wait_for_timeout(500)
+    got = LT_SETS[-1] if LT_SETS else {}
+    lo = got.get("set", {}).get("lifetime_only", {})
+    check(got.get("confirm") is True and isinstance(lo.get("new_paid_from"), str) and lo["new_paid_from"].endswith(":00+01:00")
+          and lo.get("new_paid_from_apple") is None, f"web en Android niet goed opgeslagen: {lo}")
+    check(any("web en Android" in d for d in dialogs[n0:]), "geen bevestiging bij nieuwe accounts web en Android")
+    wait_text(page, "#ltState", "Nieuwe accounts eerst kopen: web en Android vanaf")
+    page.click("#ltNpAppleNow")
+    check(not page.is_hidden("#ltNpWarn") and "koopknop" in page.inner_text("#ltNpWarn"), "geen waarschuwing bij Apple zonder koopknop")
+    n0 = len(dialogs)
+    page.click("#ltSave")
+    page.wait_for_timeout(500)
+    check(any("Apple-apps eerst Lifetime kopen" in d and "koopknop" in d for d in dialogs[n0:]), f"bevestiging Apple zonder waarschuwing: {dialogs[n0:]}")
+    check(isinstance(LT_SETS[-1]["set"]["lifetime_only"].get("new_paid_from_apple"), str), "Apple-datum niet opgeslagen")
     page.close()
     return steps
 

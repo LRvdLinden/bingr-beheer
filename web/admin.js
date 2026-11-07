@@ -111,6 +111,8 @@
     bad_cutover_at: "Ongeldige overgangsdatum.", bad_announce_at: "Ongeldige aankondigingsdatum.", bad_code_valid_until: "Ongeldige geldigheidsdatum van de code.",
     announce_after_cutover: "De aankondiging moet vóór de overgangsdatum liggen.", code_after_cutover: "De code mag niet langer geldig zijn dan de overgangsdatum.",
     bad_discount_pct: "Korting: een heel getal van 1 tot 90.", bad_trial_days: "Proefperiode: een heel getal van 0 tot 90 dagen.",
+    bad_new_paid_from: "Nieuwe accounts eerst kopen (web en Android): geen geldige datum.", bad_new_paid_from_apple: "Nieuwe accounts eerst kopen (Apple-apps): geen geldige datum.",
+    new_paid_requires_enabled: "Nieuwe accounts eerst kopen kan alleen als Lifetime-only aan staat.", new_paid_after_cutover: "De datum voor nieuwe accounts moet vóór de overgangsdatum liggen.",
     bad_iap: "Ongeldige instelling voor de koopknop.", bad_apple_eu: "Ongeldige instelling voor de EU-link.",
     bad_email: "Vul een geldig e-mailadres in.", bad_lang: "Kies een taal.",
     stripe_unavailable: "Stripe is niet ingesteld op de server (geen STRIPE_SECRET_KEY).",
@@ -2229,17 +2231,25 @@
     trial: "De proefperiode voor nieuwe accounts verandert terwijl Lifetime-only aan staat.",
     iap_apple: "De koopknop (In-app aankoop) verschijnt in de Apple-apps.",
     apple_eu: "De EU-link naar bingr.online/upgrade/ verschijnt in de Apple-apps (alleen met de entitlement van Apple).",
+    new_paid: "Nieuwe accounts moeten op web en Android (ook Windows en de website) eerst Lifetime kopen. Bestaande gratis accounts blijven gratis tot de overgangsdatum.",
+    new_paid_apple: "Nieuwe accounts moeten in de Apple-apps eerst Lifetime kopen. Bestaande gratis accounts blijven gratis tot de overgangsdatum.",
     generate: "Codes echt aanmaken in Stripe (coupon en een promotion code per gratis account).",
     send: "De mail echt versturen aan alle gratis accounts die hem nog niet kregen.",
     remind: "De herinnering echt versturen aan wie nog niet gekocht heeft.",
   };
+  // build 168: waarschuwingen van de functie (lifetime.ts warnings)
+  const LT_WARN = {
+    new_paid_apple_no_iap: "Let op: de koopknop in de Apple-apps (In-app aankoop) staat uit. Nieuwe accounts kunnen in de Apple-apps dan niets: geen koopknop en geen gratis toegang.",
+    new_paid_disabled: "Let op: Lifetime-only staat uit, dus de datum voor nieuwe accounts doet nu niets.",
+  };
+  const ltWarnText = (keys) => (keys || []).map((k) => LT_WARN[k] || k).join("\n");
   const ltConfirm = (keys, extra = "") => confirm(`Weet je het zeker?\n\n${keys.map((k) => "• " + (LT_CONFIRM[k] || k)).join("\n")}${extra ? "\n\n" + extra : ""}`);
   // call met bevestiging: eerst zonder; bij 409 confirm_required vragen en opnieuw met confirm: true
   async function ltCall(action, data) {
     try { return await call(action, data); }
     catch (e) {
       if (e.code !== "confirm_required") throw e;
-      if (!ltConfirm(e.body?.confirm || [])) return null;
+      if (!ltConfirm(e.body?.confirm || [], ltWarnText(e.body?.warnings))) return null;
       return call(action, { ...data, confirm: true });
     }
   }
@@ -2250,6 +2260,7 @@
     const phase = !l.enabled ? ["Uit", ""] : cut !== null && now >= cut ? ["Overgang voorbij: alleen Lifetime", "bad"]
       : ann === null || now >= ann ? ["Aangekondigd", "warn"] : ["Aan, aankondiging gepland", "warn"];
     return `<h2>Stand <span class="chip ${phase[1]}">${esc(phase[0])}</span></h2>
+      ${l.enabled && (l.new_paid_from || l.new_paid_from_apple) ? `<p class="sub">Nieuwe accounts eerst kopen: web en Android ${esc(l.new_paid_from ? "vanaf " + fmtNl(l.new_paid_from) + (Date.parse(l.new_paid_from) <= now ? " (geldt nu)" : "") : "uit")} · Apple-apps ${esc(l.new_paid_from_apple ? "vanaf " + fmtNl(l.new_paid_from_apple) + (Date.parse(l.new_paid_from_apple) <= now ? " (geldt nu)" : "") : "uit")}</p>` : ""}
       <p class="sub">${l.enabled ? `Aankondiging ${esc(l.announce_at ? fmtNl(l.announce_at) : "meteen")} · overgang ${esc(fmtNl(l.cutover_at))} · ${nf.format(l.discount_pct)}% korting tot ${esc(fmtNl(l.code_valid_until || l.cutover_at))} · proefperiode ${l.trial_days ? nf.format(l.trial_days) + " dagen" : "geen"}` : "Alles werkt zoals nu (Gratis en Lifetime)."}
         · Apple-koopknop ${v.iap.apple ? "aan" : "uit"} · EU-link ${v.upgrade_link.apple_eu ? "aan" : "uit"}</p>
       <ol class="lt-steps"><li>Instellingen invullen (nog uit laten).</li><li>Codes genereren (eerst droog).</li><li>Mail testen.</li><li>Op dag D: Lifetime-only aan, mail versturen en de melding in de apps klaarzetten.</li><li>7 dagen voor de overgang: herinnering versturen.</li></ol>`;
@@ -2269,6 +2280,8 @@
     if (!l.cutover_at && v.suggested_cutover_at) $("ltCutover").value = fromIso(v.suggested_cutover_at);
     $("ltPct").value = l.discount_pct; $("ltValid").value = fromIso(l.code_valid_until || (l.cutover_at ? null : v.suggested_code_valid_until)); $("ltTrial").value = l.trial_days;
     $("ltIap").checked = v.iap.apple; $("ltEu").checked = v.upgrade_link.apple_eu;
+    $("ltNpWeb").value = fromIso(l.new_paid_from); $("ltNpApple").value = fromIso(l.new_paid_from_apple);
+    ltNpWarn();
     loadLifetimeStats();
     loadUnclaimed();
   }
@@ -2316,6 +2329,17 @@
       + tile("Niet geclaimd", s.unclaimed, "aankopen zonder account");
   }
   $("ltRefresh").onclick = loadLifetime;
+  // build 168: waarschuwing bij de Apple-datum zonder koopknop (en bij een datum terwijl Lifetime-only uit staat)
+  function ltNpWarn() {
+    const w = [];
+    if ($("ltNpApple").value && !$("ltIap").checked) w.push("new_paid_apple_no_iap");
+    if (!$("ltEnabled").checked && ($("ltNpWeb").value || $("ltNpApple").value)) w.push("new_paid_disabled");
+    $("ltNpWarn").textContent = ltWarnText(w); $("ltNpWarn").hidden = !w.length;
+  }
+  ["ltNpWeb", "ltNpApple", "ltIap", "ltEnabled"].forEach((id) => { $(id).addEventListener("input", ltNpWarn); $(id).addEventListener("change", ltNpWarn); });
+  const nowLocal = () => fromIso(new Date(Date.now() + 60000).toISOString());
+  $("ltNpWebNow").onclick = () => { $("ltNpWeb").value = nowLocal(); ltNpWarn(); };
+  $("ltNpAppleNow").onclick = () => { $("ltNpApple").value = nowLocal(); ltNpWarn(); };
   $("ltForm").onsubmit = async (e) => {
     e.preventDefault();
     const err = $("ltErr"); err.textContent = "";
@@ -2326,6 +2350,9 @@
       cutover_at: $("ltCutover").value ? toAmsIso($("ltCutover").value) : null,
       code_valid_until: $("ltValid").value ? toAmsIso($("ltValid").value) : null,
       discount_pct: num("ltPct"), trial_days: num("ltTrial"),
+      // build 168: leeg = uit
+      new_paid_from: $("ltNpWeb").value ? toAmsIso($("ltNpWeb").value) : null,
+      new_paid_from_apple: $("ltNpApple").value ? toAmsIso($("ltNpApple").value) : null,
     };
     $("ltSave").disabled = true;
     try {

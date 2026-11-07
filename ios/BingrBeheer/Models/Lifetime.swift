@@ -9,6 +9,10 @@ struct LifetimeSettings: Equatable {
     var discountPct = 30
     var codeValidUntil: Date?
     var trialDays = 0
+    /// Build 168: nieuwe accounts eerst kopen, per platformgroep (nil = uit). Web en Android (ook Windows en de website).
+    var newPaidFrom: Date?
+    /// Build 168: hetzelfde voor de Apple-apps (pas na de goedkeuring van Apple).
+    var newPaidFromApple: Date?
     var iapApple = false
     var appleEU = false
     /// Voorstel van de server (aanvulling 2): vast 1 december 2026, 00:00 Nederlandse tijd, ook voor de code (alleen bij lezen).
@@ -25,6 +29,8 @@ struct LifetimeSettings: Equatable {
         discountPct = l["discount_pct"].int ?? 30
         codeValidUntil = l["code_valid_until"].date
         trialDays = l["trial_days"].int ?? 0
+        newPaidFrom = l["new_paid_from"].date
+        newPaidFromApple = l["new_paid_from_apple"].date
         iapApple = j["iap"]["apple"].bool ?? false
         appleEU = j["upgrade_link"]["apple_eu"].bool ?? false
         suggestedCutover = j["suggested_cutover_at"].date
@@ -46,6 +52,7 @@ struct LifetimeSettings: Equatable {
             "lifetime_only": [
                 "enabled": enabled, "announce_at": Self.iso(announceAt), "cutover_at": Self.iso(cutoverAt),
                 "discount_pct": discountPct, "code_valid_until": Self.iso(codeValidUntil), "trial_days": trialDays,
+                "new_paid_from": Self.iso(newPaidFrom), "new_paid_from_apple": Self.iso(newPaidFromApple),
             ] as [String: Any],
             "iap": ["apple": iapApple],
             "upgrade_link": ["apple_eu": appleEU],
@@ -71,7 +78,25 @@ struct LifetimeSettings: Equatable {
         "generate": "Codes echt aanmaken in Stripe (coupon en een promotion code per gratis account).",
         "send": "De mail echt versturen aan alle gratis accounts die hem nog niet kregen.",
         "remind": "De herinnering echt versturen aan wie nog niet gekocht heeft.",
+        "new_paid": "Nieuwe accounts moeten op web en Android (ook Windows en de website) eerst Lifetime kopen. Bestaande gratis accounts blijven gratis tot de overgangsdatum.",
+        "new_paid_apple": "Nieuwe accounts moeten in de Apple-apps eerst Lifetime kopen. Bestaande gratis accounts blijven gratis tot de overgangsdatum.",
     ]
+
+    /// Build 168: waarschuwingen (lifetime.ts warnings), zelfde teksten als web/admin.js.
+    static let warningText: [String: String] = [
+        "new_paid_apple_no_iap": "Let op: de koopknop in de Apple-apps (In-app aankoop) staat uit. Nieuwe accounts kunnen in de Apple-apps dan niets: geen koopknop en geen gratis toegang.",
+        "new_paid_disabled": "Let op: Lifetime-only staat uit, dus de datum voor nieuwe accounts doet nu niets.",
+    ]
+    static func warningMessage(_ keys: [String]) -> String {
+        keys.map { warningText[$0] ?? $0 }.joined(separator: "\n")
+    }
+    /// Waarschuwingen voor de huidige invoer (zoals de functie ze geeft).
+    var warnings: [String] {
+        var w: [String] = []
+        if newPaidFromApple != nil && !iapApple { w.append("new_paid_apple_no_iap") }
+        if !enabled && (newPaidFrom != nil || newPaidFromApple != nil) { w.append("new_paid_disabled") }
+        return w
+    }
     static func confirmMessage(_ keys: [String]) -> String {
         keys.map { "• " + (confirmText[$0] ?? $0) }.joined(separator: "\n")
     }

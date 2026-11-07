@@ -74,6 +74,10 @@ struct LifetimeView: View {
                 LabeledContent("Overgang", value: Fmt.dateTimeNL(s.cutoverAt))
                 LabeledContent("Korting", value: "\(s.discountPct)% t/m \(Fmt.dateTimeNL(s.codeValidUntil ?? s.cutoverAt))")
             }
+            if s.enabled {
+                LabeledContent("Nieuwe accounts eerst kopen — web en Android", value: s.newPaidFrom.map { Fmt.dateTimeNL($0) } ?? "uit")
+                LabeledContent("Nieuwe accounts eerst kopen — Apple-apps", value: s.newPaidFromApple.map { Fmt.dateTimeNL($0) } ?? "uit")
+            }
             LabeledContent("Apple-koopknop", value: s.iapApple ? "aan" : "uit")
             LabeledContent("EU-link", value: s.appleEU ? "aan" : "uit")
         } header: {
@@ -115,6 +119,12 @@ struct LifetimeView: View {
             Stepper("Korting: \(settings?.discountPct ?? 30)%", value: binding(\.discountPct), in: 1...90)
             optionalDate("Code geldig tot en met", \.codeValidUntil, fallback: settings?.suggestedCodeValidUntil ?? settings?.cutoverAt ?? suggested, emptyText: "Leeg = de overgangsdatum")
             Stepper("Proefperiode: \(settings?.trialDays ?? 0) dagen", value: binding(\.trialDays), in: 0...90)
+            // build 168: nieuwe accounts eerst kopen, per platformgroep (leeg = uit)
+            optionalDate("Nieuwe accounts eerst kopen — web en Android", \.newPaidFrom, fallback: Date(), emptyText: "Uit. Android, Android TV, webspeler, Windows en de website.")
+            optionalDate("Nieuwe accounts eerst kopen — Apple-apps", \.newPaidFromApple, fallback: Date(), emptyText: "Uit. iPhone, iPad, Apple TV en Mac; pas na de goedkeuring van Apple.")
+            if let w = settings?.warnings, !w.isEmpty {
+                Label(LifetimeSettings.warningMessage(w), systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Color.warn)
+            }
             Toggle(isOn: binding(\.iapApple)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Koopknop in de Apple-apps")
@@ -141,7 +151,7 @@ struct LifetimeView: View {
         } header: {
             Text("Instellingen")
         } footer: {
-            Text("Zolang Lifetime-only uit staat, werkt alles zoals nu. Na de overgangsdatum zien gratis accounts alleen nog Activeer Lifetime. Tijden in Nederlandse tijd.")
+            Text("Zolang Lifetime-only uit staat, werkt alles zoals nu. Na de overgangsdatum zien gratis accounts alleen nog Activeer Lifetime. Nieuwe accounts eerst kopen: accounts die op of na die datum worden aangemaakt, moeten op dat platform eerst Lifetime kopen; bestaande gratis accounts blijven gratis tot de overgangsdatum. Tijden in Nederlandse tijd.")
         }
     }
 
@@ -245,7 +255,7 @@ struct LifetimeView: View {
             session.show("Lifetime-only opgeslagen. De apps nemen het binnen een paar minuten over.")
             await load()
         } catch let e as APIError where e.code == "confirm_required" {
-            ask(e.body["confirm"].strings) { await save(confirm: true) }
+            ask(e.body["confirm"].strings, extra: LifetimeSettings.warningMessage(e.body["warnings"].strings)) { await save(confirm: true) }
         } catch {
             if (error as? APIError)?.code != "auth" { session.show(error.localizedDescription, bad: true) }
         }
