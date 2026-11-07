@@ -2,6 +2,17 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 49,
+   "version": "1.0.0",
+   "date": "2026-11-07",
+   "items": [
+    {"type": "new", "nl": "Omzet: website (Stripe) en Apple (App Store) apart, met bruto, inhouding (Stripe-kosten of Apple-commissie), netto opbrengst, aantal en terugbetaald, en het totaal"},
+    {"type": "new", "nl": "Omzet: Apple-cijfers uit de dagrapporten van App Store Connect, met Apple bijgewerkt t/m en hoeveel Apple-aankopen aan een account gekoppeld zijn"},
+    {"type": "new", "nl": "Omzet: reeksen Website en Apple in de grafiek, en de knop Apple-omzet bijwerken voor een bereik"},
+    {"type": "new", "nl": "Omzet: Apple-commissie en vaste koersen instellen; bedragen zonder koers staan apart"}
+   ]
+  },
+  {
    "build": 48,
    "version": "1.0.0",
    "date": "2026-11-07",

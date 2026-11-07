@@ -1085,3 +1085,23 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .lt-list{margin:8px 0 0;padding-left:20px;font-size:14px;line-height:1.7;color:var(--sec)}
 .u-assign{margin-top:12px}
 .u-assign:empty{display:none}
+/* Omzet: Apple (App Store Connect) - website en Apple apart */
+.rev-src{margin-top:16px;padding:18px 20px}
+.rev-src.hidden{display:none}
+.rev-src-h{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:flex-start}
+.rev-src h2{font-size:17px}
+.rev-apple-state{margin:0;font-size:13.5px;color:var(--sec)}
+.rev-apple-state b{color:#fff}
+.rev-apple-state.warn b{color:var(--ins-bad)}
+.rev-src .rev-table td:last-child{color:#fff;font-weight:700}
+.rev-src .rev-table td{padding-left:12px}
+.rev-apple-note{margin-top:8px}
+.rev-apple-act{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.rev-apple-form{display:grid;gap:8px;align-content:start}
+.rev-apple-form h3{font-size:14.5px;margin:0}
+.rev-apple-form label{display:grid;gap:4px;font-size:13px;color:var(--sec)}
+.rev-apple-form input,.rev-apple-form textarea{padding:6px 10px;font-size:14px}
+.rev-apple-form textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+.rev-apple-form .btn{justify-self:start}
+.rev-apple-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end}
+@media (max-width:760px){.rev-apple-act{grid-template-columns:minmax(0,1fr)}.rev-src .rev-table th,.rev-src .rev-table td{font-size:13px}}

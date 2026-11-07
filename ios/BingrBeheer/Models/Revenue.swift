@@ -125,6 +125,8 @@ struct RevenueData: Hashable {
     let liveCount: Int
     let testCount: Int
     let empty: Bool
+    /// Omzet: Apple (App Store Connect): website en Apple apart; nil zolang de server nog geen `sources` meestuurt
+    let apple: RevApple?
 
     init?(_ j: JSON, period: RevPeriod) {
         let edges = j["edges"].array.compactMap(\.date)
@@ -164,6 +166,7 @@ struct RevenueData: Hashable {
         liveCount = j["live_count"].int ?? 0
         testCount = j["test_count"].int ?? 0
         empty = j["empty"].bool ?? true
+        apple = RevApple(j)
     }
 
     var count: Int { edges.count - 1 }
@@ -220,6 +223,73 @@ struct RevenueData: Hashable {
         case "day": return count <= 7 ? InsFmt.weekday(date) : InsFmt.dayMon(date)
         default: return InsFmt.month(date)
         }
+    }
+}
+
+/// Omzet: Apple (App Store Connect), uit `sources` en `apple` van de actie `revenue` (apple_revenue.ts). Apple-cijfers komen
+/// uit de dagrapporten van App Store Connect (apple_sales_daily); `linked` = Apple-aankopen die via de app aan een account hangen.
+struct RevApple: Hashable {
+    struct Unconverted: Hashable {
+        let currency: String
+        let units: Int
+        let refundUnits: Int
+    }
+    let configured: Bool
+    let through: String?
+    /// "Apple bijgewerkt t/m 5 november 2026" (van de server)
+    let text: String
+    let commission: Double
+    let fxRates: [String: Double]
+    let linked, linkedAll: Int
+    let unconvertedAll: [Unconverted]
+    let lastRunFailed: Int
+    /// per bereik (period, prev_period, month, prev_month, year, all)
+    let web: [String: RevTotals]
+    let store: [String: RevTotals]
+
+    init?(_ j: JSON) {
+        let a = j["apple"], src = j["sources"]
+        guard a.object != nil, let w = src["web"].object, let s = src["apple"].object else { return nil }
+        configured = a["configured"].bool ?? false
+        through = a["through"].text
+        text = a["text"].text ?? ""
+        commission = a["commission"].double ?? 15
+        var fx: [String: Double] = [:]
+        for (k, v) in a["fx_rates"].object ?? [:] { if let d = v.double { fx[k] = d } }
+        fxRates = fx
+        linked = a["linked"].int ?? 0
+        linkedAll = a["linked_all"].int ?? 0
+        unconvertedAll = a["unconverted_all"].array.compactMap { u in
+            guard let c = u["currency"].text else { return nil }
+            return Unconverted(currency: c, units: u["units"].int ?? 0, refundUnits: u["refund_units"].int ?? 0)
+        }
+        lastRunFailed = a["last_run"]["failed"].int ?? 0
+        web = w.mapValues(RevTotals.init)
+        store = s.mapValues(RevTotals.init)
+    }
+
+    /// Koersen als tekst voor het invulveld: één per regel, "USD = 0,92".
+    var fxText: String {
+        fxRates.keys.sorted().map { k in "\(k) = \(RevApple.dec(fxRates[k] ?? 0))" }.joined(separator: "\n")
+    }
+
+    /// 0.92 -> "0,92", 15.0 -> "15" (alle decimalen, Nederlandse komma)
+    static func dec(_ v: Double) -> String {
+        (v == v.rounded() ? String(Int(v)) : String(v)).replacingOccurrences(of: ".", with: ",")
+    }
+
+    /// "USD = 0,92" per regel naar {USD: 0.92}; nil = ongeldige regel.
+    static func parseFx(_ text: String) -> [String: Double]? {
+        var out: [String: Double] = [:]
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let l = raw.trimmingCharacters(in: .whitespaces)
+            if l.isEmpty { continue }
+            let parts = l.replacingOccurrences(of: ":", with: "=").split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            let code = parts.count == 2 ? parts[0] : String(l.prefix(3)), num = parts.count == 2 ? parts[1] : String(l.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            guard code.count == 3, code.allSatisfy(\.isLetter), let v = Double(num.replacingOccurrences(of: ",", with: ".")), v > 0 else { return nil }
+            out[code.uppercased()] = v
+        }
+        return out
     }
 }
 

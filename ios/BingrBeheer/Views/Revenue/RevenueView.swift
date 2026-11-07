@@ -248,7 +248,8 @@ struct RevenueView: View {
     @State private var rateText = ""
     @State private var busy = false
 
-    private static let moneyKeys = ["gross", "net", "proceeds"]
+    // Omzet Apple: web_gross / apple_gross = bruto van de website en van Apple als extra reeksen (alleen als de server ze stuurt)
+    private static let moneyKeys = ["gross", "net", "proceeds", "web_gross", "apple_gross"]
     private static let countKeys = ["count", "refund_count"]
     private var wide: Bool { sizeClass == .regular }
     private var taskKey: String { "\(state.period.rawValue)|\(state.bucket)|\(state.mode.rawValue)|\(offset)|\(revision)" }
@@ -265,6 +266,7 @@ struct RevenueView: View {
                 } else if let d = data {
                     tiles(d)
                     if d.empty { emptyCard(d) } else { content(d) }
+                    if let a = d.apple { RevenueAppleCard(data: d, apple: a) { revision += 1 } }
                     basis(d)
                 } else {
                     RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.05)).frame(height: 120)

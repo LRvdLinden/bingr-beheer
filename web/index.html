@@ -161,6 +161,22 @@
           <article class="panel"><h2>Per land</h2><p class="sub">Bruto in deze periode</p><div id="revCountries" class="hbars rev-bars"></div></article>
         </div>
       </div>
+      <!-- Omzet: Apple (App Store Connect): website en Apple apart, "Apple bijgewerkt t/m", bijwerken en koersen -->
+      <article id="revSrcBox" class="panel rev-src hidden">
+        <div class="rev-src-h"><div><h2>Website en Apple</h2><p class="sub" id="revSrcSub">&nbsp;</p></div><p id="revAppleState" class="rev-apple-state" aria-live="polite"></p></div>
+        <div id="revSources"></div>
+        <p id="revAppleNote" class="sub rev-apple-note"></p>
+        <div class="rev-apple-act">
+          <form id="revAppleForm" class="rev-apple-form" novalidate><h3>Apple-omzet bijwerken</h3>
+            <div class="rev-apple-row"><label>Van<input id="revAppleFrom" type="date" required></label><label>Tot en met<input id="revAppleTo" type="date" required></label>
+              <button id="revAppleRun" class="btn ghost small" type="submit">Apple-omzet bijwerken</button></div>
+            <p class="sub">Haalt de dagrapporten opnieuw op bij App Store Connect (max. 365 dagen) en overschrijft die dagen. Elke dag gebeurt dit vanzelf voor de laatste 7 dagen.</p></form>
+          <form id="revFxForm" class="rev-apple-form" novalidate><h3>Commissie en koersen</h3>
+            <div class="rev-apple-row"><label>Apple-commissie (%)<input id="revComm" type="number" min="0" max="50" step="0.01" inputmode="decimal"></label></div>
+            <label>Vaste koersen (EUR per 1 eenheid, één per regel)<textarea id="revFx" rows="3" placeholder="USD = 0,92&#10;GBP = 1,15" spellcheck="false"></textarea></label>
+            <button class="btn ghost small" type="submit">Opslaan</button></form>
+        </div>
+      </article>
       <div id="revBasis" class="panel rev-basis"></div>
       <p id="revLive" class="sr" aria-live="polite"></p>
     </section>

@@ -170,6 +170,17 @@
 //                       expires_at, mailed_at, reminded_at, redeemed_at, mail_error} | null  (uit bingr_admin_user)
 //   revenue             build 167: by_provider / by_provider_all [{key: stripe|apple, label, count, gross}] (ranges.*.by_provider)
 //                       Functies billing en lifetime-notice met het geheim LIFETIME_ADMIN_SECRET in de header x-lifetime-secret.
+//   ---- Omzet: Apple (App Store Connect); apple_revenue.ts, docs/ACCOUNT.md "Omzet: Apple (App Store Connect)" in iptv-ios-appletv ----
+//   revenue             + sources:{web:{period,…,all: Totals}, apple:{period,…,all: Totals + apple_proceeds, refund_proceeds,
+//                       commission_gross, commission_back, linked, unconverted}}, apple:{configured, rows, first_date, last_date,
+//                       through, last_run, commission, fx_rates, unconverted, unconverted_all, linked, linked_all, text}; series ook
+//                       web_gross / apple_gross. totals/series = website (Stripe, bingr_admin_revenue modus web_*) + Apple
+//                       (apple_sales_daily, bingr_admin_revenue_apple). Oud schema zonder Apple-functie: zoals voorheen, zonder apple.
+//   revenue_export      + Apple-regels per dag (bingr_admin_apple_sales_rows) en de kolommen aanbieder en aantal
+//   apple_sales_refresh {token, from, to (YYYY-MM-DD, max. 365 dagen)} -> {configured, days, ok, empty, not_ready, failed, rows, through,
+//                       error?}  (functie apple-sales backfill met het geheim APPLE_SALES_SECRET of de service role; in admin_audit met het bereik)
+//   revenue_apple_set   {token, fx_rates?: {USD: 0.92, …}, commission?: 0–50} -> {ok, fx_rates, commission}  (app_settings
+//                       fx_rates en apple_commission; vaste koersen, geen externe koers-API)
 //   releases_get        {token}           -> {releases:{apple:{live, beta}, android:{live, beta}, updatedAt}}
 //   releases_set        {token, releases:{apple:{live:{version, build, date?}|null, beta:{version, build, date?, label}|null},
 //                       android:{…}}} -> {ok, releases} | 400 {error:"bad_releases", field}  (app_settings.release_channels:
@@ -285,6 +296,9 @@ import {
   assignView, cleanAssign, cleanMailKind, previewView, unclaimedList,
 } from "./lifetime.ts";
 import { checkImageUrl, type CheckResult, cleanUpload, IMAGE_MAX, isOwnAsset, MAIL_BUCKET, objectName, publicUrl } from "./image.ts";
+import {
+  cleanAppleRows, cleanCommission, cleanFxInput, cleanSalesRange, combinedCsv, commissionOf, mergeApple, refreshView,
+} from "./apple_revenue.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -323,6 +337,8 @@ const linkView = (v: unknown) => {
 // ---- omzet (tab Omzet): Stripe alleen voor revenue_backfill; sleutel nooit in een log of foutmelding ----
 const stripeKey = () => { const k = env("STRIPE_SECRET_KEY").trim(); return /^(sk|rk)_(test|live)_[A-Za-z0-9]+$/.test(k) ? k : ""; };
 const stripeTaxOn = () => /^(1|true|yes|on|ja)$/i.test(env("STRIPE_AUTOMATIC_TAX").trim());
+// Omzet Apple: de functie admin ziet alleen óf de App Store Connect-secrets er zijn (nooit de waarden)
+const ascConfigured = () => ["ASC_ISSUER_ID", "ASC_KEY_ID", "ASC_VENDOR", "ASC_PRIVATE_KEY"].every((k) => env(k).trim() !== "");
 async function stripeGet(key: string, path: string, params: [string, string][]): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const qs = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
@@ -1007,22 +1023,41 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const mode = q.mode ?? defaultMode(key);
       const iso = (t: number) => new Date(t).toISOString();
       if (action === "revenue_export") {
-        const { data, error } = await admin.rpc("bingr_admin_revenue_rows", { p_from: iso(p.cur[0]), p_to: iso(p.cur[p.cur.length - 1]), p_mode: mode });
+        const from = iso(p.cur[0]), to = iso(p.cur[p.cur.length - 1]);
+        // Omzet Apple: website (web_*) + Apple-regels per dag; oud schema zonder Apple: alles zoals voorheen
+        const ap = await admin.rpc("bingr_admin_apple_sales_rows", { p_from: from, p_to: to, p_mode: mode });
+        const withApple = !ap.error;
+        if (ap.error && ap.error.code !== "PGRST202") throw new Error(ap.error.message);
+        const { data, error } = await admin.rpc("bingr_admin_revenue_rows", { p_from: from, p_to: to, p_mode: withApple ? `web_${mode}` : mode });
         if (error?.code === "PGRST202") return json({ error: "revenue_not_configured" }, 503);
         if (error) throw new Error(error.message);
-        const rows = cleanRows(data);
+        const rows = cleanRows(data), apple = withApple ? cleanAppleRows(ap.data) : [];
+        let csv = revenueCsv(rows);
+        if (withApple) {
+          const { data: c } = await admin.from("app_settings").select("value").eq("key", "apple_commission").maybeSingle();
+          csv = combinedCsv(csv, rows, apple, commissionOf((c?.value as Record<string, unknown> | undefined)?.rate));
+        }
         const day = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Amsterdam" }).format(new Date(p.cur[0]));
-        await audit("revenue_export", ip, null, { period: q.period, offset: q.offset, mode, rows: rows.length });
-        return json({ csv: revenueCsv(rows), file_name: `bingr-omzet-${q.period}-${day}${mode === "all" ? "" : "-" + mode}.csv`, rows: rows.length });
+        await audit("revenue_export", ip, null, { period: q.period, offset: q.offset, mode, rows: rows.length, apple_rows: apple.length });
+        return json({ csv, file_name: `bingr-omzet-${q.period}-${day}${mode === "all" ? "" : "-" + mode}.csv`, rows: rows.length + apple.length });
       }
-      const { data, error } = await admin.rpc("bingr_admin_revenue", { p_edges: p.edges.map(iso), p_mode: mode, p_ranges: tileRanges(p, now) });
+      const ranges = tileRanges(p, now), billing = { enabled: !!key, mode: key ? (/_live_/.test(key) ? "live" as const : "test" as const) : null };
+      // Omzet Apple: website alleen Stripe (modus web_*), Apple uit apple_sales_daily; tegelijk opvragen
+      const [ap, wb] = await Promise.all([
+        admin.rpc("bingr_admin_revenue_apple", { p_edges: p.edges.map(iso), p_mode: mode, p_ranges: ranges }),
+        admin.rpc("bingr_admin_revenue", { p_edges: p.edges.map(iso), p_mode: `web_${mode}`, p_ranges: ranges }),
+      ]);
+      if (!ap.error && ap.data !== null && !wb.error && wb.data !== null) {
+        const web = buildRevenue(p, wb.data, now, { mode, stripeTax: stripeTaxOn(), billing });
+        return json(mergeApple(web, p, ap.data, now, { configured: ascConfigured() }));
+      }
+      if (ap.error && ap.error.code !== "PGRST202") throw new Error(ap.error.message);
+      const { data, error } = await admin.rpc("bingr_admin_revenue", { p_edges: p.edges.map(iso), p_mode: mode, p_ranges: ranges });
       // schema nog niet bijgewerkt (workflow Backend in iptv-ios-appletv)
       if (error?.code === "PGRST202") return json({ error: "revenue_not_configured" }, 503);
       if (error) throw new Error(error.message);
       if (data === null) return json({ error: "bad_period" }, 400);
-      return json(buildRevenue(p, data, now, {
-        mode, stripeTax: stripeTaxOn(), billing: { enabled: !!key, mode: key ? (/_live_/.test(key) ? "live" : "test") : null },
-      }));
+      return json(buildRevenue(p, data, now, { mode, stripeTax: stripeTaxOn(), billing }));
     }
     case "revenue_backfill": {
       const key = stripeKey();
@@ -1054,6 +1089,55 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       if (error) throw new Error(error.message);
       await audit("revenue_vat_set", ip, null, { rate });
       return json({ ok: true, rate });
+    }
+    // ---- Omzet: Apple (App Store Connect); apple_revenue.ts ----
+    case "apple_sales_refresh": {
+      const r = cleanSalesRange(body.from, body.to);
+      if ("error" in r) return json({ error: r.error }, 400);
+      // geheim APPLE_SALES_SECRET (zet de workflow Backend), anders de service role; nooit in een log
+      const secret = env("APPLE_SALES_SECRET"), sr = env("SUPABASE_SERVICE_ROLE_KEY");
+      if (!secret && !sr) return json({ error: "apple_sales_not_configured" }, 503);
+      const hdr: Record<string, string> = secret ? { "x-apple-sales-secret": secret } : { Authorization: `Bearer ${sr}` };
+      let res: Response;
+      try {
+        res = await fetch(`${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/apple-sales`, {
+          method: "POST", headers: { "Content-Type": "application/json", ...hdr },
+          body: JSON.stringify({ action: "backfill", from: r.from, to: r.to }), signal: AbortSignal.timeout(140000),
+        });
+      } catch (e) {
+        console.error("admin", "apple_sales_refresh", e instanceof Error ? e.name : "fetch");
+        return json({ error: "apple_sales_unreachable" }, 502);
+      }
+      const out = await res.json().catch(() => null);
+      if (res.status === 404 && !(out as Record<string, unknown> | null)?.error) return json({ error: "apple_sales_not_deployed" }, 503);
+      if (res.status === 401 || res.status === 403) return json({ error: "apple_sales_forbidden" }, 502);
+      if (!res.ok) {
+        const v = refreshView(out);
+        console.error("admin", "apple_sales_refresh", `HTTP ${res.status}`);
+        return json({ error: v.error ?? "apple_sales_failed" }, res.status >= 500 ? 502 : res.status);
+      }
+      const v = refreshView(out);
+      await audit("apple_sales_refresh", ip, null, { from: r.from, to: r.to, days: v.days, ok: v.ok, empty: v.empty, not_ready: v.not_ready, failed: v.failed, configured: v.configured });
+      return json(v);
+    }
+    case "revenue_apple_set": {
+      const now = new Date().toISOString(), rows: { key: string; value: unknown; updated_at: string }[] = [];
+      const fx = body.fx_rates === undefined ? undefined : cleanFxInput(body.fx_rates);
+      if (fx === null) return json({ error: "bad_fx_rates" }, 400);
+      const commission = body.commission === undefined ? undefined : cleanCommission(body.commission);
+      if (commission === null) return json({ error: "bad_commission" }, 400);
+      if (fx) rows.push({ key: "fx_rates", value: fx, updated_at: now });
+      if (commission !== undefined) rows.push({ key: "apple_commission", value: { rate: commission }, updated_at: now });
+      if (rows.length) {
+        const { error } = await admin.from("app_settings").upsert(rows);
+        if (error) throw new Error(error.message);
+      }
+      const { data, error } = await admin.from("app_settings").select("key,value").in("key", ["fx_rates", "apple_commission"]);
+      if (error) throw new Error(error.message);
+      const m = Object.fromEntries((data ?? []).map((x: { key: string; value: unknown }) => [x.key, x.value]));
+      const view = { fx_rates: cleanFxInput(m.fx_rates) ?? {}, commission: commissionOf((m.apple_commission as Record<string, unknown> | undefined)?.rate) };
+      if (rows.length) await audit("revenue_apple_set", ip, null, view);
+      return json({ ok: true, ...view });
     }
     case "users": {
       const size = Math.min(Math.max(Number(body.page_size ?? 25) || 25, 1), 50);

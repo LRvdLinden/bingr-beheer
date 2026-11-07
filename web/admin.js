@@ -90,7 +90,14 @@
     bad_max_devices: "Apparaten: een heel getal van 1 tot 200, of leeg voor de standaard.", bad_settings: "Ongeldige instellingen.",
     bad_releases: "Ongeldige versie: vul versie (bijv. 1.0.3) én build (een heel getal) in, of laat allebei leeg.",
     revenue_not_configured: "Omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv draaien).", bad_rate: "Kies een btw-tarief tussen 0 en 50%.",
-    billing_unavailable: "Betalen staat uit (geen STRIPE_SECRET_KEY).", bad_bucket: "Deze resolutie past niet bij de periode.", bad_mode: "Ongeldige keuze.",
+    billing_unavailable: "Betalen staat uit (geen STRIPE_SECRET_KEY).",
+    // Omzet: Apple (App Store Connect)
+    bad_range: "Kies een geldig bereik (van vóór tot en met, niet in de toekomst).", range_too_long: "Hoogstens 365 dagen per keer.",
+    bad_fx_rates: "Ongeldige koersen: één per regel, bijv. USD = 0,92 (EUR per 1 eenheid).", bad_commission: "Kies een commissie tussen 0 en 50%.",
+    apple_sales_not_configured: "Apple-omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv).",
+    apple_sales_not_deployed: "De functie apple-sales staat nog niet op de server (workflow Backend in iptv-ios-appletv).",
+    apple_sales_unreachable: "De functie apple-sales reageert niet. Probeer een kleiner bereik.", apple_sales_forbidden: "De functie admin mag apple-sales niet starten (geheim APPLE_SALES_SECRET).",
+    apple_sales_failed: "Apple-omzet bijwerken is mislukt.", asc_key_invalid: "De App Store Connect-sleutel (.p8) is ongeldig.", bad_bucket: "Deze resolutie past niet bij de periode.", bad_mode: "Ongeldige keuze.",
     // build 97
     invalid_token: "Ongeldige of verlopen link.", unknown_action: "Onbekende actie (vernieuw de pagina; het dashboard is misschien bijgewerkt).",
     bad_priority: "Ongeldige prioriteit.", rate_limited: "Te veel verzoeken achter elkaar. Wacht een minuut en probeer het opnieuw.",
@@ -1211,7 +1218,8 @@
   const REV_PERIODS = ["day", "week", "month", "year", "7d", "30d"];
   const REV_BUCKETS = { day: ["hour"], week: ["day", "hour"], "7d": ["day", "hour"], month: ["day"], "30d": ["day"], year: ["month", "week"] };
   const REV_BUCKET_TAB = { hour: "Per uur", day: "Per dag", week: "Per week", month: "Per maand" };
-  const REV_MONEY = ["gross", "net", "proceeds"], REV_COUNT = ["count", "refund_count"];
+  // Omzet Apple: web_gross / apple_gross = bruto van de website en van Apple als extra reeksen in de geldgrafiek
+  const REV_MONEY = ["gross", "net", "proceeds", "web_gross", "apple_gross"], REV_COUNT = ["count", "refund_count"];
   const REV_MODE_TEXT = { "": "Volgens Stripe-sleutel", live: "Live", test: "Test", all: "Live en test" };
   const revp = (() => {
     const def = { period: "month", bucket: "auto", mode: "", kind: "line", off: { money: [], count: [] } };
@@ -1346,6 +1354,7 @@
       $("revProvAll").textContent = provAll.length ? `Totaal: ${provAll.map((r) => `${r.label} ${euro(r.gross)} (${nf.format(r.count)}×)`).join(" · ")}` : "";
     }
     revBars($("revCountries"), d.by_country);
+    renderRevSources(d);
     $("revLive").textContent = `${insRangeText(d)}: bruto ${euro(T.period.gross)}, opbrengst ${euro(T.period.proceeds)}`;
   }
   const revDraws = {};
@@ -1366,6 +1375,83 @@
       ${row("Terugbetaald / chargebacks", neg(t.refunds_net), neg(p.refunds_net), "", `excl. btw; incl. btw ${euro(t.refunds)}`)}
       ${row("Netto opbrengst", euro(t.proceeds), euro(p.proceeds), `total${t.proceeds < 0 ? " neg" : ""}`)}</tbody></table>`;
   }
+  // ---- Omzet: Apple (App Store Connect): website en Apple apart, "Apple bijgewerkt t/m", bijwerken, commissie en koersen ----
+  // Apple-cijfers komen uit de dagrapporten (apple_sales_daily); "gekoppeld" = Apple-aankopen die via apple_verify aan een
+  // account hangen (billing_purchases). Verborgen zolang de functie admin nog geen `sources` meestuurt (oud schema).
+  const ymdLocal = (t) => new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+  const addYmd = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+  function renderRevSources(d) {
+    const box = $("revSrcBox");
+    if (!d.sources || !d.apple) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    const w = d.sources.web.period, a = d.sources.apple.period, T = d.totals.period;
+    $("revSrcSub").textContent = `${insRangeText(d)} · totaal = website + Apple`;
+    const st = $("revAppleState");
+    st.classList.toggle("warn", !d.apple.configured || !d.apple.through);
+    st.innerHTML = `<b>${esc(d.apple.text)}</b>${d.apple.last_run && d.apple.last_run.failed ? ` · laatste ronde: ${nf.format(d.apple.last_run.failed)} ${d.apple.last_run.failed === 1 ? "dag" : "dagen"} mislukt` : ""}`;
+    const neg = (v) => (v ? `− ${euro(v)}` : euro(0));
+    const refund = (t) => `${neg(t.refunds)}${t.refund_count ? ` <small>${nf.format(t.refund_count)}×</small>` : ""}`;
+    const row = (label, hint, f) => `<tr><th scope="row">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ""}</th><td>${f(w)}</td><td>${f(a)}</td><td>${f(T)}</td></tr>`;
+    $("revSources").innerHTML = `<table class="rev-table"><thead><tr><th scope="col"><span class="sr">Post</span></th><th scope="col">Website (Stripe)</th><th scope="col">Apple (App Store)</th><th scope="col">Totaal</th></tr></thead><tbody>
+      ${row("Bruto", "klantprijs incl. btw", (t) => esc(euro(t.gross)))}
+      ${row("Inhouding", "Stripe-kosten / Apple-commissie", (t) => esc(neg(t.fees)))}
+      ${row("Netto opbrengst", "na btw, inhouding en terugbetalingen", (t) => `<b class="${t.proceeds < 0 ? "neg" : ""}">${esc(euro(t.proceeds))}</b>`)}
+      ${row("Aantal", "", (t) => esc(nf.format(t.count)))}
+      ${row("Terugbetaald", "incl. btw", refund)}</tbody></table>`;
+    const notes = [];
+    notes.push(`Apple-commissie ${n1(d.apple.commission)}% van de prijs zonder btw. Apple: ${nf.format(a.count)} verkocht volgens de rapporten, ${nf.format(d.apple.linked)} via de app aan een account gekoppeld (totaal ${nf.format(d.sources.apple.all.count)} / ${nf.format(d.apple.linked_all)}).`);
+    const un = d.apple.unconverted_all || [];
+    if (un.length) notes.push(`Niet omgerekend (geen koers, telt niet mee): ${un.map((u) => `${u.currency} ${nf.format(u.units)}×${u.refund_units ? ` (−${nf.format(u.refund_units)})` : ""}`).join(", ")}.`);
+    $("revAppleNote").textContent = notes.join(" ");
+    // formulieren: standaard de laatste 30 dagen t/m gisteren
+    const today = ymdLocal(Date.now());
+    if (!$("revAppleTo").value) { $("revAppleTo").value = addYmd(today, -1); $("revAppleFrom").value = addYmd(today, -30); }
+    $("revAppleFrom").max = today; $("revAppleTo").max = today;
+    if (document.activeElement !== $("revComm")) $("revComm").value = String(d.apple.commission);
+    if (document.activeElement !== $("revFx")) $("revFx").value = Object.entries(d.apple.fx_rates || {}).map(([k, v]) => `${k} = ${String(v).replace(".", ",")}`).join("\n");
+    $("revAppleRun").disabled = !d.apple.configured;
+  }
+  // bijwerken in stukken van 31 dagen (één aanroep van apple-sales blijft zo ruim binnen de tijdslimiet)
+  $("revAppleForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const from = $("revAppleFrom").value, to = $("revAppleTo").value, btn = $("revAppleRun");
+    if (!from || !to || from > to) { toast(ERR.bad_range, true); return; }
+    const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+    if (days > 365) { toast(ERR.range_too_long, true); return; }
+    btn.disabled = true;
+    const sum = { ok: 0, empty: 0, not_ready: 0, failed: 0 };
+    let through = null, unauthorized = false;
+    try {
+      for (let f = from; f <= to; f = addYmd(f, 31)) {
+        const t = addYmd(f, 30) < to ? addYmd(f, 30) : to;
+        btn.textContent = `Bezig… ${f.slice(5)} – ${t.slice(5)}`;
+        const r = await call("apple_sales_refresh", { from: f, to: t });
+        if (r.configured === false) { toast(ERR.apple_sales_not_configured, true); return; }
+        for (const k of Object.keys(sum)) sum[k] += Number(r[k]) || 0;
+        through = r.through || through;
+        if (r.error === "asc_unauthorized") { unauthorized = true; break; }
+      }
+      toast(unauthorized ? "App Store Connect weigert de sleutel: geef de API-sleutel de rol Sales (of Finance)."
+        : `Apple-omzet bijgewerkt: ${nf.format(sum.ok)} dagen met verkopen, ${nf.format(sum.empty)} zonder, ${nf.format(sum.not_ready)} nog niet klaar${sum.failed ? `, ${nf.format(sum.failed)} mislukt` : ""}${through ? ` (t/m ${through})` : ""}.`, unauthorized || sum.failed > 0);
+      revCache.clear(); loadRevenue();
+    } catch (err) { if (err.code !== "auth") toast(errText(err), true); }
+    finally { btn.textContent = "Apple-omzet bijwerken"; btn.disabled = false; }
+  };
+  $("revFxForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const fx = {};
+    for (const l of $("revFx").value.split(/\n/).map((x) => x.trim()).filter(Boolean)) {
+      const m = l.match(/^([A-Za-z]{3})\s*[=:]?\s*([0-9]+(?:[.,][0-9]+)?)$/);
+      if (!m) { toast(ERR.bad_fx_rates, true); return; }
+      fx[m[1].toUpperCase()] = m[2].replace(",", ".");
+    }
+    const commission = String($("revComm").value).replace(",", ".");
+    try {
+      const r = await call("revenue_apple_set", { fx_rates: fx, ...(commission.trim() !== "" ? { commission } : {}) });
+      toast(`Opgeslagen: commissie ${n1(r.commission)}%, ${nf.format(Object.keys(r.fx_rates).length)} ${Object.keys(r.fx_rates).length === 1 ? "koers" : "koersen"}.`);
+      revCache.clear(); loadRevenue();
+    } catch (err) { if (err.code !== "auth") toast(errText(err), true); }
+  };
   function revBars(el, rows) {
     if (!rows.length) { el.innerHTML = '<p class="empty">Geen aankopen in deze periode.</p>'; return; }
     const max = Math.max(1, ...rows.map((r) => r.gross));

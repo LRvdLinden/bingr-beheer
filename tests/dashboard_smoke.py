@@ -9,6 +9,9 @@ Daarna de tab Lifetime-only (lifetime.ts, build 167): laden, opslaan met bevesti
 versturen in batches (nep-antwoorden; er gaat niets naar Stripe of naar een mailbox).
 Daarna de tab Nieuwsbrief, blok Eigen mailing (mailing.ts): doelgroep met waarschuwing bij een servicebericht, voorbeeld,
 testmail, versturen met bevestiging, voortgang en annuleren (alleen nep-antwoorden; er gaat nergens een mail heen).
+Daarna de tab Omzet, blok Website en Apple (apple_revenue.ts): website en Apple apart, "Apple bijgewerkt t/m", de reeksen
+Website en Apple in de grafiek, Apple-omzet bijwerken in stukken van 31 dagen, commissie en koersen opslaan
+(tests/fixtures/revenue_apple.json, verzonnen bedragen; maken met tests/make_revenue_fixture.ts).
 
 Gebruik: python3 tests/dashboard_smoke.py [--channel chrome]   (pip install playwright; lokaal: playwright install chromium)
 """
@@ -157,8 +160,20 @@ def lifetime_answer(req):
     return 400, {"error": "unknown_action"}
 
 
+REVENUE = json.loads((ROOT / "tests/fixtures/revenue_apple.json").read_text())
+APPLE_REFRESH, APPLE_SET = [], []
+
+
 def answer(req):
     a = req.get("action")
+    if a == "revenue":
+        return 200, REVENUE
+    if a == "apple_sales_refresh":
+        APPLE_REFRESH.append((req.get("from"), req.get("to")))
+        return 200, {"configured": True, "days": 31, "ok": 20, "empty": 10, "not_ready": 1, "failed": 0, "rows": 40, "through": "2026-11-05", "error": None}
+    if a == "revenue_apple_set":
+        APPLE_SET.append(req)
+        return 200, {"ok": True, "fx_rates": {"USD": 0.95}, "commission": 30}
     if str(a).startswith("lifetime_"):
         return lifetime_answer(req)
     if a == "purchases_unclaimed":
@@ -419,6 +434,61 @@ def lifetime_smoke(b, base, errors, calls):
     return steps
 
 
+def revenue_smoke(b, base, errors, calls):
+    """Tab Omzet, blok Website en Apple. Vult errors aan; geeft het aantal geslaagde stappen terug."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'revenue');
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"omzet: {msg}")
+    page.goto(base + "#revenue")
+    page.wait_for_selector("#tab-revenue:not(.hidden) #revSrcBox:not(.hidden) #revSources table", timeout=10000)
+    src = page.inner_text("#revSources")
+    check("Website (Stripe)" in src and "Apple (App Store)" in src and "Totaal" in src, "kolommen website / Apple / totaal")
+    check(all(x in src for x in ("Bruto", "Inhouding", "Netto opbrengst", "Aantal", "Terugbetaald")), f"regels ontbreken: {src!r}")
+    check("29,94" in src and "49,90" in src, f"bruto Apple en totaal: {src!r}")
+    check("Apple bijgewerkt t/m 5 november 2026" in page.inner_text("#revAppleState"), "bijgewerkt t/m")
+    note = page.inner_text("#revAppleNote")
+    check("4 via de app aan een account gekoppeld" in note and "JPY" in note, f"gekoppeld en niet omgerekend: {note!r}")
+    legend = page.inner_text("#revMoney .ins-series")
+    check("Website" in legend and "Apple" in legend, f"reeksen Website en Apple: {legend!r}")
+    check(page.input_value("#revComm") == "15" and "USD = 0,92" in page.input_value("#revFx"), "commissie en koersen ingevuld")
+    page.fill("#revAppleFrom", "2026-01-01")
+    page.fill("#revAppleTo", "2026-11-05")
+    page.click("#revAppleRun")
+    page.wait_for_timeout(1500)
+    days = [(f, t) for f, t in APPLE_REFRESH]
+    from datetime import date
+    span = lambda f, t: (date.fromisoformat(t) - date.fromisoformat(f)).days + 1
+    check(len(days) == 10 and days[0][0] == "2026-01-01" and days[-1][1] == "2026-11-05" and all(span(f, t) <= 31 for f, t in days)
+          and all(date.fromisoformat(days[i + 1][0]) == date.fromisoformat(days[i][1]) + timedelta(days=1) for i in range(len(days) - 1)),
+          f"bijwerken niet in aansluitende stukken van max. 31 dagen: {days}")
+    page.fill("#revComm", "30")
+    page.fill("#revFx", "usd = 0,95")
+    page.click("#revFxForm button[type=submit]")
+    page.wait_for_timeout(500)
+    got = APPLE_SET[-1] if APPLE_SET else {}
+    check(got.get("fx_rates") == {"USD": "0.95"} and got.get("commission") == "30", f"commissie en koersen opslaan: {got}")
+    page.fill("#revFx", "dollar 1")
+    n0 = len(APPLE_SET)
+    page.click("#revFxForm button[type=submit]")
+    page.wait_for_timeout(300)
+    check(len(APPLE_SET) == n0, "ongeldige koers toch verstuurd")
+    page.close()
+    return steps
+
+
 def route_to(r, calls):
     if r.request.method == "OPTIONS":
         return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
@@ -480,6 +550,7 @@ def main():
         rel_steps = releases_smoke(b, base, errors, calls)
         ml_steps = mailing_smoke(b, base, errors, calls)
         lt_steps = lifetime_smoke(b, base, errors, calls)
+        rv_steps = revenue_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
     n = calls.count("insights")
@@ -490,6 +561,7 @@ def main():
     print(f"Insights-rooktest OK: {len(srcs)} bronnen, {len(periods)} periodes, {n} insights-aanroepen, geen JS-fouten")
     print(f"Versies OK: {rel_steps} stappen (laden, nieuwste build, voorbeeldbadge, opslaan)")
     print(f"Lifetime-only OK: {lt_steps} stappen (laden, opslaan met bevestiging, codes droog en echt, mail droog en in batches)")
+    print(f"Omzet OK: {rv_steps} stappen (website en Apple apart, bijgewerkt t/m, reeksen, bijwerken in stukken, commissie en koersen)")
     print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 
 

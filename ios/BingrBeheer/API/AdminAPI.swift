@@ -71,6 +71,17 @@ struct APIError: Error, LocalizedError {
         "revenue_not_configured": "Omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv draaien).",
         "bad_rate": "Kies een btw-tarief tussen 0 en 50%.",
         "billing_unavailable": "Betalen staat uit (geen STRIPE_SECRET_KEY).",
+        // Omzet: Apple (App Store Connect), zelfde teksten als web/admin.js
+        "bad_range": "Kies een geldig bereik (van vóór tot en met, niet in de toekomst).",
+        "range_too_long": "Hoogstens 365 dagen per keer.",
+        "bad_fx_rates": "Ongeldige koersen: één per regel, bijv. USD = 0,92 (EUR per 1 eenheid).",
+        "bad_commission": "Kies een commissie tussen 0 en 50%.",
+        "apple_sales_not_configured": "Apple-omzet is nog niet ingericht (workflow Backend in iptv-ios-appletv).",
+        "apple_sales_not_deployed": "De functie apple-sales staat nog niet op de server (workflow Backend in iptv-ios-appletv).",
+        "apple_sales_unreachable": "De functie apple-sales reageert niet. Probeer een kleiner bereik.",
+        "apple_sales_forbidden": "De functie admin mag apple-sales niet starten (geheim APPLE_SALES_SECRET).",
+        "apple_sales_failed": "Apple-omzet bijwerken is mislukt.",
+        "asc_key_invalid": "De App Store Connect-sleutel (.p8) is ongeldig.",
         "bad_bucket": "Deze resolutie past niet bij de periode.",
         "bad_mode": "Ongeldige keuze.",
         // build 97

@@ -111,7 +111,8 @@ enum InsPeriod: String, CaseIterable, Identifiable, Codable {
 
 /// Kleuren van de series: categorisch palet (dataviz), donkere stappen, op #121212 gecontroleerd (ook bij kleurenblindheid).
 enum InsColor {
-    static let palette: [Color] = [Color(hex: 0x3987E5), Color(hex: 0xD95926), Color(hex: 0x199E70)]
+    // Omzet Apple: vierde en vijfde kleur voor de reeksen Website en Apple (zelfde als --c4 / --c5 in web/admin.css)
+    static let palette: [Color] = [Color(hex: 0x3987E5), Color(hex: 0xD95926), Color(hex: 0x199E70), Color(hex: 0x9B6BDF), Color(hex: 0xD6A525)]
     static func color(_ metric: InsMetric, _ key: String) -> Color {
         palette[max(0, min(palette.count - 1, metric.series.firstIndex(of: key) ?? 0))]
     }
