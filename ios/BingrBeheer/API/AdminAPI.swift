@@ -182,6 +182,11 @@ struct APIError: Error, LocalizedError {
         "code_after_cutover": "De code mag niet langer geldig zijn dan de overgangsdatum.",
         "bad_discount_pct": "Korting: een heel getal van 1 tot 90.",
         "bad_trial_days": "Proefperiode: een heel getal van 0 tot 90 dagen.",
+        // build 168: nieuwe accounts eerst kopen
+        "bad_new_paid_from": "Nieuwe accounts eerst kopen (web en Android): geen geldige datum.",
+        "bad_new_paid_from_apple": "Nieuwe accounts eerst kopen (Apple-apps): geen geldige datum.",
+        "new_paid_requires_enabled": "Nieuwe accounts eerst kopen kan alleen als Lifetime-only aan staat.",
+        "new_paid_after_cutover": "De datum voor nieuwe accounts moet vóór de overgangsdatum liggen.",
         "bad_iap": "Ongeldige instelling voor de koopknop.",
         "bad_apple_eu": "Ongeldige instelling voor de EU-link.",
         "stripe_unavailable": "Stripe is niet ingesteld op de server (geen STRIPE_SECRET_KEY).",
