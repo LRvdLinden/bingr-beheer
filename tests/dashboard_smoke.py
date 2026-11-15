@@ -164,8 +164,32 @@ REVENUE = json.loads((ROOT / "tests/fixtures/revenue_apple.json").read_text())
 APPLE_REFRESH, APPLE_SET = [], []
 
 
+CRASH_RESOLVED = []
+CRASH_GROUP = {"signature": "EXC_BAD_ACCESS PlayerView.swift:120", "kind": "crash", "reports": 4, "occurrences": 7, "platforms": ["ios", "tvos"],
+               "builds": [170, 171], "devices": 3, "accounts": 2, "first_seen": "2026-11-14T10:00:00Z", "last_seen": "2026-11-15T10:00:00Z",
+               "message": "Attempted to dereference <url>", "app_version": "1.0.7 (171)", "status": "regressed", "resolved_build": 171,
+               "resolved_at": "2026-11-14T12:00:00Z", "regressed_at": "2026-11-15T10:00:00Z"}
+
+
+def crashes_answer(req):
+    """Nep-antwoorden voor de tab Crashes (contract supabase/functions/admin/crashes.ts); verzonnen rapporten."""
+    op = req.get("op", "list")
+    if op == "resolve":
+        CRASH_RESOLVED.append((req.get("signature"), req.get("resolved_build")))
+        return 200, {"ok": True, "status": "resolved" if req.get("resolved_build") else "open"}
+    if op == "detail":
+        return 200, {"group": {k: CRASH_GROUP[k] for k in ("signature", "kind", "first_seen", "last_seen", "status", "resolved_build", "resolved_at", "regressed_at")},
+                     "reports": [{"id": 1, "created_at": "2026-11-15T10:00:00Z", "occurred_at": "2026-11-15T09:59:00Z", "platform": "ios", "kind": "crash",
+                                  "app_version": "1.0.7 (171)", "build": 171, "os_version": "iOS 18.1", "device_model": "iPhone15,3",
+                                  "message": "Attempted to dereference <url>", "stack": "0 Bingr PlayerView.body + 120\n1 SwiftUI", "count": 2, "signed_in": True}]}
+    groups = [CRASH_GROUP] if req.get("status") in (None, "all", "regressed") else []
+    return 200, {"groups": groups, "platforms": ["ios", "tvos"], "builds": [171, 170], "totals": {"groups": 1, "open": 0, "regressed": 1, "reports_24h": 4}}
+
+
 def answer(req):
     a = req.get("action")
+    if a == "crashes":
+        return crashes_answer(req)
     if a == "revenue":
         return 200, REVENUE
     if a == "apple_sales_refresh":
@@ -489,6 +513,41 @@ def revenue_smoke(b, base, errors, calls):
     return steps
 
 
+def crashes_smoke(b, base, errors, calls):
+    """Tab Crashes (build 171): lijst, filters, details met stack, markeren als opgelost. Geeft het aantal stappen terug."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'crashes');
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"crashes: {msg}")
+    page.goto(base + "#crashes")
+    page.wait_for_selector("#tab-crashes:not(.hidden) #crashRows tr[data-i]", timeout=10000)
+    rows = page.inner_text("#crashRows")
+    check("EXC_BAD_ACCESS" in rows and "Teruggekomen" in rows and "170, 171" in rows, f"lijst: {rows!r}")
+    check(page.eval_on_selector_all("#crashBuild option", "els => els.map(e => e.value)") == ["", "171", "170"], "buildfilter")
+    check("Teruggekomen" in page.inner_text("#crashFilters"), "statusfilters")
+    page.click("#crashRows tr[data-i]")
+    page.wait_for_selector("#drawerBody .crash-stack", state="attached", timeout=5000)
+    check("PlayerView.body" in page.inner_text("#drawerBody") or page.locator("#drawerBody .crash-stack").count() == 1, "stack in de details")
+    page.fill("#crashBuildIn", "172")
+    page.click("#crashResolve button[type=submit]")
+    page.wait_for_timeout(500)
+    check(CRASH_RESOLVED and CRASH_RESOLVED[-1] == ("EXC_BAD_ACCESS PlayerView.swift:120", 172), f"opgelost in build 172: {CRASH_RESOLVED}")
+    page.close()
+    return steps
+
+
 def route_to(r, calls):
     if r.request.method == "OPTIONS":
         return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
@@ -551,6 +610,7 @@ def main():
         ml_steps = mailing_smoke(b, base, errors, calls)
         lt_steps = lifetime_smoke(b, base, errors, calls)
         rv_steps = revenue_smoke(b, base, errors, calls)
+        cr_steps = crashes_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
     n = calls.count("insights")
@@ -562,6 +622,7 @@ def main():
     print(f"Versies OK: {rel_steps} stappen (laden, nieuwste build, voorbeeldbadge, opslaan)")
     print(f"Lifetime-only OK: {lt_steps} stappen (laden, opslaan met bevestiging, codes droog en echt, mail droog en in batches)")
     print(f"Omzet OK: {rv_steps} stappen (website en Apple apart, bijgewerkt t/m, reeksen, bijwerken in stukken, commissie en koersen)")
+    print(f"Crashes OK: {cr_steps} stappen (lijst, filters, details met stack, opgelost in build N)")
     print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 
 

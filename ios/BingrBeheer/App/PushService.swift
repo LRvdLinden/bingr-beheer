@@ -10,8 +10,21 @@ struct PushPrefs: Codable, Equatable {
     var replies = true
     var builds = true
     var status = true
+    /// build 50: nieuwe of teruggekomen crashgroep (soort crash, pref crashes; ontbreekt hij, dan staat hij aan)
+    var crashes = true
 
-    var params: [String: Bool] { ["tickets": tickets, "replies": replies, "builds": builds, "status": status] }
+    var params: [String: Bool] { ["tickets": tickets, "replies": replies, "builds": builds, "status": status, "crashes": crashes] }
+
+    init() {}
+    /// Opgeslagen voorkeuren van vóór build 50 hebben geen `crashes`: dan aan, de rest blijft.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        tickets = try c.decodeIfPresent(Bool.self, forKey: .tickets) ?? true
+        replies = try c.decodeIfPresent(Bool.self, forKey: .replies) ?? true
+        builds = try c.decodeIfPresent(Bool.self, forKey: .builds) ?? true
+        status = try c.decodeIfPresent(Bool.self, forKey: .status) ?? true
+        crashes = try c.decodeIfPresent(Bool.self, forKey: .crashes) ?? true
+    }
 }
 
 /// Systeem-pushmeldingen van BingrBeheer (APNs, topic nl.lrvdlinden.bingr.beheer) op iPhone, iPad en Mac (Catalyst).

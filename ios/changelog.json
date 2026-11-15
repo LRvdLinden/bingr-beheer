@@ -2,6 +2,16 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 50,
+   "version": "1.0.0",
+   "date": "2026-11-15",
+   "items": [
+    {"type": "new", "nl": "Crashes: eigen crashrapporten van de Bingr-apps en de webspeler, gegroepeerd op handtekening met aantal, platforms, builds en eerst en laatst gezien"},
+    {"type": "new", "nl": "Crashes: filter op status, platform en build, details met de stacks, en markeren als opgelost in build N (komt hij daarna terug, dan staat hij op Teruggekomen)"},
+    {"type": "new", "nl": "Pushmelding bij een nieuwe of teruggekomen crash, aan of uit in Instellingen"}
+   ]
+  },
+  {
    "build": 49,
    "version": "1.0.0",
    "date": "2026-11-07",

@@ -259,7 +259,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -270,7 +270,8 @@
     // link uit de meldingsmail: https://beheer.bingr.online/#support/1001
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
-    showTab(["overview", "insights", "revenue", "lifetime", "users", "support", "messages", "newsletter", "server", "status", "downloads", "settings"].includes(tab) ? tab : "overview");
+    if (location.hash === "#crashes") tab = "crashes";
+    showTab(["overview", "insights", "revenue", "lifetime", "users", "support", "messages", "newsletter", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -3106,6 +3107,98 @@
     }));
   }
   $("supRefresh").onclick = () => loadTickets();
+
+  // ---- Crashes (build 171 van Bingr; actie crashes, docs/ACCOUNT.md "Build 171" in iptv-ios-appletv) ----
+  // Groepen per handtekening met aantal, platforms, builds, eerst/laatst gezien en de status (open / opgelost in build N /
+  // teruggekomen). Klik = details met de stacks; daar "Opgelost in build N" of weer open. Geen persoonsgegevens: de rapporten
+  // hebben geen e-mail of account-id en zijn al opgeschoond.
+  const CRASH_FILTERS = [["all", "Alle"], ["open", "Open"], ["regressed", "Teruggekomen"], ["resolved", "Opgelost"]];
+  const CRASH_KIND = { crash: "Crash", anr: "Vastgelopen", error: "Fout" };
+  let crashFilter = "all", crashData = null;
+  try { crashFilter = sessionStorage.getItem(KEY + ".crashFilter") || "all"; } catch { /* */ }
+  const crashStatus = (g) => g.status === "resolved" ? `<span class="chip">Opgelost in ${esc(g.resolved_build)}</span>`
+    : g.status === "regressed" ? `<span class="chip bad">Teruggekomen (opgelost in ${esc(g.resolved_build)})</span>` : '<span class="chip warn">Open</span>';
+  function renderCrashFilters(t) {
+    $("crashFilters").innerHTML = CRASH_FILTERS.map(([k, l]) => {
+      const n = !t ? null : k === "all" ? t.groups : k === "open" ? t.open : k === "regressed" ? t.regressed : null;
+      return `<button type="button" data-f="${k}" class="${k === crashFilter ? "on" : ""}" aria-pressed="${k === crashFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`;
+    }).join("");
+    $("crashFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => {
+      crashFilter = b.dataset.f;
+      try { sessionStorage.setItem(KEY + ".crashFilter", crashFilter); } catch { /* */ }
+      loadCrashes();
+    }));
+  }
+  function fillSelect(sel, values, label, fmt) {
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${esc(label)}</option>` + values.map((v) => `<option value="${esc(v)}">${esc(fmt(v))}</option>`).join("");
+    if (values.map(String).includes(cur)) sel.value = cur;
+  }
+  async function loadCrashes() {
+    renderCrashFilters(crashData && crashData.totals);
+    let r;
+    try { r = await call("crashes", { op: "list", status: crashFilter, platform: $("crashPlatform").value || null, build: $("crashBuild").value || null }); }
+    catch (e) {
+      if (e.code === "auth") return;
+      $("crashRows").innerHTML = `<tr><td colspan="7" class="empty">${esc(e.code === "server_not_configured" ? "De server heeft build 171 nog niet (workflow Backend)." : errText(e))}</td></tr>`;
+      return;
+    }
+    crashData = r;
+    renderCrashFilters(r.totals);
+    fillSelect($("crashPlatform"), r.platforms || [], "Alle platforms", pname);
+    fillSelect($("crashBuild"), r.builds || [], "Alle builds", (b) => `Build ${b}`);
+    const regressed = r.totals?.regressed || 0;
+    $("menuCrashBadge").textContent = regressed ? String(regressed) : ""; $("menuCrashBadge").classList.toggle("hidden", !regressed);
+    $("crashCount").textContent = `${nf.format(r.totals?.groups || 0)} groepen · ${nf.format(r.totals?.reports_24h || 0)} rapporten in 24 uur`;
+    $("crashRows").innerHTML = (r.groups || []).map((g, i) => `<tr data-i="${i}" tabindex="0" class="${g.status === "regressed" ? "unread" : ""}">
+      <td class="subj"><div class="st mono">${esc(g.signature)}</div><div class="sub">${esc(CRASH_KIND[g.kind] || g.kind)}${g.message ? ` · ${esc(g.message.slice(0, 140))}` : ""}</div></td>
+      <td data-l="Aantal" class="num">${nf.format(g.occurrences)}<div class="sub">${nf.format(g.devices)} apparaten</div></td>
+      <td data-l="Platforms">${g.platforms.map((p) => `<span class="chip">${esc(pname(p))}</span>`).join("")}</td>
+      <td data-l="Builds">${esc(g.builds.join(", ") || "—")}</td>
+      <td data-l="Eerst gezien">${esc(ago(g.first_seen))}</td>
+      <td data-l="Laatst gezien">${esc(ago(g.last_seen))}</td>
+      <td data-l="Status">${crashStatus(g)}</td>
+    </tr>`).join("") || `<tr><td colspan="7" class="empty">${crashFilter === "all" ? "Geen crashrapporten. Mooi zo." : "Niets in dit filter."}</td></tr>`;
+    $("crashRows").querySelectorAll("tr[data-i]").forEach((tr) => {
+      const g = r.groups[Number(tr.dataset.i)];
+      tr.onclick = () => openCrash(g.signature);
+      tr.onkeydown = (e) => { if (e.key === "Enter") openCrash(g.signature); };
+    });
+  }
+  $("crashRefresh").onclick = () => loadCrashes();
+  $("crashPlatform").onchange = () => loadCrashes();
+  $("crashBuild").onchange = () => loadCrashes();
+  async function openCrash(signature) {
+    $("drawerBody").innerHTML = '<p class="sub">Laden…</p>';
+    openDrawer(true);
+    let r;
+    try { r = await call("crashes", { op: "detail", signature, platform: $("crashPlatform").value || null, build: $("crashBuild").value || null, limit: 30 }); }
+    catch (e) { if (e.code !== "auth") $("drawerBody").innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    const g = r.group, latest = Math.max(0, ...(crashData?.builds || []));
+    $("drawerBody").innerHTML = `
+      <h2 id="dTitle" class="mono">${esc(g.signature)}</h2>
+      <div class="tmeta">${crashStatus(g)}<span class="sub">${esc(CRASH_KIND[g.kind] || g.kind)} · eerst ${esc(fmtDateTime(g.first_seen))} · laatst ${esc(fmtDateTime(g.last_seen))}</span></div>
+      <form id="crashResolve" class="composer" novalidate>
+        <div class="comp-row"><label>Opgelost in build <input id="crashBuildIn" type="number" min="1" step="1" inputmode="numeric" value="${esc(g.resolved_build || (latest ? latest + 1 : ""))}"></label>
+          <button class="btn" type="submit">Markeer als opgelost</button>
+          ${g.resolved_build ? '<button id="crashReopen" class="btn ghost" type="button">Weer open</button>' : ""}</div>
+        <p class="sub">Komt er daarna een rapport van die build of nieuwer, dan staat hij op "Teruggekomen" (met een pushmelding).</p>
+      </form>
+      <h3>Laatste rapporten</h3>
+      ${(r.reports || []).map((x) => `<div class="msg"><div class="mh"><b>${esc(pname(x.platform))}</b> <span class="sub">${esc(x.app_version || (x.build ? `build ${x.build}` : ""))} · ${esc(x.os_version || "")} · ${esc(x.device_model || "")} · ${esc(fmtDateTime(x.occurred_at || x.created_at))}${x.count > 1 ? ` · ${nf.format(x.count)}×` : ""}${x.signed_in ? "" : " · niet ingelogd"}</span></div>
+        ${x.message ? `<div class="mb">${esc(x.message)}</div>` : ""}${x.stack ? `<details><summary>Stack</summary><pre class="crash-stack">${esc(x.stack)}</pre></details>` : ""}</div>`).join("") || '<p class="empty">Geen rapporten in dit filter.</p>'}`;
+    async function resolve(build) {
+      try { await call("crashes", { op: "resolve", signature, resolved_build: build }); toast(build ? `Opgelost in build ${build}` : "Weer open"); loadCrashes(); openCrash(signature); }
+      catch (e) { if (e.code !== "auth") toast(errText(e)); }
+    }
+    $("crashResolve").onsubmit = (e) => {
+      e.preventDefault();
+      const b = Number($("crashBuildIn").value);
+      if (!Number.isInteger(b) || b < 1) { toast("Vul een buildnummer in."); return; }
+      resolve(b);
+    };
+    if ($("crashReopen")) $("crashReopen").onclick = () => resolve(null);
+  }
   $("supSearch").oninput = () => { clearTimeout(supSearchTimer); supSearchTimer = setTimeout(() => { supPageNo = 0; loadTickets(); }, 300); };
   $("supPrev").onclick = () => { if (supPageNo > 0) { supPageNo--; loadTickets(); } };
   $("supNext").onclick = () => { if ((supPageNo + 1) * SUP_PAGE < supTotal) { supPageNo++; loadTickets(); } };

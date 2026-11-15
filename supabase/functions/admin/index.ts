@@ -181,6 +181,15 @@
 //                       error?}  (functie apple-sales backfill met het geheim APPLE_SALES_SECRET of de service role; in admin_audit met het bereik)
 //   revenue_apple_set   {token, fx_rates?: {USD: 0.92, …}, commission?: 0–50} -> {ok, fx_rates, commission}  (app_settings
 //                       fx_rates en apple_commission; vaste koersen, geen externe koers-API)
+//   ---- Crashes (build 171 van Bingr); crashes.ts, docs/ACCOUNT.md "Build 171" in iptv-ios-appletv ----
+//   crashes             {token, op?: "list"|"detail"|"resolve", platform?, build?, status?: all|open|resolved|regressed, signature?,
+//                       resolved_build? (resolve; null = weer open), limit?}
+//                       list   -> {groups:[{signature, kind, reports, occurrences, platforms, builds, devices, accounts, first_seen,
+//                                 last_seen, message, app_version, status, resolved_build, resolved_at, regressed_at}], platforms, builds,
+//                                 totals:{groups, open, regressed, reports_24h}}  (RPC bingr_admin_crashes)
+//                       detail -> {group, reports:[{…, stack}]} | 404 not_found  (bingr_admin_crash_detail)
+//                       resolve -> {ok, status}  (bingr_admin_crash_resolve; in admin_audit met de signature en de build)
+//                       Oud schema zonder de functies: 503 server_not_configured. Nooit hashes of inhoud in een log.
 //   releases_get        {token}           -> {releases:{apple:{live, beta}, android:{live, beta}, updatedAt}}
 //   releases_set        {token, releases:{apple:{live:{version, build, date?}|null, beta:{version, build, date?, label}|null},
 //                       android:{…}}} -> {ok, releases} | 400 {error:"bad_releases", field}  (app_settings.release_channels:
@@ -299,6 +308,7 @@ import { checkImageUrl, type CheckResult, cleanUpload, IMAGE_MAX, isOwnAsset, MA
 import {
   cleanAppleRows, cleanCommission, cleanFxInput, cleanSalesRange, combinedCsv, commissionOf, mergeApple, refreshView,
 } from "./apple_revenue.ts";
+import { detailView as crashDetailView, listView as crashListView, parseCrashes } from "./crashes.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -1119,6 +1129,29 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const v = refreshView(out);
       await audit("apple_sales_refresh", ip, null, { from: r.from, to: r.to, days: v.days, ok: v.ok, empty: v.empty, not_ready: v.not_ready, failed: v.failed, configured: v.configured });
       return json(v);
+    }
+    case "crashes": {
+      const q = parseCrashes(body);
+      if ("error" in q) return json({ error: q.error }, 400);
+      if (q.op === "resolve") {
+        const { data, error } = await admin.rpc("bingr_admin_crash_resolve", { p_signature: q.signature, p_build: q.build });
+        if (error?.code === "PGRST202") return json({ error: "server_not_configured" }, 503);
+        if (error) throw new Error(error.message);
+        if (data == null) return json({ error: "not_found" }, 404);
+        await audit("crash_resolve", ip, null, { signature: q.signature, build: q.build });
+        return json({ ok: true, status: data });
+      }
+      if (q.op === "detail") {
+        const { data, error } = await admin.rpc("bingr_admin_crash_detail", { p_signature: q.signature, p_platform: q.platform, p_build: q.build, p_limit: q.limit });
+        if (error?.code === "PGRST202") return json({ error: "server_not_configured" }, 503);
+        if (error) throw new Error(error.message);
+        const v = crashDetailView(data);
+        return v ? json(v) : json({ error: "not_found" }, 404);
+      }
+      const { data, error } = await admin.rpc("bingr_admin_crashes", { p_platform: q.platform, p_build: q.build, p_status: q.status, p_limit: q.limit });
+      if (error?.code === "PGRST202") return json({ error: "server_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      return json(crashListView(data));
     }
     case "revenue_apple_set": {
       const now = new Date().toISOString(), rows: { key: string; value: unknown; updated_at: string }[] = [];

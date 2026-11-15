@@ -1105,3 +1105,7 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .rev-apple-form .btn{justify-self:start}
 .rev-apple-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end}
 @media (max-width:760px){.rev-apple-act{grid-template-columns:minmax(0,1fr)}.rev-src .rev-table th,.rev-src .rev-table td{font-size:13px}}
+/* Crashes (build 171) */
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;word-break:break-word}
+.crash-stack{margin:8px 0 0;padding:10px 12px;max-height:340px;overflow:auto;background:#0b0b0b;border:1px solid var(--line);border-radius:8px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;color:#d6d6d6}
+#crashBuildIn{width:110px;margin-left:6px}

@@ -225,6 +225,7 @@ struct SettingsView: View {
             prefToggle("Nieuwe antwoorden", "bubble.left.and.bubble.right", \.replies)
             prefToggle("Nieuwe builds", "arrow.down.circle", \.builds)
             prefToggle("Statuswijzigingen", "waveform.path.ecg", \.status)
+            prefToggle("Nieuwe of teruggekomen crashes", "exclamationmark.triangle", \.crashes)
             Button {
                 Task { await sendTest() }
             } label: {

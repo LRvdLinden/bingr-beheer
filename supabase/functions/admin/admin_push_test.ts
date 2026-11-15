@@ -36,6 +36,8 @@ Deno.test("admin_push: prefs precies vier booleans", () => {
   ok(cleanPrefs({ ...PREFS, extra: true }) === null, "extra sleutel");
   ok(cleanPrefs({ ...PREFS, status: "ja" }) === null, "geen boolean");
   ok(cleanPrefs([true, true, true, true]) === null, "lijst");
+  ok(JSON.stringify(cleanPrefs({ ...PREFS, crashes: false })) === JSON.stringify({ ...PREFS, crashes: false }), "build 171: crashes optioneel");
+  ok(cleanPrefs({ ...PREFS, crashes: "nee" }) === null, "crashes geen boolean");
 });
 
 Deno.test("admin_push: register controleert alles", () => {

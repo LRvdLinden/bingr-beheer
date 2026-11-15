@@ -46,6 +46,7 @@
       <button class="menu-it" type="button" role="menuitem" data-go="newsletter"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg><span>Nieuwsbrief</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="server"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg><span>Server</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2.5-6 4 12 2.5-6H22"/></svg><span>Status</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="crashes"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5h.01"/></svg><span>Crashes</span><span id="menuCrashBadge" class="tab-badge hidden"></span></button>
       <div class="menu-sep" role="separator"></div>
       <button class="menu-it" type="button" role="menuitem" data-go="downloads"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v9M8 12.5l4 4 4-4"/></svg><span>Downloads</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="settings"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Instellingen</span></button>
@@ -518,6 +519,23 @@
         <h2>Geschiedenis</h2>
         <p class="sub">Verstuurde edities met het aantal ontvangers. <b>Verstuurd</b> = aangenomen door de mailserver; of de mail in de inbox kwam, meldt die niet.</p>
         <div id="nlEditions" class="ph-list"></div>
+      </div>
+    </section>
+
+    <section id="tab-crashes" class="tab hidden">
+      <div class="row-head"><h1>Crashes</h1><span id="crashCount" class="sub"></span>
+        <div class="head-btns"><button id="crashRefresh" class="btn ghost small">Vernieuwen</button></div></div>
+      <p class="sub">Eigen crashrapporten van de apps en de webspeler (geen derde partij), gegroepeerd op handtekening. Opgeschoond in de app en op de server; na 90 dagen weg.</p>
+      <div class="sup-bar">
+        <div id="crashFilters" class="sup-filters" role="group" aria-label="Filter op status"></div>
+        <label class="sr" for="crashPlatform">Platform</label><select id="crashPlatform" class="rev-mode"><option value="">Alle platforms</option></select>
+        <label class="sr" for="crashBuild">Build</label><select id="crashBuild" class="rev-mode"><option value="">Alle builds</option></select>
+      </div>
+      <div class="table-wrap">
+        <table class="users crashes">
+          <thead><tr><th>Handtekening</th><th>Aantal</th><th>Platforms</th><th>Builds</th><th>Eerst gezien</th><th>Laatst gezien</th><th>Status</th></tr></thead>
+          <tbody id="crashRows"></tbody>
+        </table>
       </div>
     </section>
 

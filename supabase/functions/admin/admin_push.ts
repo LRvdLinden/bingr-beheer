@@ -32,13 +32,19 @@ export function cleanApnsToken(v: unknown): string | null {
   const s = v.trim();
   return /^[0-9a-fA-F]{64,200}$/.test(s) && s.length % 2 === 0 ? s.toLowerCase() : null;
 }
-/** Precies de vier schakelaars als booleans; ontbreekt er een of is er een andere sleutel, dan null. */
+/** build 171: optionele schakelaar (oudere beheer-apps sturen hem niet mee; ontbreekt hij, dan staat hij aan). */
+export const OPTIONAL_PREF_KEYS = ["crashes"] as const;
+/** Precies de vier schakelaars als booleans (plus optioneel `crashes`); ontbreekt er een of is er een andere sleutel, dan null. */
 export function cleanPrefs(v: unknown): Prefs | null {
   if (!isObj(v)) return null;
   const o = v as J;
-  if (Object.keys(o).some((k) => !(PREF_KEYS as readonly string[]).includes(k))) return null;
+  const known = [...PREF_KEYS, ...OPTIONAL_PREF_KEYS] as readonly string[];
+  if (Object.keys(o).some((k) => !known.includes(k))) return null;
   if (!PREF_KEYS.every((k) => typeof o[k] === "boolean")) return null;
-  return Object.fromEntries(PREF_KEYS.map((k) => [k, o[k]])) as Prefs;
+  if (OPTIONAL_PREF_KEYS.some((k) => k in o && typeof o[k] !== "boolean")) return null;
+  const out = Object.fromEntries(PREF_KEYS.map((k) => [k, o[k]])) as Prefs & { crashes?: boolean };
+  if (typeof o.crashes === "boolean") out.crashes = o.crashes;
+  return out;
 }
 
 /** Invoer van admin_push_register controleren. */
