@@ -23,7 +23,7 @@ struct CrashesView: View {
                 .pickerStyle(.segmented)
                 Picker("Platform", selection: $platform) {
                     Text("Alle platforms").tag("")
-                    ForEach(data?.platforms ?? [], id: \.self) { p in Text(Fmt.platform(p)).tag(p) }
+                    ForEach(data?.platforms ?? [], id: \.self) { p in Text(Labels.platform(p)).tag(p) }
                 }
                 Picker("Build", selection: $build) {
                     Text("Alle builds").tag(0)
@@ -54,6 +54,12 @@ struct CrashesView: View {
         .task(id: "\(filter)|\(platform)|\(build)") { await load() }
     }
 
+    private static func meta(_ g: CrashGroup) -> String {
+        let plats: [String] = g.platforms.map { Labels.platform($0) }
+        let builds: [String] = g.builds.map { String($0) }
+        return plats.joined(separator: ", ") + " · builds " + builds.joined(separator: ", ") + " · laatst " + Fmt.ago(g.lastSeen)
+    }
+
     private func row(_ g: CrashGroup) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(g.signature).font(.system(.subheadline, design: .monospaced).weight(.semibold)).lineLimit(2)
@@ -62,7 +68,7 @@ struct CrashesView: View {
                 Chip(text: g.kindText)
                 Text("\(Fmt.num(g.occurrences))× · \(Fmt.num(g.devices)) apparaten").font(.caption).foregroundStyle(Color.textSecondary)
             }
-            Text("\(g.platforms.map { Fmt.platform($0) }.joined(separator: ", ")) · builds \(g.builds.map(String.init).joined(separator: ", ")) · laatst \(Fmt.ago(g.lastSeen))")
+            Text(Self.meta(g))
                 .font(.caption).foregroundStyle(Color.textDim).lineLimit(2)
         }
         .padding(.vertical, 2)
@@ -112,9 +118,8 @@ struct CrashDetailView: View {
             Section("Laatste rapporten") {
                 ForEach(detail?.reports ?? []) { r in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(Fmt.platform(r.platform)) · \(r.appVersion ?? r.build.map { "build \($0)" } ?? "")").font(.subheadline.weight(.semibold))
-                        Text([r.osVersion, r.deviceModel, Fmt.dateTime(r.at), r.count > 1 ? "\(r.count)×" : nil, r.signedIn ? nil : "niet ingelogd"]
-                            .compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(Color.textDim)
+                        Text(Self.reportTitle(r)).font(.subheadline.weight(.semibold))
+                        Text(Self.reportMeta(r)).font(.caption).foregroundStyle(Color.textDim)
                         if let m = r.message { Text(m).font(.caption) }
                         if let s = r.stack, !s.isEmpty {
                             DisclosureGroup("Stack") {
@@ -158,5 +163,20 @@ struct CrashDetailView: View {
             await load()
             onChange()
         } catch { session.report(error) }
+    }
+
+    private static func reportTitle(_ r: CrashReport) -> String {
+        let version: String = r.appVersion ?? r.build.map { "build \($0)" } ?? ""
+        return Labels.platform(r.platform) + " · " + version
+    }
+
+    private static func reportMeta(_ r: CrashReport) -> String {
+        var parts: [String] = []
+        if let v = r.osVersion { parts.append(v) }
+        if let m = r.deviceModel { parts.append(m) }
+        parts.append(Fmt.dateTime(r.at))
+        if r.count > 1 { parts.append("\(r.count)×") }
+        if !r.signedIn { parts.append("niet ingelogd") }
+        return parts.joined(separator: " · ")
     }
 }
