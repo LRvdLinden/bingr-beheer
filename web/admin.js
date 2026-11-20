@@ -1276,12 +1276,21 @@
   $("revRefresh").onclick = () => { revCache.clear(); loadRevenue(); };
   $("revCsv").onclick = () => revDownloadCsv();
 
+  // build 181: premium_stats kan (oude functie, rooktest) velden missen; altijd met lege standaardwaarden werken
+  function pmStatsNorm(s) {
+    const r = (s && typeof s === "object") ? s : {};
+    const rev = (x) => ({ gross: 0, refunded: 0, count: 0, ...(x || {}) });
+    return { active: 0, trialing: 0, past_due: 0, canceled: 0, expired_30d: 0, mrr_cents: 0, trials_started: 0, trials_converted: 0, unclaimed: 0, ...r,
+      by: Array.isArray(r.by) ? r.by : [], monthly: Array.isArray(r.monthly) ? r.monthly : [],
+      lifetime49: { count: 0, gross: 0, ...(r.lifetime49 || {}) },
+      stripe_revenue: { live: rev(r.stripe_revenue?.live), test: rev(r.stripe_revenue?.test) } };
+  }
   // build 181: abonnementen op de omzetpagina (zelfde totalen als de tab Premium)
   async function loadRevPremium() {
     const el = $("revPmStats");
     if (!el) return;
     let s;
-    try { s = await call("premium_stats"); } catch (e) { el.innerHTML = e.code === "premium_not_configured" ? '<p class="sub">Nog niet ingericht (workflow Backend).</p>' : ""; return; }
+    try { s = await call("premium_stats"); } catch (e) { el.innerHTML = e.code === "premium_not_configured" ? '<p class="sub">Nog niet ingericht (workflow Backend).</p>' : ""; return; } s = pmStatsNorm(s);
     const tile = (l, v, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="h">${esc(h)}</div></div>`;
     const st = (p) => s.by.filter((r) => r.provider === p).reduce((a, r) => ({ n: a.n + r.active, t: a.t + r.trialing, m: a.m + r.mrr_cents }), { n: 0, t: 0, m: 0 });
     const ap = st("apple"), sp = st("stripe");
@@ -2446,7 +2455,7 @@
     const el = $("pmStats");
     el.innerHTML = '<p class="sub">Laden…</p>';
     let s;
-    try { s = await call("premium_stats"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    try { s = await call("premium_stats"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; } s = pmStatsNorm(s);
     const tile = (l, n, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${esc(n)}</div><div class="h">${esc(h)}</div></div>`;
     const conv = s.trials_started ? `${Math.round((s.trials_converted / s.trials_started) * 100)}% omgezet` : "";
     el.innerHTML = tile("Actief (betaald)", nf.format(s.active), s.past_due ? `${nf.format(s.past_due)} betaling mislukt` : "")
