@@ -259,7 +259,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, premium: loadPremium, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -271,7 +271,7 @@
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
     if (location.hash === "#crashes") tab = "crashes";
-    showTab(["overview", "insights", "revenue", "lifetime", "users", "support", "messages", "newsletter", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "revenue", "lifetime", "premium", "users", "support", "messages", "newsletter", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -1276,7 +1276,23 @@
   $("revRefresh").onclick = () => { revCache.clear(); loadRevenue(); };
   $("revCsv").onclick = () => revDownloadCsv();
 
+  // build 181: abonnementen op de omzetpagina (zelfde totalen als de tab Premium)
+  async function loadRevPremium() {
+    const el = $("revPmStats");
+    if (!el) return;
+    let s;
+    try { s = await call("premium_stats"); } catch (e) { el.innerHTML = e.code === "premium_not_configured" ? '<p class="sub">Nog niet ingericht (workflow Backend).</p>' : ""; return; }
+    const tile = (l, v, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="h">${esc(h)}</div></div>`;
+    const st = (p) => s.by.filter((r) => r.provider === p).reduce((a, r) => ({ n: a.n + r.active, t: a.t + r.trialing, m: a.m + r.mrr_cents }), { n: 0, t: 0, m: 0 });
+    const ap = st("apple"), sp = st("stripe");
+    el.innerHTML = tile("MRR", euro(s.mrr_cents), "maand ×1, halfjaar ÷6, jaar ÷12") + tile("Stripe", `${nf.format(sp.n)} actief`, `${nf.format(sp.t)} in proef · ${euro(sp.m)} MRR`)
+      + tile("Apple", `${nf.format(ap.n)} actief`, `${nf.format(ap.t)} in proef · ${euro(ap.m)} MRR`) + tile("Proeven", nf.format(s.trials_started), `${nf.format(s.trials_converted)} omgezet`)
+      + tile("Opgezegd", nf.format(s.canceled), `${nf.format(s.expired_30d)} verlopen (30 d)`) + tile("Stripe-omzet abonnementen", euro(s.stripe_revenue.live.gross - s.stripe_revenue.live.refunded), "live, na terugbetalingen");
+    $("revPmBy").innerHTML = s.by.length ? `<table class="rev-table"><thead><tr><th>Aanbieder</th><th>Plan</th><th>Actief</th><th>Proef</th><th>Opgezegd</th><th>MRR</th></tr></thead><tbody>${
+      s.by.map((r) => `<tr><th scope="row">${r.provider === "apple" ? "Apple" : "Stripe"}</th><td>${esc(PM_PLAN[r.plan] || r.plan)}</td><td>${nf.format(r.active)}</td><td>${nf.format(r.trialing)}</td><td>${nf.format(r.canceled)}</td><td>${esc(euro(r.mrr_cents))}</td></tr>`).join("")}</tbody></table>` : "";
+  }
   async function loadRevenue() {
+    loadRevPremium();
     if (!$("revPeriods").childElementCount) { renderRevControls(); renderRevMode(null); }
     const seq = ++revSeq, key = revCacheKey();
     $("revNow").disabled = revOffset === 0; $("revNext").disabled = revOffset === 0;
@@ -1970,6 +1986,7 @@
       </form>
       ${planSection(u)}
       ${planObj(u.plan).plan !== "lifetime" ? '<div id="uAssign" class="plan-box u-assign"></div>' : ""}
+      <div id="uPremTest" class="plan-box u-assign"></div>
       <h3>Apparaten (${(u.devices || []).length})</h3>
       ${(u.devices || []).map((d) => `<div class="dev"><div class="ic">${icon(d.platform)}</div><div>
         <div class="nm">${esc(d.name || pname(d.platform))}</div>
@@ -2049,6 +2066,7 @@
     } else wireBlockForm(u);
     wirePlan(u);
     wireAssign(u);
+    wirePremTest(u);
     wireDelete(u);
   }
   // servers van dit account (user_detail.servers): alleen het adres van Xtream-bronnen (schema + host + poort), de naam die de
@@ -2372,6 +2390,142 @@
     loadLifetimeStats();
     loadUnclaimed();
   }
+  // ---- build 181: Bingr Premium (premium_settings, premium_stats, premium_setup, premium_test, premium_mailing) ----
+  // Alleen instellingen en totalen. Aanzetten, datums, prijzen op de site en prijzen vragen een bevestiging (409).
+  const PM_CONFIRM = {
+    enable: "Premium gaat AAN (hoofdschakelaar). Dat doet pas iets met een datum voor web en Android of Apple, of voor testaccounts.",
+    new_from_web: "Nieuwe accounts op web, Windows, Android en Android TV moeten vanaf deze datum een plan kiezen (met proef).",
+    new_from_apple: "Nieuwe accounts in de Apple-apps moeten vanaf deze datum een plan kiezen. Alleen doen na de goedkeuring van Apple.",
+    existing_from: "Het moment waarop bestaande gratis accounts een plan moeten kiezen verandert.",
+    show_prices: "De nieuwe prijzen worden zichtbaar op bingr.online en /upgrade/.",
+    prices: "De prijzen veranderen. Maak daarna opnieuw de Stripe-producten aan; lopende abonnementen houden hun prijs.",
+    trial: "De proef voor nieuwe accounts verandert terwijl Premium aan staat.",
+    setup: "Producten, prijzen en de Customer Portal echt aanmaken in Stripe.",
+  };
+  const PM_WARN = {
+    stripe_not_ready: "De Stripe-prijzen van de huidige modus ontbreken: niemand kan afrekenen. Eerst \u201cStripe-producten aanmaken\u201d.",
+    apple_before_web: "Apple doet eerder mee dan web en Android.",
+    existing_before_new: "Bestaande accounts moeten eerder kiezen dan de datum voor nieuwe accounts.",
+    dates_without_enabled: "Er staan datums, maar de hoofdschakelaar staat uit: ze doen nu niets.",
+    test_users: "Er staan testaccounts aan: die zien Premium al.",
+  };
+  const pmWarnText = (keys) => (keys || []).map((k) => PM_WARN[k] || k).join("\n");
+  async function pmCall(action, data) {
+    try { return await call(action, data); }
+    catch (e) {
+      if (e.code !== "confirm_required") throw e;
+      const keys = e.body?.confirm || [], w = pmWarnText(e.body?.warnings);
+      if (!confirm(`Weet je het zeker?\n\n${keys.map((k) => "• " + (PM_CONFIRM[k] || k)).join("\n")}${w ? "\n\n" + w : ""}`)) return null;
+      return call(action, { ...data, confirm: true });
+    }
+  }
+  let pmCur = null;
+  const PM_PLAN = { month: "Maand", half: "Halfjaar", year: "Jaar" };
+  async function loadPremium() {
+    $("pmState").innerHTML = '<p class="sub">Laden…</p>';
+    let r;
+    try { r = await call("premium_settings"); } catch (e) { if (e.code !== "auth") $("pmState").innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    pmCur = r; const v = r.settings, ph = r.phase, now = Date.now();
+    const when = (d) => (d ? fmtNl(d) + (Date.parse(d) <= now ? " (geldt nu)" : "") : "uit");
+    const chip = ph.web || ph.apple ? (ph.existing ? ["Aan, ook voor bestaande accounts", "bad"] : ["Aan voor nieuwe accounts", "warn"]) : v.enabled ? ["Aan, nog geen groep", "warn"] : ["Uit", ""];
+    $("pmState").innerHTML = `<h2>Stand <span class="chip ${chip[1]}">${esc(chip[0])}</span></h2>
+      <p class="sub">Web en Android ${esc(when(v.new_from_web))} · Apple-apps ${esc(when(v.new_from_apple))} · bestaande gratis accounts ${esc(v.existing_from ? fmtNl(v.existing_from) : "—")} · proef ${v.trial_days ? nf.format(v.trial_days) + " dagen" : "geen"} · prijzen op de site ${v.show_prices_web ? "aan" : "uit"} · Stripe ${esc(r.mode || "onbekend")}${ph.test ? ` · ${nf.format(ph.test)} testaccount${ph.test === 1 ? "" : "s"}` : ""}</p>
+      ${r.warnings?.length ? `<p class="lt-warn">${esc(pmWarnText(r.warnings))}</p>` : ""}
+      <ol class="lt-steps"><li>Stripe-producten aanmaken (eerst droog, met de live-sleutel opnieuw).</li><li>Test met je eigen (gratis) testaccount.</li><li>Prijzen tonen op bingr.online.</li><li>Hoofdschakelaar aan en de datum voor web en Android.</li><li>Na de goedkeuring van Apple: de datum voor de Apple-apps.</li><li>Bestaande gratis accounts: standaard 1 december 2026 00:01.</li></ol>`;
+    $("pmEnabled").checked = v.enabled; $("pmShow").checked = v.show_prices_web;
+    $("pmWeb").value = fromIso(v.new_from_web); $("pmApple").value = fromIso(v.new_from_apple); $("pmExisting").value = fromIso(v.existing_from);
+    $("pmTrial").value = v.trial_days; $("pmGrace").value = v.grace_days;
+    ["month", "half", "year", "lifetime"].forEach((k) => { $("pmP" + k).value = v.prices[k]; });
+    $("pmWarn").hidden = true;
+    $("pmTests").innerHTML = v.test_users.length
+      ? `<ul class="lt-list">${v.test_users.map((id) => `<li><code>${esc(id)}</code> <button class="btn ghost small" type="button" data-pm-off="${esc(id)}">Uit</button></li>`).join("")}</ul>` : '<p class="sub">Geen testaccounts.</p>';
+    $("pmTests").querySelectorAll("[data-pm-off]").forEach((b) => { b.onclick = () => pmTest(b.dataset.pmOff, false); });
+    loadPremiumStats(); loadPremiumMail();
+  }
+  async function loadPremiumStats() {
+    const el = $("pmStats");
+    el.innerHTML = '<p class="sub">Laden…</p>';
+    let s;
+    try { s = await call("premium_stats"); } catch (e) { if (e.code !== "auth") el.innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
+    const tile = (l, n, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${esc(n)}</div><div class="h">${esc(h)}</div></div>`;
+    const conv = s.trials_started ? `${Math.round((s.trials_converted / s.trials_started) * 100)}% omgezet` : "";
+    el.innerHTML = tile("Actief (betaald)", nf.format(s.active), s.past_due ? `${nf.format(s.past_due)} betaling mislukt` : "")
+      + tile("In proef", nf.format(s.trialing), `${nf.format(s.trials_started)} proeven gestart${conv ? " · " + conv : ""}`)
+      + tile("Opgezegd", nf.format(s.canceled), `nog actief tot het einde van de periode · ${nf.format(s.expired_30d)} verlopen (30 d)`)
+      + tile("MRR", euro(s.mrr_cents), "maand ×1, halfjaar ÷6, jaar ÷12")
+      + tile("Lifetime € 49,99", nf.format(s.lifetime49.count), euro(s.lifetime49.gross))
+      + tile("Stripe-omzet (live)", euro(s.stripe_revenue.live.gross), `${nf.format(s.stripe_revenue.live.count)} betalingen${s.stripe_revenue.live.refunded ? " · " + euro(s.stripe_revenue.live.refunded) + " terug" : ""}`)
+      + (s.unclaimed ? tile("Niet gekoppeld", nf.format(s.unclaimed), "gast-abonnementen zonder account") : "");
+    $("pmBy").innerHTML = s.by.length ? `<table class="rev-table"><thead><tr><th>Aanbieder</th><th>Plan</th><th>Actief</th><th>Proef</th><th>Opgezegd</th><th>MRR</th></tr></thead><tbody>${
+      s.by.map((r) => `<tr><th scope="row">${r.provider === "apple" ? "Apple" : "Stripe"}</th><td>${esc(PM_PLAN[r.plan] || r.plan)}</td><td>${nf.format(r.active)}</td><td>${nf.format(r.trialing)}</td><td>${nf.format(r.canceled)}</td><td>${esc(euro(r.mrr_cents))}</td></tr>`).join("")}</tbody></table>`
+      + (s.monthly.length ? `<p class="sub">Stripe-abonnementen per maand: ${esc(s.monthly.filter((m) => m.mode === "live").map((m) => `${m.month} ${euro(m.gross - m.refunded)} (${m.count})`).join(" · ") || "nog niets in live")}. Apple-abonnementen staan bij Omzet (App Store Connect).</p>` : "")
+      : '<p class="sub">Nog geen abonnementen.</p>';
+  }
+  async function loadPremiumMail() {
+    let m;
+    try { m = await call("premium_mailing"); } catch { return; }
+    pmMailDraft = m;
+    $("pmMail").innerHTML = ["nl", "en"].map((l) => `<details><summary>${l === "nl" ? "Nederlands" : "Engels"}: ${esc(m[l].subject)}</summary><pre class="pm-pre">${esc(m[l].body)}</pre><p class="sub">Knop: ${esc(m[l].button)} → ${esc(m.url)}</p></details>`).join("");
+  }
+  let pmMailDraft = null;
+  $("pmMailFill").onclick = () => {
+    if (!pmMailDraft) return;
+    const set = (id, v) => { const el = $(id); if (el) { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); } };
+    const svc = document.querySelector('input[name="mlAudience"][value="service"]');
+    if (svc) { svc.checked = true; svc.dispatchEvent(new Event("change", { bubbles: true })); }
+    set("mlSubNl", pmMailDraft.nl.subject); set("mlBodyNl", pmMailDraft.nl.body); set("mlBtnNl", pmMailDraft.nl.button);
+    set("mlSubEn", pmMailDraft.en.subject); set("mlBodyEn", pmMailDraft.en.body); set("mlBtnEn", pmMailDraft.en.button);
+    set("mlBtnUrl", pmMailDraft.url);
+    // als concept bewaren (Eigen mailing zet bij het openen het bewaarde concept terug)
+    mlSave();
+    showTab("newsletter");
+    toast("Concept staat in Eigen mailing. Er is niets verstuurd.");
+  };
+  async function pmTest(id, on) {
+    try { await call("premium_test", { user_id: id, on }); toast(on ? "Premium-test staat aan voor dit account." : "Premium-test staat uit voor dit account."); pmCur = null; if (loaded.premium) loadPremium(); return true; }
+    catch (e) { if (e.code !== "auth") toast(errText(e)); return false; }
+  }
+  async function wirePremTest(u) {
+    const box = $("uPremTest");
+    if (!box) return;
+    let r = pmCur;
+    if (!r) { try { r = await call("premium_settings"); pmCur = r; } catch { box.innerHTML = ""; return; } }
+    const on = r.settings.test_users.includes(String(u.id).toLowerCase());
+    box.innerHTML = `<label>Premium testen <span class="sub">${on ? "dit account ziet Premium al (als nieuw, met proef)" : "dit account ziet Premium alsof alles aan staat"}</span></label>
+      <div class="form-btns"><button id="uPremBtn" class="btn ghost" type="button">${on ? "Premium-test uit" : "Premium testen met dit account"}</button></div>`;
+    $("uPremBtn").onclick = async () => { $("uPremBtn").disabled = true; if (await pmTest(u.id, !on)) wirePremTest(u); else $("uPremBtn").disabled = false; };
+  }
+  $("pmRefresh").onclick = loadPremium;
+  const pmNow = () => fromIso(new Date(Date.now() + 60000).toISOString());
+  $("pmWebNow").onclick = () => { $("pmWeb").value = pmNow(); };
+  $("pmAppleNow").onclick = () => { $("pmApple").value = pmNow(); };
+  $("pmForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $("pmErr"); err.textContent = "";
+    const iso = (id) => ($(id).value ? toAmsIso($(id).value) : null);
+    const set = {
+      enabled: $("pmEnabled").checked, show_prices_web: $("pmShow").checked,
+      new_from_web: iso("pmWeb"), new_from_apple: iso("pmApple"), existing_from: iso("pmExisting"),
+      trial_days: Number($("pmTrial").value), grace_days: Number($("pmGrace").value),
+      prices: Object.fromEntries(["month", "half", "year", "lifetime"].map((k) => [k, Number($("pmP" + k).value)])),
+    };
+    $("pmSave").disabled = true;
+    try {
+      const r = await pmCall("premium_settings", { set });
+      if (r) { toast("Premium opgeslagen. De apps nemen het binnen een paar minuten over."); loadPremium(); }
+    } catch (x) { if (x.code !== "auth") err.textContent = errText(x); }
+    finally { $("pmSave").disabled = false; }
+  };
+  const pmSetupText = (r) => `${r.dry_run ? "Droog" : "Klaar"} (Stripe ${r.mode || "?"}): producten ${[r.products.sub, r.products.lifetime].filter(Boolean).length}/2, prijzen ${["month", "half", "year", "lifetime"].filter((k) => r.prices[k]).length}/4, portal ${r.portal ? "ja" : "nee"}${r.created?.length ? ` · aangemaakt: ${r.created.join(", ")}` : ""}.`;
+  async function pmSetup(dry) {
+    $("pmSetupDry").disabled = $("pmSetup").disabled = true; $("pmSetupOut").textContent = "Bezig…";
+    try { const r = await pmCall("premium_setup", { dry_run: dry }); $("pmSetupOut").textContent = r ? pmSetupText(r) : ""; if (r && !dry) loadPremium(); }
+    catch (e) { if (e.code !== "auth") $("pmSetupOut").textContent = errText(e); }
+    finally { $("pmSetupDry").disabled = $("pmSetup").disabled = false; }
+  }
+  $("pmSetupDry").onclick = () => pmSetup(true);
+  $("pmSetup").onclick = () => pmSetup(false);
+
   // aanvulling 1: aankopen zonder account (purchases_unclaimed); per aankoop alleen status, bedrag, datum en aanbieder
   const PROVIDER = { stripe: "Website (Stripe)", apple: "Apple" };
   const unclaimedText = (p) => `#${p.id} · ${PROVIDER[p.provider] || p.provider} · ${euro(p.amount)} · ${PURCHASE_STATUS[p.status] || p.status} ${fmtDate(p.paid_at || p.created_at)}${p.mode === "test" ? " · test" : ""}`;

@@ -1109,3 +1109,10 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;word-break:break-word}
 .crash-stack{margin:8px 0 0;padding:10px 12px;max-height:340px;overflow:auto;background:#0b0b0b;border:1px solid var(--line);border-radius:8px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;color:#d6d6d6}
 #crashBuildIn{width:110px;margin-left:6px}
+/* build 181: Bingr Premium (tab Premium) */
+.lt-warn{margin:10px 0 0;padding:10px 14px;border-radius:10px;border:1px solid #ffc56b59;background:#ffc56b14;color:#ffd99a;font-size:14px;line-height:1.5;white-space:pre-line}
+.pm-by{margin-top:6px;overflow-x:auto}
+.pm-by .sub{margin-top:10px}
+.pm-mail details{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.pm-mail summary{cursor:pointer;font-weight:600}
+.pm-pre{white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.55;color:var(--sec);margin:10px 0 0}
