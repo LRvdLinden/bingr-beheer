@@ -116,6 +116,9 @@ struct UserDetailView: View {
 
                     if !u.plan.isLifetime && !unclaimed.isEmpty { assignCard(u) }
 
+                    // build 181: Premium testen met dit account (premium_test)
+                    PremiumTestCard(userID: userID)
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Apparaten (\(u.devices.count))").font(.headline)
                         if u.devices.isEmpty {

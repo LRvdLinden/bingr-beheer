@@ -75,6 +75,17 @@ struct SettingsView: View {
 
             pushSection
 
+            // build 181: Bingr Premium (stand, overzicht, schakelaars, Stripe-producten, testaccounts en de concept-mailing)
+            Section {
+                NavigationLink {
+                    PremiumView()
+                } label: {
+                    Label("Premium", systemImage: "crown")
+                }
+            } footer: {
+                Text("Bingr Premium: stand en overzicht (MRR, proeven, opzeggingen, Apple en Stripe), de schakelaars, Stripe-producten aanmaken, testaccounts en de concept-mailing.")
+            }
+
             // build 167: Bingr wordt alleen Lifetime (instellingen, kortingscodes en de mail)
             Section {
                 NavigationLink {

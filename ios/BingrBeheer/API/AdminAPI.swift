@@ -193,6 +193,13 @@ struct APIError: Error, LocalizedError {
         "code_after_cutover": "De code mag niet langer geldig zijn dan de overgangsdatum.",
         "bad_discount_pct": "Korting: een heel getal van 1 tot 90.",
         "bad_trial_days": "Proefperiode: een heel getal van 0 tot 90 dagen.",
+        // build 181: Bingr Premium
+        "premium_not_configured": "Premium is nog niet ingericht op de server (workflow Backend).",
+        "bad_prices": "Prijzen: hele bedragen in centen van 99 tot 99999.",
+        "lifetime_not_above_year": "Lifetime moet duurder zijn dan Jaarlijks.",
+        "existing_from_required": "Vul de datum voor bestaande gratis accounts in voordat je Premium aanzet.",
+        "bad_grace_days": "Respijt: een heel getal van 0 tot 16 dagen.",
+        "user_not_found": "Account niet gevonden.",
         // build 168: nieuwe accounts eerst kopen
         "bad_new_paid_from": "Nieuwe accounts eerst kopen (web en Android): geen geldige datum.",
         "bad_new_paid_from_apple": "Nieuwe accounts eerst kopen (Apple-apps): geen geldige datum.",

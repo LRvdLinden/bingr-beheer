@@ -2,6 +2,15 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 51,
+   "version": "1.0.0",
+   "date": "2026-11-20",
+   "items": [
+    {"type": "new", "nl": "Premium: stand en overzicht (MRR, proeven, opzeggingen, Apple en Stripe apart), schakelaars met uitleg en bevestiging, Stripe-producten aanmaken (droog en echt), testaccounts en de concept-mailing (in Eigen mailing zetten)"},
+    {"type": "new", "nl": "Premium testen in de details van een account en het blok Abonnementen op de omzetpagina"}
+   ]
+  },
+  {
    "build": 50,
    "version": "1.0.0",
    "date": "2026-11-15",

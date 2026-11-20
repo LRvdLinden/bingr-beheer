@@ -1,0 +1,79 @@
+name: Xcode-project (Beheer-app)
+
+# Maakt alleen het gegenereerde ios/BingrBeheer.xcodeproj (XcodeGen) voor een Xcode-zip van de Beheer-app die buiten
+# GitHub wordt samengesteld (naast de versleutelde aanlevering van Beheer-app voor de map builds/). Het resultaat gaat alleen VERSLEUTELD mee (als annotaties): met een willekeurige
+# AES-sleutel die met de meegegeven publieke RSA-sleutel is ingepakt. Zonder de bijbehorende private sleutel is het
+# resultaat onleesbaar. Er komen geen app-sleutels in (inject_keys.py draait hier niet).
+on:
+  workflow_dispatch:
+    inputs:
+      pubkey:
+        description: "Publieke RSA-sleutel (PEM, base64)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  xcodeproj:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Xcode-versie kiezen
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+
+      - name: Project genereren
+        working-directory: ios
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+
+      - name: Versleutelen
+        working-directory: ios
+        env:
+          PUBKEY: ${{ inputs.pubkey }}
+        run: |
+          set -euo pipefail
+          O="$RUNNER_TEMP/out"; mkdir -p "$O"
+          printf '%s' "$PUBKEY" | base64 -d > "$RUNNER_TEMP/pub.pem"
+          # alles wat XcodeGen maakt: het .xcodeproj plus de Info.plist- en entitlements-bestanden (niet in git)
+          { echo BingrBeheer.xcodeproj; git ls-files --others . | grep -E '\.(plist|entitlements)$'; } > "$RUNNER_TEMP/files"
+          cat "$RUNNER_TEMP/files"
+          tar -cJf "$RUNNER_TEMP/proj.tgz" -T "$RUNNER_TEMP/files"
+          openssl rand -out "$RUNNER_TEMP/k" 32
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in "$RUNNER_TEMP/proj.tgz" -out "$O/proj.tgz.enc" -pass file:"$RUNNER_TEMP/k"
+          openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/pub.pem" -pkeyopt rsa_padding_mode:oaep -in "$RUNNER_TEMP/k" -out "$O/key.enc"
+          git rev-parse HEAD > "$O/commit.txt"
+          rm -f "$RUNNER_TEMP/k" "$RUNNER_TEMP/proj.tgz"
+
+      # Artefacten zijn vanaf de plek waar de zip wordt samengesteld niet op te halen; daarom gaat het versleutelde
+      # resultaat in stukjes als annotaties mee (base64, 4000 tekens per stuk, max. 9 per stap, 5 stappen).
+      # Zonder de private sleutel zijn die onleesbaar.
+      - name: Versleuteld resultaat in stukken
+        run: |
+          set -euo pipefail
+          O="$RUNNER_TEMP/out"
+          { base64 < "$O/proj.tgz.enc" | tr -d '\n' | fold -w 4000; echo; } | grep -v '^$' > "$RUNNER_TEMP/chunks"
+          n=$(wc -l < "$RUNNER_TEMP/chunks")
+          [ "$n" -le 45 ] || { echo "::error::te groot voor annotaties ($n stukken)"; exit 1; }
+          echo "::notice title=xcp-key::$(base64 < "$O/key.enc" | tr -d '\n')"
+          echo "::notice title=xcp-commit::$(cat "$O/commit.txt")"
+          echo "::notice title=xcp-count::$n"
+      - name: Stukken 1-9
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 1 ] && [ $i -le 9 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 10-18
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 10 ] && [ $i -le 18 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 19-27
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 19 ] && [ $i -le 27 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 28-36
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 28 ] && [ $i -le 36 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 37-45
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 37 ] && [ $i -le 45 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
