@@ -170,6 +170,16 @@
 //                       expires_at, mailed_at, reminded_at, redeemed_at, mail_error} | null  (uit bingr_admin_user)
 //   revenue             build 167: by_provider / by_provider_all [{key: stripe|apple, label, count, gross}] (ranges.*.by_provider)
 //                       Functies billing en lifetime-notice met het geheim LIFETIME_ADMIN_SECRET in de header x-lifetime-secret.
+//   ---- Build 181: Bingr Premium (premium.ts / premium_test.ts; docs/ACCOUNT.md "Build 181" in iptv-ios-appletv) ----
+//   premium_settings    {token, set?: {enabled?, new_from_web?, new_from_apple?, existing_from?, trial_days?, show_prices_web?,
+//                       grace_days?, prices?}, confirm?} -> {settings, phase, mode, warnings} | {ok, …}  (RPC
+//                       bingr_admin_premium_settings; aanzetten, datums, prijzen op de site en prijzen vragen confirm: true, anders 409
+//                       {error:"confirm_required", confirm:[enable|new_from_web|new_from_apple|existing_from|show_prices|prices|trial]})
+//   premium_stats       {token} -> totalen per provider en plan, MRR, proeven, opzeggingen, Lifetime 49,99, Stripe-omzet per maand
+//   premium_setup       {token, dry_run? (standaard true), confirm?} -> {ok, dry_run, mode, products, prices, portal, created}
+//                       (billing admin_premium_setup: Stripe-producten, -prijzen en Customer Portal; echt alleen met confirm: true)
+//   premium_test        {token, user_id, on} -> {ok, test_users}  ("Test met mijn account"; RPC bingr_admin_premium_test)
+//   premium_mailing     {token} -> {nl:{subject, body, button}, en:{…}, url}  (concept voor bestaande gratis accounts; niet versturen)
 //   ---- Omzet: Apple (App Store Connect); apple_revenue.ts, docs/ACCOUNT.md "Omzet: Apple (App Store Connect)" in iptv-ios-appletv ----
 //   revenue             + sources:{web:{period,…,all: Totals}, apple:{period,…,all: Totals + apple_proceeds, refund_proceeds,
 //                       commission_gross, commission_back, linked, unconverted}}, apple:{configured, rows, first_date, last_date,
@@ -304,6 +314,11 @@ import {
   generateView, LIFETIME_CALLS, lifetimeCall, mailNeedsConfirm, mailView, settingsAudit, statsView,
   assignView, cleanAssign, cleanMailKind, previewView, unclaimedList,
 } from "./lifetime.ts";
+import {
+  cleanSet as premiumCleanSet, cleanUserId as premiumUserId, confirmNeeded as premiumConfirmNeeded, MAILING_DRAFT as PREMIUM_MAILING_DRAFT,
+  phase as premiumPhase, PREMIUM_CALLS, settingsView as premiumSettingsView, setupView as premiumSetupView, statsView as premiumStatsView,
+  warnings as premiumWarnings,
+} from "./premium.ts";
 import { checkImageUrl, type CheckResult, cleanUpload, IMAGE_MAX, isOwnAsset, MAIL_BUCKET, objectName, publicUrl } from "./image.ts";
 import {
   cleanAppleRows, cleanCommission, cleanFxInput, cleanSalesRange, combinedCsv, commissionOf, mergeApple, refreshView,
@@ -1353,6 +1368,56 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       await audit("lifetime_settings", ip, null, settingsAudit(saved, need));
       return json({ ok: true, ...saved, warnings: lifetimeWarnings(saved) });
     }
+    // ---- build 181: Bingr Premium (premium.ts) ----
+    case "premium_settings": {
+      const R = PREMIUM_CALLS.rpc.settings;
+      const { data: curRaw, error } = await admin.rpc(R, { p_premium: null });
+      if (error?.code === "PGRST202") return json({ error: "premium_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      const cur = premiumSettingsView(curRaw);
+      // Stripe-modus (test/live) voor de waarschuwing "price-id's ontbreken"; zonder billing: onbekend
+      const ping = await lifetimeCall(env("SUPABASE_URL"), env(LIFETIME_CALLS.secretEnv), "billing", "ping", {});
+      const mode = ping.status === 200 && (ping.out.mode === "live" || ping.out.mode === "test") ? ping.out.mode as "live" | "test" : null;
+      const view = (v: ReturnType<typeof premiumSettingsView>) => ({ settings: v, phase: premiumPhase(v), mode, warnings: premiumWarnings(v, mode) });
+      if (body.set === undefined) return json(view(cur));
+      const r = premiumCleanSet(body.set, cur);
+      if (!r.ok) return json({ error: r.error }, 400);
+      if (!r.changed) return json({ ok: true, ...view(cur) });
+      const need = premiumConfirmNeeded(cur, r.value);
+      if (need.length && body.confirm !== true) return json({ error: "confirm_required", confirm: need, warnings: premiumWarnings(r.value, mode) }, 409);
+      const { data: out, error: we } = await admin.rpc(R, { p_premium: r.patch });
+      if (we?.code === "22023") return json({ error: "bad_settings" }, 400);
+      if (we) throw new Error(we.message);
+      const saved = premiumSettingsView(out);
+      await audit("premium_settings", ip, null, { ...r.patch, confirmed: need.length ? need : undefined });
+      return json({ ok: true, ...view(saved) });
+    }
+    case "premium_stats": {
+      const { data, error } = await admin.rpc(PREMIUM_CALLS.rpc.stats);
+      if (error?.code === "PGRST202") return json({ error: "premium_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      return json(premiumStatsView(data));
+    }
+    case "premium_setup": {
+      const dry = body.dry_run !== false;
+      if (!dry && body.confirm !== true) return json({ error: "confirm_required", confirm: ["setup"] }, 409);
+      if (!(await rateOk(`admin-premium-setup:${ip}`, 20, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+      const { status, out } = await lifetimeCall(env("SUPABASE_URL"), env(LIFETIME_CALLS.secretEnv), PREMIUM_CALLS.setup.fn, PREMIUM_CALLS.setup.action, { dry_run: dry });
+      if (status !== 200) return json(out, status);
+      const v = premiumSetupView(out);
+      if (!dry) await audit("premium_setup", ip, null, { mode: v.mode, created: v.created });
+      return json(v);
+    }
+    case "premium_test": {
+      const uid = premiumUserId(body.user_id);
+      if (!uid || typeof body.on !== "boolean") return json({ error: "bad_request" }, 400);
+      const { data, error } = await admin.rpc(PREMIUM_CALLS.rpc.test, { p_user: uid, p_on: body.on });
+      if (error?.code === "22023") return json({ error: "user_not_found" }, 404);
+      if (error) throw new Error(error.message);
+      await audit("premium_test", ip, uid, { on: body.on });
+      return json({ ok: true, test_users: Array.isArray(data) ? data : [] });
+    }
+    case "premium_mailing": return json(PREMIUM_MAILING_DRAFT);
     case "lifetime_codes_stats": {
       // alleen totalen; nooit lijsten of adressen
       const { data, error } = await admin.rpc(LIFETIME_CALLS.rpc.stats);
