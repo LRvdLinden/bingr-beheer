@@ -10,6 +10,14 @@
    ]
   },
   {
+   "build": 53,
+   "version": "1.0.0",
+   "date": "2026-11-27",
+   "items": [
+    {"type": "improved", "nl": "Downloads: de bevestiging van de pushmelding toont de versie altijd als versie (build), bijvoorbeeld 1.1.2 (191), ook in de pushgeschiedenis"}
+   ]
+  },
+  {
    "build": 52,
    "version": "1.0.0",
    "date": "2026-11-27",
