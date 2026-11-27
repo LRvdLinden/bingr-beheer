@@ -2,6 +2,14 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 52,
+   "version": "1.0.0",
+   "date": "2026-11-27",
+   "items": [
+    {"type": "new", "nl": "Verzonden: welke mails de server heeft verstuurd (ontvanger, onderwerp, bron, tijd en of de mailserver de mail aannam), met filter op resultaat en bron, zoeken en de totalen van 7 dagen"}
+   ]
+  },
+  {
    "build": 51,
    "version": "1.0.0",
    "date": "2026-11-20",

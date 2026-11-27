@@ -106,10 +106,10 @@ struct TabLayout: View {
         }
         .sheet(item: $sheet) { s in
             NavigationStack {
-                if s == .downloads || s == .newsletter || s == .insights || s == .revenue || s == .server || s == .crashes {
+                if s == .downloads || s == .newsletter || s == .insights || s == .revenue || s == .server || s == .crashes || s == .mail {
                     Group {
                         if s == .downloads { DownloadsView() } else if s == .insights { InsightsView() } else if s == .revenue { RevenueView() }
-                        else if s == .server { ServerView() } else if s == .crashes { CrashesView() } else { NewsletterView() }
+                        else if s == .server { ServerView() } else if s == .crashes { CrashesView() } else if s == .mail { MailLogView() } else { NewsletterView() }
                     }
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button("Klaar") { sheet = nil } }
@@ -131,7 +131,7 @@ struct SplitLayout: View {
         NavigationSplitView(columnVisibility: $visibility) {
             List(selection: Binding<AppSection?>(get: { session.section }, set: { if let s = $0 { session.section = s } })) {
                 Section {
-                    ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes]) { s in
+                    ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes, .mail]) { s in
                         Label(s.title, systemImage: s.icon)
                             .badge(s == .support ? (session.supportCounts?.unread ?? 0) : 0)
                             .tag(s)
@@ -170,6 +170,7 @@ struct SectionScreen: View {
     @State private var showRevenue = false
     @State private var showServer = false
     @State private var showCrashes = false
+    @State private var showMail = false
     @State private var confirmLogout = false
     @State private var confirmLogoutAll = false
 
@@ -227,6 +228,14 @@ struct SectionScreen: View {
                     }
             }
         }
+        .sheet(isPresented: $showMail) {
+            NavigationStack {
+                MailLogView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Klaar") { showMail = false } }
+                    }
+            }
+        }
         .sheet(isPresented: $showRevenue) {
             NavigationStack {
                 RevenueView()
@@ -262,6 +271,7 @@ struct SectionScreen: View {
             case .server: ServerView()
             case .status: StatusView()
             case .crashes: CrashesView()
+            case .mail: MailLogView()
             case .downloads: DownloadsView()
             case .settings: SettingsView()
             }
@@ -278,6 +288,7 @@ struct SectionScreen: View {
                         else if compact && s == .revenue { showRevenue = true }
                         else if compact && s == .server { showServer = true }
                         else if compact && s == .crashes { showCrashes = true }
+                        else if compact && s == .mail { showMail = true }
                         else { session.section = s }
                     },
                     logout: { confirmLogout = true },
@@ -307,7 +318,7 @@ struct AppMenuButton: View {
     var body: some View {
         Menu {
             Section {
-                ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes]) { s in
+                ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes, .mail]) { s in
                     Button { select(s) } label: {
                         Label(title(s), systemImage: !compact && s == session.section ? "checkmark" : s.icon)
                     }
