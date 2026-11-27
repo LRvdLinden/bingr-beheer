@@ -186,8 +186,23 @@ def crashes_answer(req):
     return 200, {"groups": groups, "platforms": ["ios", "tvos"], "builds": [171, 170], "totals": {"groups": 1, "open": 0, "regressed": 1, "reports_24h": 4}}
 
 
+MAIL_LOG_CALLS = []
+
+
+def mail_log_answer(req):
+    """Nep-antwoord voor de tab Verzonden (contract supabase/functions/admin/mail_log.ts); verzonnen adressen."""
+    MAIL_LOG_CALLS.append(req)
+    items = [{"id": 2, "at": "2026-11-27T09:01:00Z", "source": "support", "to": "voorbeeld@example.com", "subject": "Re: je vraag", "ok": True, "error": ""},
+             {"id": 1, "at": "2026-11-27T09:00:00Z", "source": "status", "to": "ander@example.com", "subject": "Storing", "ok": False, "error": "smtp_550"}]
+    if req.get("status") == "failed":
+        items = [i for i in items if not i["ok"]]
+    return 200, {"items": items, "totals": {"total_7d": 2, "failed_7d": 1}, "sources": ["status", "support"]}
+
+
 def answer(req):
     a = req.get("action")
+    if a == "mail_log":
+        return mail_log_answer(req)
     if a == "crashes":
         return crashes_answer(req)
     if a == "revenue":
@@ -548,6 +563,40 @@ def crashes_smoke(b, base, errors, calls):
     return steps
 
 
+def mail_smoke(b, base, errors, calls):
+    """Tab Verzonden: lijst, filter op mislukt, bronfilter en zoeken. Geeft het aantal stappen terug."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'mail');
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"verzonden: {msg}")
+    page.goto(base + "#mail")
+    page.wait_for_selector("#tab-mail:not(.hidden) #mailRows tr td[data-l]", timeout=10000)
+    rows = page.inner_text("#mailRows")
+    check("voorbeeld@example.com" in rows and "Aangenomen" in rows and "Mislukt (smtp_550)" in rows, f"lijst: {rows!r}")
+    check("2 mails, 1 mislukt" in page.inner_text("#mailCount"), "teller")
+    check(page.eval_on_selector_all("#mailSource option", "els => els.map(e => e.value)") == ["", "status", "support"], "bronfilter")
+    page.click('#mailFilters [data-f="failed"]')
+    page.wait_for_timeout(500)
+    check("ander@example.com" in page.inner_text("#mailRows") and "voorbeeld@example.com" not in page.inner_text("#mailRows"), "filter mislukt")
+    page.fill("#mailSearch", "voorbeeld")
+    page.wait_for_timeout(900)
+    check(MAIL_LOG_CALLS and MAIL_LOG_CALLS[-1].get("q") == "voorbeeld", f"zoeken: {MAIL_LOG_CALLS[-1:]}")
+    page.close()
+    return steps
+
+
 def route_to(r, calls):
     if r.request.method == "OPTIONS":
         return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
@@ -611,6 +660,7 @@ def main():
         lt_steps = lifetime_smoke(b, base, errors, calls)
         rv_steps = revenue_smoke(b, base, errors, calls)
         cr_steps = crashes_smoke(b, base, errors, calls)
+        mail_steps = mail_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
     n = calls.count("insights")
@@ -623,6 +673,7 @@ def main():
     print(f"Lifetime-only OK: {lt_steps} stappen (laden, opslaan met bevestiging, codes droog en echt, mail droog en in batches)")
     print(f"Omzet OK: {rv_steps} stappen (website en Apple apart, bijgewerkt t/m, reeksen, bijwerken in stukken, commissie en koersen)")
     print(f"Crashes OK: {cr_steps} stappen (lijst, filters, details met stack, opgelost in build N)")
+    print(f"Verzonden OK: {mail_steps} stappen (lijst, teller, bronfilter, filter mislukt, zoeken)")
     print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 
 

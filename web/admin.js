@@ -259,7 +259,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, premium: loadPremium, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, premium: loadPremium, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, mail: loadMailLog, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -271,7 +271,7 @@
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
     if (location.hash === "#crashes") tab = "crashes";
-    showTab(["overview", "insights", "revenue", "lifetime", "premium", "users", "support", "messages", "newsletter", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "revenue", "lifetime", "premium", "users", "support", "messages", "newsletter", "mail", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -3270,6 +3270,41 @@
     }));
   }
   $("supRefresh").onclick = () => loadTickets();
+
+  // ---- Verzonden (verzendlogboek; actie mail_log, tabel mail_log in iptv-ios-appletv) ----
+  // Wat Bingr per e-mail verstuurd heeft: tijd, bron, ontvanger, onderwerp en of de mailserver de mail aannam. Nooit de inhoud.
+  const MAIL_FILTERS = [["all", "Alle"], ["ok", "Aangenomen"], ["failed", "Mislukt"]];
+  const MAIL_SOURCE = { auth: "Account", support: "Support", status: "Storingen", lifetime: "Lifetime", stripe: "Betalingen", beheer: "Beheer", overig: "Overig" };
+  let mailFilter = "all", mailTimer = 0;
+  function renderMailFilters(totals) {
+    $("mailFilters").innerHTML = MAIL_FILTERS.map(([k, l]) => {
+      const n = !totals ? null : k === "all" ? totals.total_7d : k === "failed" ? totals.failed_7d : totals.total_7d - totals.failed_7d;
+      return `<button type="button" data-f="${k}" class="${k === mailFilter ? "on" : ""}" aria-pressed="${k === mailFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`;
+    }).join("");
+    $("mailFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => { mailFilter = b.dataset.f; loadMailLog(); }));
+  }
+  async function loadMailLog() {
+    let r;
+    try { r = await call("mail_log", { status: mailFilter, source: $("mailSource").value || null, q: $("mailSearch").value.trim() || null }); }
+    catch (e) {
+      if (e.code === "auth") return;
+      $("mailRows").innerHTML = `<tr><td colspan="5" class="empty">${esc(e.code === "server_not_configured" ? "De server heeft het verzendlogboek nog niet (workflow Backend)." : errText(e))}</td></tr>`;
+      return;
+    }
+    renderMailFilters(r.totals);
+    fillSelect($("mailSource"), r.sources || [], "Alle bronnen", (v) => MAIL_SOURCE[v] || v);
+    $("mailCount").textContent = `Laatste 7 dagen: ${nf.format(r.totals.total_7d)} mails, ${nf.format(r.totals.failed_7d)} mislukt`;
+    $("mailRows").innerHTML = (r.items || []).map((m) => `<tr>
+      <td data-l="Tijd">${esc(fmtDateTime(m.at))}</td>
+      <td data-l="Bron"><span class="chip">${esc(MAIL_SOURCE[m.source] || m.source)}</span></td>
+      <td data-l="Ontvanger" class="subj"><div class="st">${esc(m.to)}</div></td>
+      <td data-l="Onderwerp">${esc(m.subject)}</td>
+      <td data-l="Resultaat">${m.ok ? '<span class="chip">Aangenomen</span>' : `<span class="chip bad">Mislukt${m.error ? ` (${esc(m.error)})` : ""}</span>`}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="empty">${mailFilter === "all" && !$("mailSearch").value ? "Nog geen verstuurde mails." : "Niets gevonden."}</td></tr>`;
+  }
+  $("mailRefresh").onclick = () => loadMailLog();
+  $("mailSource").onchange = () => loadMailLog();
+  $("mailSearch").oninput = () => { clearTimeout(mailTimer); mailTimer = setTimeout(loadMailLog, 350); };
 
   // ---- Crashes (build 171 van Bingr; actie crashes, docs/ACCOUNT.md "Build 171" in iptv-ios-appletv) ----
   // Groepen per handtekening met aantal, platforms, builds, eerst/laatst gezien en de status (open / opgelost in build N /

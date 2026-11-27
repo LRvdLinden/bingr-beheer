@@ -45,6 +45,7 @@
       <button class="menu-it" type="button" role="menuitem" data-go="support"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg><span>Support</span><span id="menuSupBadge" class="tab-badge hidden"></span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="messages"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Pushmeldingen</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="newsletter"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg><span>Nieuwsbrief</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="mail"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/><path d="M15 17.5l2 2 3.5-4"/></svg><span>Verzonden</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="server"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg><span>Server</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2.5-6 4 12 2.5-6H22"/></svg><span>Status</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="crashes"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5h.01"/></svg><span>Crashes</span><span id="menuCrashBadge" class="tab-badge hidden"></span></button>
@@ -590,6 +591,23 @@
         <table class="users crashes">
           <thead><tr><th>Handtekening</th><th>Aantal</th><th>Platforms</th><th>Builds</th><th>Eerst gezien</th><th>Laatst gezien</th><th>Status</th></tr></thead>
           <tbody id="crashRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-mail" class="tab hidden">
+      <div class="row-head"><div><h1>Verzonden</h1><p id="mailCount" class="sub"></p></div>
+        <div class="head-btns"><button id="mailRefresh" class="btn ghost small">Vernieuwen</button></div></div>
+      <p class="sub">Elke e-mail die Bingr verstuurt (accounts, support, storingen en Lifetime), met ontvanger, onderwerp en of de mailserver de mail <b>aannam</b>. Aangenomen is niet hetzelfde als afgeleverd: de ontvangende mailserver meldt dat niet terug, dus kijk bij twijfel ook in de spam. De inhoud van een mail wordt niet bewaard; na 90 dagen verdwijnt de regel. De nieuwsbrief staat er niet in.</p>
+      <div class="sup-bar">
+        <div id="mailFilters" class="sup-filters" role="group" aria-label="Filter op resultaat"></div>
+        <label class="sr" for="mailSource">Bron</label><select id="mailSource" class="rev-mode"><option value="">Alle bronnen</option></select>
+        <input id="mailSearch" class="search" type="search" placeholder="Zoek op ontvanger of onderwerp" aria-label="Zoek op ontvanger of onderwerp" autocomplete="off">
+      </div>
+      <div class="table-wrap">
+        <table class="users mails">
+          <thead><tr><th>Tijd</th><th>Bron</th><th>Ontvanger</th><th>Onderwerp</th><th>Resultaat</th></tr></thead>
+          <tbody id="mailRows"></tbody>
         </table>
       </div>
     </section>

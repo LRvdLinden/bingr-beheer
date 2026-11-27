@@ -191,6 +191,8 @@
 //                       error?}  (functie apple-sales backfill met het geheim APPLE_SALES_SECRET of de service role; in admin_audit met het bereik)
 //   revenue_apple_set   {token, fx_rates?: {USD: 0.92, …}, commission?: 0–50} -> {ok, fx_rates, commission}  (app_settings
 //                       fx_rates en apple_commission; vaste koersen, geen externe koers-API)
+//   mail_log            {token, status?: all|ok|failed, source?, q? (ontvanger of onderwerp), limit? (1-500, 200)} -> {items:[{id, at, source, to, subject,
+//                       ok, error}], totals:{total_7d, failed_7d}, sources}  (tabel mail_log in iptv-ios-appletv; mail_log.ts; nooit de inhoud van een mail)
 //   ---- Crashes (build 171 van Bingr); crashes.ts, docs/ACCOUNT.md "Build 171" in iptv-ios-appletv ----
 //   crashes             {token, op?: "list"|"detail"|"resolve", platform?, build?, status?: all|open|resolved|regressed, signature?,
 //                       resolved_build? (resolve; null = weer open), limit?}
@@ -324,6 +326,7 @@ import {
   cleanAppleRows, cleanCommission, cleanFxInput, cleanSalesRange, combinedCsv, commissionOf, mergeApple, refreshView,
 } from "./apple_revenue.ts";
 import { detailView as crashDetailView, listView as crashListView, parseCrashes } from "./crashes.ts";
+import { mailLogView, parseMailLog } from "./mail_log.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -598,7 +601,7 @@ const addressOf = (s: string) => (s.match(/<([^>]+)>/)?.[1] ?? s).trim();
 async function sendAccountMail(to: string, m: Mail, kind: "blocked" | "unblocked" | "deleted"): Promise<{ ok: boolean; error?: string }> {
   if (!smtpConfigured()) return { ok: false, error: "smtp_not_configured" };
   const base = { to, subject: m.subject, html: m.html, text: m.text, headers: { "Auto-Submitted": "auto-generated", "X-Bingr-Mail": `account-${kind}` } };
-  const tx = transport();
+  const tx = transport("beheer");
   try {
     try {
       await tx.sendMail({ ...base, from: SUPPORT_FROM(), replyTo: addressOf(SUPPORT_FROM()) });
@@ -1144,6 +1147,27 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const v = refreshView(out);
       await audit("apple_sales_refresh", ip, null, { from: r.from, to: r.to, days: v.days, ok: v.ok, empty: v.empty, not_ready: v.not_ready, failed: v.failed, configured: v.configured });
       return json(v);
+    }
+    case "mail_log": {
+      // Verzendlogboek (tab Verzonden): alleen ontvanger, onderwerp, bron en resultaat; nooit de inhoud van een mail.
+      const q = parseMailLog(body);
+      if ("error" in q) return json({ error: q.error }, 400);
+      let qb = admin.from("mail_log").select("id,at,source,to_addr,subject,ok,error").order("at", { ascending: false }).limit(q.limit);
+      if (q.status === "ok") qb = qb.eq("ok", true); else if (q.status === "failed") qb = qb.eq("ok", false);
+      if (q.source) qb = qb.eq("source", q.source);
+      if (q.q) qb = qb.or(`to_addr.ilike.%${q.q}%,subject.ilike.%${q.q}%`);
+      const { data, error } = await qb;
+      if (error && (error.code === "42P01" || error.code === "PGRST205")) return json({ error: "server_not_configured" }, 503);
+      if (error) throw new Error(error.message);
+      const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const [all, bad, src] = await Promise.all([
+        admin.from("mail_log").select("id", { count: "exact", head: true }).gte("at", since),
+        admin.from("mail_log").select("id", { count: "exact", head: true }).gte("at", since).eq("ok", false),
+        admin.from("mail_log").select("source").gte("at", since).limit(2000),
+      ]);
+      const sources = [...new Set(((src.data ?? []) as { source: string }[]).map((x) => x.source))].sort();
+      if (q.q) await audit("mail_log_zoek", ip, null, { q: true });
+      return json(mailLogView(data, { total: all.count, failed: bad.count }, sources));
     }
     case "crashes": {
       const q = parseCrashes(body);
