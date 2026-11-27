@@ -2737,7 +2737,7 @@
       const nums = [`${st.devices} apparaten`, st.sent ? `${st.sent} verstuurd` : "", st.failed ? `${st.failed} mislukt` : "", !st.done && st.queued ? `${st.queued} in wachtrij` : ""].filter(Boolean).join(", ");
       return `<span class="chip bld-push-sent" title="${esc(`Pushmelding verstuurd ${fmtDateTime(st.sent_at)}: ${nums}`)}">Push verstuurd${compact ? "" : ` ${esc(fmtDateTime(st.sent_at))} · ${esc(nums)}`}</span>`;
     }
-    return `<button class="btn small${compact ? " ghost" : ""}" type="button" data-push-p="${esc(p)}" data-push-f="${esc(b.file)}" data-push-b="${esc(b.build)}">Pushmelding versturen</button>`;
+    return `<button class="btn small${compact ? " ghost" : ""}" type="button" data-push-p="${esc(p)}" data-push-f="${esc(b.file)}" data-push-b="${esc(b.build)}" data-push-v="${esc(b.version || "")}">Pushmelding versturen</button>`;
   }
   // notities van een build (Bingr-changelog of de interne changelog van de Beheer-app, ios/changelog.json) als nette
   // opmaak: "### kop", "**Nieuw**" op een eigen regel = kopje, "- punt" = opsomming, "_datum_" = grijs, verder alinea's;
@@ -2954,7 +2954,8 @@
   }
   async function releasePush(btn) {
     const p = btn.dataset.pushP, build = btn.dataset.pushB;
-    if (!confirm(`Pushmelding "Bingr build ${build} is beschikbaar" versturen naar ${DL_PUSH[p]} met een oudere build?\n\nDoe dit pas als build ${build} goedgekeurd is en in de stores staat. Dit kan maar één keer per build.`)) return;
+    const vb = btn.dataset.pushV ? `${btn.dataset.pushV} (${build})` : `(${build})`;
+    if (!confirm(`Pushmelding "Bingr ${vb} is beschikbaar" versturen naar ${DL_PUSH[p]} met een oudere build?\n\nDoe dit pas als ${vb} goedgekeurd is en in de stores staat. Dit kan maar één keer per build.`)) return;
     const old = btn.textContent;
     btn.disabled = true; btn.textContent = "Versturen…";
     try {
@@ -3608,7 +3609,7 @@
     no_accounts: "Kies minstens één account.", too_many_accounts: "Kies hoogstens 500 accounts.", bad_account: "Ongeldig account in de lijst.",
     no_platforms: "Kies minstens één platform.", no_push_platform: "Apple TV en Android TV hebben geen systeem-push.",
   });
-  const pushTitle = (m) => (m.kind === "release" ? `Bingr ${m.version || ""} (Build ${m.build ?? "?"}) is beschikbaar` : m.title || (m.kind === "reminder" ? "Programmaherinnering" : "—"));
+  const pushTitle = (m) => (m.kind === "release" ? `Bingr ${m.version || ""} (${m.build ?? "?"}) is beschikbaar` : m.title || (m.kind === "reminder" ? "Programmaherinnering" : "—"));
 
   const targetMode = () => document.querySelector('input[name="pTarget"]:checked')?.value || "all";
   function preview() {

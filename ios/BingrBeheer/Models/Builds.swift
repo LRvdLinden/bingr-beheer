@@ -29,6 +29,13 @@ struct BuildInfo: Identifiable, Hashable {
     /// "build 105" (of de bestandsnaam als het buildnummer ontbreekt).
     var title: String { build.map { "build \($0)" } ?? file }
 
+    /// "1.1.2 (191)": altijd versie (build), zoals in de pushmelding.
+    var versionBuild: String {
+        guard let build else { return file }
+        if let version, !version.isEmpty { return "\(version) (\(build))" }
+        return "(\(build))"
+    }
+
     /// Versie, datum en grootte op één regel (voor oudere builds).
     var detail: String {
         [version, when, size.map { BuildInfo.sizeText($0) }].compactMap { $0 }.joined(separator: " · ")

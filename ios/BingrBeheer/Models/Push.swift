@@ -218,7 +218,7 @@ struct PushMessage: Identifiable {
     }
 
     var displayTitle: String {
-        if kind == "release" { return "Bingr \(version ?? "") (Build \(build.map(String.init) ?? "?")) is beschikbaar" }
+        if kind == "release" { return "Bingr \(version ?? "") (\(build.map(String.init) ?? "?")) is beschikbaar" }
         return title ?? (kind == "reminder" ? "Programmaherinnering" : "—")
     }
 

@@ -63,7 +63,7 @@ struct DownloadsView: View {
         .sheet(item: $shareLink) { link in
             BuildLinkSheet(link: link)
         }
-        .confirmationDialog(pushAsk.map { "Pushmelding voor \($0.build.title) versturen?" } ?? "",
+        .confirmationDialog(pushAsk.map { "Pushmelding voor \($0.build.versionBuild) versturen?" } ?? "",
                             isPresented: Binding(get: { pushAsk != nil }, set: { if !$0 { pushAsk = nil } }),
                             titleVisibility: .visible, presenting: pushAsk) { a in
             Button("Versturen naar \(ReleasePushState.audience[a.platform] ?? a.platform)") {
@@ -71,7 +71,7 @@ struct DownloadsView: View {
             }
             Button("Annuleren", role: .cancel) {}
         } message: { a in
-            Text("Doe dit pas als \(a.build.title) goedgekeurd is en in de stores staat. Alleen apparaten met een oudere build krijgen de melding, en dit kan maar één keer per build.")
+            Text("Doe dit pas als Bingr \(a.build.versionBuild) goedgekeurd is en in de stores staat. Alleen apparaten met een oudere build krijgen de melding, en dit kan maar één keer per build.")
         }
     }
 

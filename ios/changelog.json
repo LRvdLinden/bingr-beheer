@@ -2,11 +2,25 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 53,
+   "version": "1.0.0",
+   "date": "2026-11-27",
+   "items": [
+    {
+     "type": "improved",
+     "nl": "Downloads: de bevestiging van de pushmelding toont de versie altijd als versie (build), bijvoorbeeld 1.1.2 (191), ook in de pushgeschiedenis"
+    }
+   ]
+  },
+  {
    "build": 52,
    "version": "1.0.0",
    "date": "2026-11-27",
    "items": [
-    {"type": "new", "nl": "Verzonden: welke mails de server heeft verstuurd (ontvanger, onderwerp, bron, tijd en of de mailserver de mail aannam), met filter op resultaat en bron, zoeken en de totalen van 7 dagen"}
+    {
+     "type": "new",
+     "nl": "Verzonden: welke mails de server heeft verstuurd (ontvanger, onderwerp, bron, tijd en of de mailserver de mail aannam), met filter op resultaat en bron, zoeken en de totalen van 7 dagen"
+    }
    ]
   },
   {
@@ -14,8 +28,14 @@
    "version": "1.0.0",
    "date": "2026-11-20",
    "items": [
-    {"type": "new", "nl": "Premium: stand en overzicht (MRR, proeven, opzeggingen, Apple en Stripe apart), schakelaars met uitleg en bevestiging, Stripe-producten aanmaken (droog en echt), testaccounts en de concept-mailing (in Eigen mailing zetten)"},
-    {"type": "new", "nl": "Premium testen in de details van een account en het blok Abonnementen op de omzetpagina"}
+    {
+     "type": "new",
+     "nl": "Premium: stand en overzicht (MRR, proeven, opzeggingen, Apple en Stripe apart), schakelaars met uitleg en bevestiging, Stripe-producten aanmaken (droog en echt), testaccounts en de concept-mailing (in Eigen mailing zetten)"
+    },
+    {
+     "type": "new",
+     "nl": "Premium testen in de details van een account en het blok Abonnementen op de omzetpagina"
+    }
    ]
   },
   {
@@ -23,9 +43,18 @@
    "version": "1.0.0",
    "date": "2026-11-15",
    "items": [
-    {"type": "new", "nl": "Crashes: eigen crashrapporten van de Bingr-apps en de webspeler, gegroepeerd op handtekening met aantal, platforms, builds en eerst en laatst gezien"},
-    {"type": "new", "nl": "Crashes: filter op status, platform en build, details met de stacks, en markeren als opgelost in build N (komt hij daarna terug, dan staat hij op Teruggekomen)"},
-    {"type": "new", "nl": "Pushmelding bij een nieuwe of teruggekomen crash, aan of uit in Instellingen"}
+    {
+     "type": "new",
+     "nl": "Crashes: eigen crashrapporten van de Bingr-apps en de webspeler, gegroepeerd op handtekening met aantal, platforms, builds en eerst en laatst gezien"
+    },
+    {
+     "type": "new",
+     "nl": "Crashes: filter op status, platform en build, details met de stacks, en markeren als opgelost in build N (komt hij daarna terug, dan staat hij op Teruggekomen)"
+    },
+    {
+     "type": "new",
+     "nl": "Pushmelding bij een nieuwe of teruggekomen crash, aan of uit in Instellingen"
+    }
    ]
   },
   {
@@ -33,10 +62,22 @@
    "version": "1.0.0",
    "date": "2026-11-07",
    "items": [
-    {"type": "new", "nl": "Omzet: website (Stripe) en Apple (App Store) apart, met bruto, inhouding (Stripe-kosten of Apple-commissie), netto opbrengst, aantal en terugbetaald, en het totaal"},
-    {"type": "new", "nl": "Omzet: Apple-cijfers uit de dagrapporten van App Store Connect, met Apple bijgewerkt t/m en hoeveel Apple-aankopen aan een account gekoppeld zijn"},
-    {"type": "new", "nl": "Omzet: reeksen Website en Apple in de grafiek, en de knop Apple-omzet bijwerken voor een bereik"},
-    {"type": "new", "nl": "Omzet: Apple-commissie en vaste koersen instellen; bedragen zonder koers staan apart"}
+    {
+     "type": "new",
+     "nl": "Omzet: website (Stripe) en Apple (App Store) apart, met bruto, inhouding (Stripe-kosten of Apple-commissie), netto opbrengst, aantal en terugbetaald, en het totaal"
+    },
+    {
+     "type": "new",
+     "nl": "Omzet: Apple-cijfers uit de dagrapporten van App Store Connect, met Apple bijgewerkt t/m en hoeveel Apple-aankopen aan een account gekoppeld zijn"
+    },
+    {
+     "type": "new",
+     "nl": "Omzet: reeksen Website en Apple in de grafiek, en de knop Apple-omzet bijwerken voor een bereik"
+    },
+    {
+     "type": "new",
+     "nl": "Omzet: Apple-commissie en vaste koersen instellen; bedragen zonder koers staan apart"
+    }
    ]
   },
   {
@@ -44,8 +85,14 @@
    "version": "1.0.0",
    "date": "2026-11-07",
    "items": [
-    {"type": "new", "nl": "Lifetime-only: Nieuwe accounts eerst kopen, apart voor web en Android en voor de Apple-apps, met een bevestiging"},
-    {"type": "new", "nl": "Lifetime-only: waarschuwing als de datum voor de Apple-apps staat terwijl de Apple-koopknop uit staat"}
+    {
+     "type": "new",
+     "nl": "Lifetime-only: Nieuwe accounts eerst kopen, apart voor web en Android en voor de Apple-apps, met een bevestiging"
+    },
+    {
+     "type": "new",
+     "nl": "Lifetime-only: waarschuwing als de datum voor de Apple-apps staat terwijl de Apple-koopknop uit staat"
+    }
    ]
   },
   {
@@ -53,11 +100,26 @@
    "version": "1.0.0",
    "date": "2026-11-06",
    "items": [
-    {"type": "new", "nl": "Lifetime-only (Instellingen): aankondiging, overgangsdatum, korting, proefperiode, Apple-koopknop en EU-link, met een bevestiging bij wijzigingen met gevolgen voor klanten"},
-    {"type": "new", "nl": "Lifetime-only: kortingscodes genereren (droog en echt) met de totalen, en de mail Bingr wordt Lifetime testen, versturen en de herinnering versturen"},
-    {"type": "new", "nl": "Gebruikers: de kortingscode en de status bij de accountdetails"},
-    {"type": "new", "nl": "Omzet: per aanbieder (website via Stripe en Apple)"},
-    {"type": "new", "nl": "Lifetime-only: niet geclaimde aankopen (betaald zonder account) met aantal en status, en bij een account een aankoop handmatig koppelen"}
+    {
+     "type": "new",
+     "nl": "Lifetime-only (Instellingen): aankondiging, overgangsdatum, korting, proefperiode, Apple-koopknop en EU-link, met een bevestiging bij wijzigingen met gevolgen voor klanten"
+    },
+    {
+     "type": "new",
+     "nl": "Lifetime-only: kortingscodes genereren (droog en echt) met de totalen, en de mail Bingr wordt Lifetime testen, versturen en de herinnering versturen"
+    },
+    {
+     "type": "new",
+     "nl": "Gebruikers: de kortingscode en de status bij de accountdetails"
+    },
+    {
+     "type": "new",
+     "nl": "Omzet: per aanbieder (website via Stripe en Apple)"
+    },
+    {
+     "type": "new",
+     "nl": "Lifetime-only: niet geclaimde aankopen (betaald zonder account) met aantal en status, en bij een account een aankoop handmatig koppelen"
+    }
    ]
   },
   {
@@ -65,7 +127,10 @@
    "version": "1.0.0",
    "date": "2026-11-01",
    "items": [
-    {"type": "new", "nl": "Nieuwsbrief: blok Maandrecap (Jouw maand op Bingr, alleen Lifetime) met schakelaar, volgende verzending, testmail naar je eigen adres, voorbeeld met voorbeeldgegevens en de geschiedenis met aantallen"}
+    {
+     "type": "new",
+     "nl": "Nieuwsbrief: blok Maandrecap (Jouw maand op Bingr, alleen Lifetime) met schakelaar, volgende verzending, testmail naar je eigen adres, voorbeeld met voorbeeldgegevens en de geschiedenis met aantallen"
+    }
    ]
   },
   {
@@ -73,8 +138,14 @@
    "version": "1.0.0",
    "date": "2026-10-30",
    "items": [
-    {"type": "improved", "nl": "Abonnement: Gratis heeft standaard 2 apparaten; Verder kijken, kinderprofielen en OpenSubtitles horen bij Lifetime"},
-    {"type": "fixed", "nl": "Abonnement: de standaardlimieten onder de velden kloppen weer (Gratis 1 / 2, Lifetime 3 / 15)"}
+    {
+     "type": "improved",
+     "nl": "Abonnement: Gratis heeft standaard 2 apparaten; Verder kijken, kinderprofielen en OpenSubtitles horen bij Lifetime"
+    },
+    {
+     "type": "fixed",
+     "nl": "Abonnement: de standaardlimieten onder de velden kloppen weer (Gratis 1 / 2, Lifetime 3 / 15)"
+    }
    ]
   },
   {
@@ -82,7 +153,10 @@
    "version": "1.0.0",
    "date": "2026-10-30",
    "items": [
-    {"type": "new", "nl": "Nieuwsbrief: blok Maandoverzicht (Volgende maand op Bingr) met schakelaar, volgende verzending, testmail en voorbeeld van de volgende maand en de geschiedenis van verzonden maandedities met aantallen"}
+    {
+     "type": "new",
+     "nl": "Nieuwsbrief: blok Maandoverzicht (Volgende maand op Bingr) met schakelaar, volgende verzending, testmail en voorbeeld van de volgende maand en de geschiedenis van verzonden maandedities met aantallen"
+    }
    ]
   },
   {
@@ -90,8 +164,14 @@
    "version": "1.0.0",
    "date": "2026-10-30",
    "items": [
-    {"type": "new", "nl": "Pushmeldingen: knop Mislukte opnieuw proberen bij een verzending met mislukte bezorgingen, daarna de voortgang"},
-    {"type": "improved", "nl": "Pushmeldingen: per verzending de redenen van mislukte bezorgingen met aantallen (bv. Apple: te vaak een nieuw token)"}
+    {
+     "type": "new",
+     "nl": "Pushmeldingen: knop Mislukte opnieuw proberen bij een verzending met mislukte bezorgingen, daarna de voortgang"
+    },
+    {
+     "type": "improved",
+     "nl": "Pushmeldingen: per verzending de redenen van mislukte bezorgingen met aantallen (bv. Apple: te vaak een nieuw token)"
+    }
    ]
   },
   {
@@ -99,7 +179,10 @@
    "version": "1.0.0",
    "date": "2026-10-30",
    "items": [
-    {"type": "new", "nl": "Downloads: kaart Versies op bingr.online met per platform (Apple, Android) de live versie en de nieuwste bèta (versie, build, datum, label TestFlight of Beta), voorbeeld van de rode badge en de knop Neem nieuwste build"}
+    {
+     "type": "new",
+     "nl": "Downloads: kaart Versies op bingr.online met per platform (Apple, Android) de live versie en de nieuwste bèta (versie, build, datum, label TestFlight of Beta), voorbeeld van de rode badge en de knop Neem nieuwste build"
+    }
    ]
   },
   {
@@ -107,7 +190,10 @@
    "version": "1.0.0",
    "date": "2026-10-30",
    "items": [
-    {"type": "improved", "nl": "Samsung TV en LG TV vervallen: niet meer in Downloads, Instellingen (upgrade-link), Pushmeldingen en de lijsten met apparaten per platform"}
+    {
+     "type": "improved",
+     "nl": "Samsung TV en LG TV vervallen: niet meer in Downloads, Instellingen (upgrade-link), Pushmeldingen en de lijsten met apparaten per platform"
+    }
    ]
   },
   {
@@ -115,7 +201,10 @@
    "version": "1.0.0",
    "date": "2026-10-25",
    "items": [
-    {"type": "new", "nl": "Nieuwsbrief: schakelaars voor de secties Top 10 deze week en Populair (meteen opgeslagen, gelden voor de volgende editie en het voorbeeld)"}
+    {
+     "type": "new",
+     "nl": "Nieuwsbrief: schakelaars voor de secties Top 10 deze week en Populair (meteen opgeslagen, gelden voor de volgende editie en het voorbeeld)"
+    }
    ]
   },
   {
@@ -123,7 +212,10 @@
    "version": "1.0.0",
    "date": "2026-10-25",
    "items": [
-    {"type": "improved", "nl": "Overzicht: bronvermelding \"IP Geolocation by DB-IP\" met link bij de widget Landen"}
+    {
+     "type": "improved",
+     "nl": "Overzicht: bronvermelding \"IP Geolocation by DB-IP\" met link bij de widget Landen"
+    }
    ]
   },
   {
@@ -131,8 +223,14 @@
    "version": "1.0.0",
    "date": "2026-10-25",
    "items": [
-    {"type": "new", "nl": "Support: haperingen tijdens het afspelen bij de diagnose (aantal, langste, tijd na de start en per hapering speler en formaat)"},
-    {"type": "improved", "nl": "Support: Kopiëren neemt de haperingen tijdens het afspelen mee"}
+    {
+     "type": "new",
+     "nl": "Support: haperingen tijdens het afspelen bij de diagnose (aantal, langste, tijd na de start en per hapering speler en formaat)"
+    },
+    {
+     "type": "improved",
+     "nl": "Support: Kopiëren neemt de haperingen tijdens het afspelen mee"
+    }
    ]
   },
   {
@@ -140,11 +238,26 @@
    "version": "1.0.0",
    "date": "2026-10-25",
    "items": [
-    {"type": "new", "nl": "Support: diagnose-schema 3 bij tickets: mijlpalen en taken als codes, vertaald naar het Nederlands (ook de oude namen)"},
-    {"type": "new", "nl": "Support: langste hang van deze start (duur, taak, mijlpaal, voorgrond) met de stack van de hoofdthread"},
-    {"type": "new", "nl": "Support: de laatste 5 keer bijwerken per server, per fase (ophalen, inlezen, indexeren, toepassen, bewaren) met duur, geheugen en een balkje"},
-    {"type": "new", "nl": "Support: per soort geleverd en zichtbaar, met het aantal verborgen door categorieën, kinderfilter of dubbel; en de app-taal"},
-    {"type": "improved", "nl": "Support: Kopiëren neemt de langste hang, het bijwerken per server, geleverd/zichtbaar en de app-taal mee"}
+    {
+     "type": "new",
+     "nl": "Support: diagnose-schema 3 bij tickets: mijlpalen en taken als codes, vertaald naar het Nederlands (ook de oude namen)"
+    },
+    {
+     "type": "new",
+     "nl": "Support: langste hang van deze start (duur, taak, mijlpaal, voorgrond) met de stack van de hoofdthread"
+    },
+    {
+     "type": "new",
+     "nl": "Support: de laatste 5 keer bijwerken per server, per fase (ophalen, inlezen, indexeren, toepassen, bewaren) met duur, geheugen en een balkje"
+    },
+    {
+     "type": "new",
+     "nl": "Support: per soort geleverd en zichtbaar, met het aantal verborgen door categorieën, kinderfilter of dubbel; en de app-taal"
+    },
+    {
+     "type": "improved",
+     "nl": "Support: Kopiëren neemt de langste hang, het bijwerken per server, geleverd/zichtbaar en de app-taal mee"
+    }
    ]
   },
   {
@@ -152,9 +265,18 @@
    "version": "1.0.0",
    "date": "2026-10-24",
    "items": [
-    {"type": "new", "nl": "Eigen mailing: knop Afbeelding uploaden (PNG, JPG of GIF, max. 2 MB) uit de fotobibliotheek; foto's breder dan 1000 px worden verkleind en de link wordt vanzelf ingevuld"},
-    {"type": "new", "nl": "Eigen mailing: een ingevulde afbeelding-link wordt gecontroleerd, met een duidelijke melding bij een webpagina of deellink (Drive, iCloud, Dropbox), een inlog, SVG of WebP of een te groot bestand"},
-    {"type": "improved", "nl": "Eigen mailing: het voorbeeld meldt het als de afbeelding niet te laden is; testmail en versturen weigeren dan"}
+    {
+     "type": "new",
+     "nl": "Eigen mailing: knop Afbeelding uploaden (PNG, JPG of GIF, max. 2 MB) uit de fotobibliotheek; foto's breder dan 1000 px worden verkleind en de link wordt vanzelf ingevuld"
+    },
+    {
+     "type": "new",
+     "nl": "Eigen mailing: een ingevulde afbeelding-link wordt gecontroleerd, met een duidelijke melding bij een webpagina of deellink (Drive, iCloud, Dropbox), een inlog, SVG of WebP of een te groot bestand"
+    },
+    {
+     "type": "improved",
+     "nl": "Eigen mailing: het voorbeeld meldt het als de afbeelding niet te laden is; testmail en versturen weigeren dan"
+    }
    ]
   },
   {
@@ -162,10 +284,22 @@
    "version": "1.0.0",
    "date": "2026-10-24",
    "items": [
-    {"type": "new", "nl": "Support: knop Kopiëren bij de diagnose van een ticket; de hele diagnose staat dan als leesbare tekst op het klembord"},
-    {"type": "new", "nl": "Support: een probleem bij de vorige start (vastgelopen, crash of niet klaar) staat bovenaan in rood, met fase, duur, voorgrond en taak"},
-    {"type": "improved", "nl": "Support: diagnose-schema 2 met de start als gekleurd label (goed, traag, vastgelopen), app-tijd en wachten op de gebruiker, ophalen per server en soort en de opslag met totaal; oude diagnoses blijven zoals ze waren"},
-    {"type": "new", "nl": "LG TV (webOS) als platform: bij apparaten, streams, statistieken, support, upgrade-link en Downloads (.ipk)"}
+    {
+     "type": "new",
+     "nl": "Support: knop Kopiëren bij de diagnose van een ticket; de hele diagnose staat dan als leesbare tekst op het klembord"
+    },
+    {
+     "type": "new",
+     "nl": "Support: een probleem bij de vorige start (vastgelopen, crash of niet klaar) staat bovenaan in rood, met fase, duur, voorgrond en taak"
+    },
+    {
+     "type": "improved",
+     "nl": "Support: diagnose-schema 2 met de start als gekleurd label (goed, traag, vastgelopen), app-tijd en wachten op de gebruiker, ophalen per server en soort en de opslag met totaal; oude diagnoses blijven zoals ze waren"
+    },
+    {
+     "type": "new",
+     "nl": "LG TV (webOS) als platform: bij apparaten, streams, statistieken, support, upgrade-link en Downloads (.ipk)"
+    }
    ]
   },
   {
@@ -173,7 +307,10 @@
    "version": "1.0.0",
    "date": "2026-10-24",
    "items": [
-    {"type": "improved", "nl": "Status: de nieuwe monitors voor Windows (GitHub-build en openbare download) met een duidelijke soort"}
+    {
+     "type": "improved",
+     "nl": "Status: de nieuwe monitors voor Windows (GitHub-build en openbare download) met een duidelijke soort"
+    }
    ]
   },
   {
@@ -181,10 +318,22 @@
    "version": "1.0.0",
    "date": "2026-10-24",
    "items": [
-    {"type": "new", "nl": "Kijkt nu: tik op de tegel voor de lijst van wie er nu kijkt (account, profiel, apparaat, platform, titel en soort, sinds wanneer en de laatste ping)"},
-    {"type": "new", "nl": "Nieuw onderdeel Server: database, opslag, tabellen, accounts, apparaten per platform, streams en piek, inloggen, webproxy, push, mail, cron-jobs en (als ze er zijn) de Edge Functions, met grafieken over 7, 30 of 90 dagen of een jaar"},
-    {"type": "new", "nl": "Landen: widget met vlag, land en aantal accounts op het overzicht; bij Gebruikers het land per account en een filter op land"},
-    {"type": "improved", "nl": "Windows staat overal bij de platforms (naam en icoon bij apparaten, streams en statistieken)"}
+    {
+     "type": "new",
+     "nl": "Kijkt nu: tik op de tegel voor de lijst van wie er nu kijkt (account, profiel, apparaat, platform, titel en soort, sinds wanneer en de laatste ping)"
+    },
+    {
+     "type": "new",
+     "nl": "Nieuw onderdeel Server: database, opslag, tabellen, accounts, apparaten per platform, streams en piek, inloggen, webproxy, push, mail, cron-jobs en (als ze er zijn) de Edge Functions, met grafieken over 7, 30 of 90 dagen of een jaar"
+    },
+    {
+     "type": "new",
+     "nl": "Landen: widget met vlag, land en aantal accounts op het overzicht; bij Gebruikers het land per account en een filter op land"
+    },
+    {
+     "type": "improved",
+     "nl": "Windows staat overal bij de platforms (naam en icoon bij apparaten, streams en statistieken)"
+    }
    ]
   },
   {
@@ -192,9 +341,18 @@
    "version": "1.0.0",
    "date": "2026-10-24",
    "items": [
-    {"type": "new", "nl": "Support: bij een ticket uit de app staat van welk apparaat het komt (soort, model en systeem), met het label via de app"},
-    {"type": "new", "nl": "Support: de diagnose die de app meestuurt staat netjes bij het bericht (apparaat, app, netwerk, opslag, mijlpalen en de laatste crash)"},
-    {"type": "improved", "nl": "Support: berichten en het inbox-logboek worden versleuteld bewaard; het beheer toont ze gewoon"}
+    {
+     "type": "new",
+     "nl": "Support: bij een ticket uit de app staat van welk apparaat het komt (soort, model en systeem), met het label via de app"
+    },
+    {
+     "type": "new",
+     "nl": "Support: de diagnose die de app meestuurt staat netjes bij het bericht (apparaat, app, netwerk, opslag, mijlpalen en de laatste crash)"
+    },
+    {
+     "type": "improved",
+     "nl": "Support: berichten en het inbox-logboek worden versleuteld bewaard; het beheer toont ze gewoon"
+    }
    ]
   },
   {
@@ -202,7 +360,10 @@
    "version": "1.0.0",
    "date": "2026-10-23",
    "items": [
-    {"type": "new", "nl": "Downloads: bij Windows de openbare link (bingr.online/windows) en het aantal openbare downloads (totaal, deze build, 7 en 30 dagen)"}
+    {
+     "type": "new",
+     "nl": "Downloads: bij Windows de openbare link (bingr.online/windows) en het aantal openbare downloads (totaal, deze build, 7 en 30 dagen)"
+    }
    ]
   },
   {
@@ -210,9 +371,18 @@
    "version": "1.0.0",
    "date": "2026-10-23",
    "items": [
-    {"type": "new", "nl": "Eigen interne changelog voor de Beheer-app: bij Downloads staat per build wat er nieuw, verbeterd en opgelost is"},
-    {"type": "improved", "nl": "Notities in Downloads netjes opgemaakt met kopjes en opsommingen (ook bij Bingr, Android en de andere platforms)"},
-    {"type": "improved", "nl": "Geen vaste uitpak-uitleg meer bij het Xcode-project van de Beheer-app"}
+    {
+     "type": "new",
+     "nl": "Eigen interne changelog voor de Beheer-app: bij Downloads staat per build wat er nieuw, verbeterd en opgelost is"
+    },
+    {
+     "type": "improved",
+     "nl": "Notities in Downloads netjes opgemaakt met kopjes en opsommingen (ook bij Bingr, Android en de andere platforms)"
+    },
+    {
+     "type": "improved",
+     "nl": "Geen vaste uitpak-uitleg meer bij het Xcode-project van de Beheer-app"
+    }
    ]
   },
   {
@@ -220,8 +390,14 @@
    "version": "1.0.0",
    "date": "2026-10-23",
    "items": [
-    {"type": "new", "nl": "Downloads: Bingr voor Windows (installer .exe), alleen via een kortgeldige downloadlink"},
-    {"type": "improved", "nl": "Support-inbox: duidelijke labels voor de importresultaten en het aantal mails dat nog wacht"}
+    {
+     "type": "new",
+     "nl": "Downloads: Bingr voor Windows (installer .exe), alleen via een kortgeldige downloadlink"
+    },
+    {
+     "type": "improved",
+     "nl": "Support-inbox: duidelijke labels voor de importresultaten en het aantal mails dat nog wacht"
+    }
    ]
   },
   {
@@ -229,10 +405,22 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "new", "nl": "Nieuwsbrief: eigen mailing opstellen en versturen, in het Nederlands en Engels, met voorbeeld, testmail, doelgroep, voortgang en annuleren"},
-    {"type": "improved", "nl": "Accountmails worden altijd verstuurd met de afzendernaam \"Bingr Support\""},
-    {"type": "improved", "nl": "Accountmails (verwijderd, geblokkeerd, opgeheven) zijn te testen met voorbeeldgegevens, zonder een account aan te raken"},
-    {"type": "fixed", "nl": "Tab Insights werkt weer: bronnen, periodes en grafieken bleven leeg door een ontbrekend label voor Aankopen"}
+    {
+     "type": "new",
+     "nl": "Nieuwsbrief: eigen mailing opstellen en versturen, in het Nederlands en Engels, met voorbeeld, testmail, doelgroep, voortgang en annuleren"
+    },
+    {
+     "type": "improved",
+     "nl": "Accountmails worden altijd verstuurd met de afzendernaam \"Bingr Support\""
+    },
+    {
+     "type": "improved",
+     "nl": "Accountmails (verwijderd, geblokkeerd, opgeheven) zijn te testen met voorbeeldgegevens, zonder een account aan te raken"
+    },
+    {
+     "type": "fixed",
+     "nl": "Tab Insights werkt weer: bronnen, periodes en grafieken bleven leeg door een ontbrekend label voor Aankopen"
+    }
    ]
   },
   {
@@ -240,7 +428,10 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "new", "nl": "Downloads: Android App Bundle (.aab) voor Google Play, alleen via een kortgeldige downloadlink"}
+    {
+     "type": "new",
+     "nl": "Downloads: Android App Bundle (.aab) voor Google Play, alleen via een kortgeldige downloadlink"
+    }
    ]
   },
   {
@@ -248,7 +439,10 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "improved", "nl": "Overzicht: geweigerde registraties ook geteld per honeypot en als te snel ingevuld"}
+    {
+     "type": "improved",
+     "nl": "Overzicht: geweigerde registraties ook geteld per honeypot en als te snel ingevuld"
+    }
    ]
   },
   {
@@ -256,7 +450,10 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "new", "nl": "Gebruikersdetails: een onbevestigd e-mailadres met de hand bevestigen of de bevestigingsmail opnieuw sturen"}
+    {
+     "type": "new",
+     "nl": "Gebruikersdetails: een onbevestigd e-mailadres met de hand bevestigen of de bevestigingsmail opnieuw sturen"
+    }
    ]
   },
   {
@@ -264,7 +461,10 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "improved", "nl": "Account verwijderen: aankopen blijven zonder koppeling aan het account bewaard (bewaarplicht), met uitleg in de bevestiging en de mail"}
+    {
+     "type": "improved",
+     "nl": "Account verwijderen: aankopen blijven zonder koppeling aan het account bewaard (bewaarplicht), met uitleg in de bevestiging en de mail"
+    }
    ]
   },
   {
@@ -272,7 +472,10 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "new", "nl": "Tab Omzet: bruto, btw, netto, Stripe-kosten, terugbetalingen en opbrengst per periode, met grafieken, verdeling per betaalmethode en land, en CSV-export"}
+    {
+     "type": "new",
+     "nl": "Tab Omzet: bruto, btw, netto, Stripe-kosten, terugbetalingen en opbrengst per periode, met grafieken, verdeling per betaalmethode en land, en CSV-export"
+    }
    ]
   },
   {
@@ -280,7 +483,10 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "new", "nl": "Overzicht: geweigerde registraties per reden (limiet, wegwerpadres, naam) en het aantal verwijderde onbevestigde accounts"}
+    {
+     "type": "new",
+     "nl": "Overzicht: geweigerde registraties per reden (limiet, wegwerpadres, naam) en het aantal verwijderde onbevestigde accounts"
+    }
    ]
   },
   {
@@ -288,8 +494,14 @@
    "version": "1.0.0",
    "date": "2026-10-19",
    "items": [
-    {"type": "new", "nl": "Aankopen via Stripe: datum en bedrag bij de gebruiker, aankopen en omzet in het overzicht"},
-    {"type": "new", "nl": "Insights: nieuwe grafiek Aankopen"}
+    {
+     "type": "new",
+     "nl": "Aankopen via Stripe: datum en bedrag bij de gebruiker, aankopen en omzet in het overzicht"
+    },
+    {
+     "type": "new",
+     "nl": "Insights: nieuwe grafiek Aankopen"
+    }
    ]
   },
   {
@@ -297,7 +509,10 @@
    "version": "1.0.0",
    "date": "2026-10-18",
    "items": [
-    {"type": "new", "nl": "Gebruikersdetails: servers van een account (alleen het adres van Xtream-bronnen, met naam en welke actief is)"}
+    {
+     "type": "new",
+     "nl": "Gebruikersdetails: servers van een account (alleen het adres van Xtream-bronnen, met naam en welke actief is)"
+    }
    ]
   },
   {
@@ -305,8 +520,14 @@
    "version": "1.0.0",
    "date": "2026-10-18",
    "items": [
-    {"type": "new", "nl": "Downloads: kaart PressKit met de openbare download en een downloadteller"},
-    {"type": "improved", "nl": "Kop van het dashboard met alleen het logo en het hamburgermenu"}
+    {
+     "type": "new",
+     "nl": "Downloads: kaart PressKit met de openbare download en een downloadteller"
+    },
+    {
+     "type": "improved",
+     "nl": "Kop van het dashboard met alleen het logo en het hamburgermenu"
+    }
    ]
   }
  ]
