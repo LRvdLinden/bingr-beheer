@@ -45,6 +45,7 @@
       <button class="menu-it" type="button" role="menuitem" data-go="support"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg><span>Support</span><span id="menuSupBadge" class="tab-badge hidden"></span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="messages"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Pushmeldingen</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="newsletter"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg><span>Nieuwsbrief</span></button>
+      <button class="menu-it" type="button" role="menuitem" data-go="payments"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M6.5 15h3"/><path d="M15 15.5l1.5 1.5 3-3"/></svg><span>Betalingen</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="mail"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/><path d="M15 17.5l2 2 3.5-4"/></svg><span>Verzonden</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="server"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg><span>Server</span></button>
       <button class="menu-it" type="button" role="menuitem" data-go="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2.5-6 4 12 2.5-6H22"/></svg><span>Status</span></button>
@@ -593,6 +594,31 @@
           <tbody id="crashRows"></tbody>
         </table>
       </div>
+    </section>
+
+    <section id="tab-payments" class="tab hidden">
+      <div class="row-head"><div><h1>Betalingen</h1><p id="payWhen" class="sub"></p></div>
+        <div class="head-btns"><button id="payRun" class="btn small">Nu controleren</button></div></div>
+      <p class="sub">Alleen-lezen controle op misgelopen betalingen: wat Stripe als betaald meldt (laatste 7 dagen) en wat Apple verkocht, tegenover wat Bingr heeft vastgelegd. Er wordt niets aangepast. De cijfers van Apple lopen een dag tot twee dagen achter. Er staan nooit namen, e-mailadressen of volledige betaal-id's in het overzicht.</p>
+      <div id="payVerdict" class="st-banner" aria-live="polite"></div>
+      <ul id="payIssues" class="pay-issues"></ul>
+      <div id="payTiles" class="kpis pay-tiles"></div>
+      <h2 class="pay-h">Apple per dag</h2>
+      <div class="table-wrap">
+        <table class="users">
+          <thead><tr><th>Dag</th><th>Verkocht (Apple)</th><th>Nieuwe abonnementen</th><th>Lifetime</th></tr></thead>
+          <tbody id="payDays"></tbody>
+        </table>
+      </div>
+      <h2 class="pay-h">In Stripe betaald, bij ons niet vastgelegd</h2>
+      <div class="table-wrap">
+        <table class="users">
+          <thead><tr><th>Soort</th><th>Betaal-id (laatste 6)</th><th>Bedrag</th><th>Betaald op</th></tr></thead>
+          <tbody id="payMissing"></tbody>
+        </table>
+      </div>
+      <h2 class="pay-h">Apple-meldingen (3 dagen)</h2>
+      <div id="payNotif" class="sub"></div>
     </section>
 
     <section id="tab-mail" class="tab hidden">

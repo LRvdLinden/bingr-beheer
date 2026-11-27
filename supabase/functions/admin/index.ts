@@ -191,6 +191,11 @@
 //                       error?}  (functie apple-sales backfill met het geheim APPLE_SALES_SECRET of de service role; in admin_audit met het bereik)
 //   revenue_apple_set   {token, fx_rates?: {USD: 0.92, …}, commission?: 0–50} -> {ok, fx_rates, commission}  (app_settings
 //                       fx_rates en apple_commission; vaste koersen, geen externe koers-API)
+//   payments_check      {token} -> {ok, checked_at, verdict: ok|attention, issues:[{level: warn|error, key, nl, en}], days:[{date, apple_sold, apple_new,
+//                       apple_lifetime}] (8 dagen), apple:{last_sales_date, unlinked_7d, unlinked_no_mail, notifications_3d:{resultaat:n}},
+//                       stripe:{queried, paid_in_stripe_7d, recorded_7d, missing:[{kind: checkout|invoice, short_id (laatste 6), amount_cents, paid_at}],
+//                       pending_over_1h, incomplete_over_1d, past_due}}  (alleen-lezen; Apple- en Stripe-cijfers tegenover wat Bingr vastlegde;
+//                       payments_check.ts; nooit e-mail, naam, account-id of volledig betaal-id)
 //   mail_log            {token, status?: all|ok|failed, source?, q? (ontvanger of onderwerp), limit? (1-500, 200)} -> {items:[{id, at, source, to, subject,
 //                       ok, error}], totals:{total_7d, failed_7d}, sources}  (tabel mail_log in iptv-ios-appletv; mail_log.ts; nooit de inhoud van een mail)
 //   ---- Crashes (build 171 van Bingr); crashes.ts, docs/ACCOUNT.md "Build 171" in iptv-ios-appletv ----
@@ -327,6 +332,7 @@ import {
 } from "./apple_revenue.ts";
 import { detailView as crashDetailView, listView as crashListView, parseCrashes } from "./crashes.ts";
 import { mailLogView, parseMailLog } from "./mail_log.ts";
+import { buildPaymentsCheck, stripePaidFrom } from "./payments_check.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -1147,6 +1153,65 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const v = refreshView(out);
       await audit("apple_sales_refresh", ip, null, { from: r.from, to: r.to, days: v.days, ok: v.ok, empty: v.empty, not_ready: v.not_ready, failed: v.failed, configured: v.configured });
       return json(v);
+    }
+    case "payments_check": {
+      // Alleen-lezen controle op misgelopen betalingen (tab Betalingen). Geen persoonsgegevens in antwoord of log.
+      const now = Date.now(), iso = (ms: number) => new Date(ms).toISOString();
+      const d8 = iso(now - 8 * 86_400_000), d7 = iso(now - 7 * 86_400_000), d3 = iso(now - 3 * 86_400_000);
+      const soft = (e: { code?: string; message?: string } | null) => { // tabel of kolom bestaat nog niet: leeg in plaats van een fout
+        if (e && (e.code === "42P01" || e.code === "PGRST205" || e.code === "42703")) return true;
+        if (e) throw new Error(e.message ?? "db");
+        return false;
+      };
+      const head = { count: "exact" as const, head: true };
+      const notApple = "provider.is.null,provider.neq.apple";
+      const [sales, lastSale, subs, apl, notif, pend, inc, pd, recA, recB, idsA, idsB] = await Promise.all([
+        admin.from("apple_sales_daily").select("date,kind,units").gte("date", d8.slice(0, 10)).limit(5000),
+        admin.from("apple_sales_daily").select("date").order("date", { ascending: false }).limit(1),
+        admin.from("premium_subscriptions").select("created_at,user_id,claim_notified_at").eq("provider", "apple").gte("created_at", d8).limit(2000),
+        admin.from("billing_purchases").select("created_at").eq("provider", "apple").gte("created_at", d8).limit(2000),
+        admin.from("billing_apple_events").select("result").gte("created_at", d3).limit(2000),
+        admin.from("billing_purchases").select("id", head).eq("status", "pending").lt("created_at", iso(now - 3_600_000)).gt("created_at", d7).or(notApple),
+        admin.from("premium_subscriptions").select("id", head).eq("provider", "stripe").eq("status", "incomplete").lt("created_at", iso(now - 86_400_000)).gt("created_at", d7),
+        admin.from("premium_subscriptions").select("id", head).eq("provider", "stripe").eq("status", "past_due"),
+        admin.from("billing_purchases").select("id", head).in("status", ["paid", "refunded", "disputed"]).gte("created_at", d7).or(notApple),
+        admin.from("premium_payments").select("id", head).gte("paid_at", d7).or("mode.is.null,mode.eq.live"),
+        admin.from("billing_purchases").select("stripe_session_id").not("stripe_session_id", "is", null).gte("created_at", d8).limit(5000),
+        admin.from("premium_payments").select("id").gte("paid_at", d8).limit(5000),
+      ]);
+      for (const r of [sales, lastSale, subs, apl, notif, pend, inc, pd, recA, recB, idsA, idsB]) soft(r.error);
+      // Stripe (alleen als de functie een sleutel heeft): betaalde sessies en facturen van 7 dagen, live
+      let stripe: { paid: ReturnType<typeof stripePaidFrom>["paid"]; truncated: boolean } | null = null;
+      let stripeWhy: "no_key" | "test_key" | "unreachable" | "failed" | null = null;
+      const key = stripeKey();
+      if (!key) stripeWhy = "no_key";
+      else if (key.includes("_test_")) stripeWhy = "test_key";
+      else {
+        try {
+          const since = String(Math.floor((now - 7 * 86_400_000) / 1000));
+          const [cs, inv] = await Promise.all([
+            stripeGet(key, "checkout/sessions", [["limit", "100"], ["created[gte]", since]]),
+            stripeGet(key, "invoices", [["limit", "100"], ["created[gte]", since], ["status", "paid"]]),
+          ]);
+          if (!cs.ok || !inv.ok) { stripeWhy = "failed"; console.error("admin", "payments_check stripe", cs.status, inv.status); }
+          else stripe = stripePaidFrom(cs.body, inv.body);
+        } catch { stripeWhy = "unreachable"; console.error("admin", "payments_check stripe unreachable"); }
+      }
+      const known = new Set<string>([
+        ...((idsA.data ?? []) as { stripe_session_id: string }[]).map((x) => x.stripe_session_id),
+        ...((idsB.data ?? []) as { id: string }[]).map((x) => x.id),
+      ]);
+      const view = buildPaymentsCheck({
+        now, sales: (sales.data ?? []) as { date: string; kind: string; units: number }[],
+        lastSalesDate: ((lastSale.data ?? [])[0] as { date: string } | undefined)?.date ?? null,
+        appleSubs: (subs.data ?? []) as { created_at: string; user_id: string | null; claim_notified_at: string | null }[],
+        applePurchases: (apl.data ?? []) as { created_at: string }[],
+        notifications: (notif.data ?? []) as { result: string | null }[],
+        pendingOverHour: pend.count ?? 0, incompleteOverDay: inc.count ?? 0, pastDue: pd.count ?? 0,
+        recorded7d: (recA.count ?? 0) + (recB.count ?? 0), knownIds: known, stripe, stripeWhy,
+      });
+      await audit("payments_check", ip, null, { verdict: view.verdict, issues: view.issues.length, missing: view.stripe.missing.length, stripe: view.stripe.queried });
+      return json(view);
     }
     case "mail_log": {
       // Verzendlogboek (tab Verzonden): alleen ontvanger, onderwerp, bron en resultaat; nooit de inhoud van een mail.

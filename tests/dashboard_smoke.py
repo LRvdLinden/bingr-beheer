@@ -199,8 +199,29 @@ def mail_log_answer(req):
     return 200, {"items": items, "totals": {"total_7d": 2, "failed_7d": 1}, "sources": ["status", "support"]}
 
 
+PAY_CALLS = []
+
+
+def payments_answer(req):
+    """Nep-antwoord voor de tab Betalingen (contract supabase/functions/admin/payments_check.ts); verzonnen cijfers, geen personen."""
+    PAY_CALLS.append(req)
+    days = [{"date": f"2026-11-{20 + i}", "apple_sold": i % 3, "apple_new": i % 2, "apple_lifetime": 0} for i in range(8)]
+    return 200, {
+        "ok": True, "checked_at": "2026-11-27T19:00:00.000Z", "verdict": "attention",
+        "issues": [{"level": "error", "key": "stripe_missing", "nl": "1 betaling in Stripe (7 dagen) staat niet bij ons vastgelegd.", "en": "1 payment in Stripe (7 days) is not recorded on our side."},
+                   {"level": "warn", "key": "apple_unlinked", "nl": "2 Apple-abonnementen (7 dagen) nog niet aan een account gekoppeld en zonder claim-mail.", "en": "2 Apple subscriptions."}],
+        "days": days,
+        "apple": {"last_sales_date": "2026-11-26", "unlinked_7d": 4, "unlinked_no_mail": 2, "notifications_3d": {"premium_trialing_upsert": 1, "bad_transaction_x": 2}},
+        "stripe": {"queried": True, "paid_in_stripe_7d": 3, "recorded_7d": 2,
+                   "missing": [{"kind": "checkout", "short_id": "abc123", "amount_cents": 499, "paid_at": "2026-11-26T09:00:00Z"}],
+                   "pending_over_1h": 0, "incomplete_over_1d": 0, "past_due": 1},
+    }
+
+
 def answer(req):
     a = req.get("action")
+    if a == "payments_check":
+        return payments_answer(req)
     if a == "mail_log":
         return mail_log_answer(req)
     if a == "crashes":
@@ -597,6 +618,41 @@ def mail_smoke(b, base, errors, calls):
     return steps
 
 
+def payments_smoke(b, base, errors, calls):
+    """Tab Betalingen: uitslag met afwijkingen, tegels, dagen, ontbrekende Stripe-betaling en opnieuw controleren."""
+    page = b.new_page(viewport={"width": 1280, "height": 900})
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    page.route("**/functions/v1/admin", lambda r: route_to(r, calls))
+    page.add_init_script("""
+      const exp = new Date(Date.now() + 3600e3).toISOString();
+      sessionStorage.setItem('bingrAdmin', JSON.stringify({ token: 'smoke', expires_at: exp }));
+      sessionStorage.setItem('bingrAdmin.tab', 'payments');
+    """)
+    steps = 0
+    def check(cond, msg):
+        nonlocal steps
+        if cond:
+            steps += 1
+        else:
+            errors.append(f"betalingen: {msg}")
+    page.goto(base + "#payments")
+    page.wait_for_selector("#tab-payments:not(.hidden) #payDays tr td[data-l]", timeout=10000)
+    check("Er ontbreken betalingen" in page.inner_text("#payVerdict"), f"uitslag: {page.inner_text('#payVerdict')!r}")
+    check(page.eval_on_selector("#payVerdict", "e => e.classList.contains('down')"), "kleur bij ontbrekende betaling")
+    check("staat niet bij ons vastgelegd" in page.inner_text("#payIssues"), "afwijkingen")
+    check(page.eval_on_selector_all("#payTiles .kpi", "els => els.length") == 6, "tegels")
+    check("…abc123" in page.inner_text("#payMissing") and "4,99" in page.inner_text("#payMissing"), f"ontbrekend: {page.inner_text('#payMissing')!r}")
+    check(page.eval_on_selector_all("#payDays tr", "els => els.length") == 8, "8 dagen")
+    check("bad_transaction_x: 2" in page.inner_text("#payNotif"), "meldingen")
+    n = len(PAY_CALLS)
+    page.click("#payRun")
+    page.wait_for_timeout(600)
+    check(len(PAY_CALLS) == n + 1, "opnieuw controleren")
+    page.close()
+    return steps
+
+
 def route_to(r, calls):
     if r.request.method == "OPTIONS":
         return r.fulfill(status=204, headers={"access-control-allow-origin": "*", "access-control-allow-headers": "*"})
@@ -661,6 +717,7 @@ def main():
         rv_steps = revenue_smoke(b, base, errors, calls)
         cr_steps = crashes_smoke(b, base, errors, calls)
         mail_steps = mail_smoke(b, base, errors, calls)
+        pay_steps = payments_smoke(b, base, errors, calls)
         b.close()
     srv.shutdown()
     n = calls.count("insights")
@@ -673,6 +730,7 @@ def main():
     print(f"Lifetime-only OK: {lt_steps} stappen (laden, opslaan met bevestiging, codes droog en echt, mail droog en in batches)")
     print(f"Omzet OK: {rv_steps} stappen (website en Apple apart, bijgewerkt t/m, reeksen, bijwerken in stukken, commissie en koersen)")
     print(f"Crashes OK: {cr_steps} stappen (lijst, filters, details met stack, opgelost in build N)")
+    print(f"Betalingen OK: {pay_steps} stappen (uitslag, afwijkingen, tegels, ontbrekende betaling, dagen, meldingen, opnieuw controleren)")
     print(f"Verzonden OK: {mail_steps} stappen (lijst, teller, bronfilter, filter mislukt, zoeken)")
     print(f"Eigen mailing OK: {ml_steps} stappen (doelgroep, waarschuwing, voorbeeld, testmail, versturen, voortgang, annuleren)")
 

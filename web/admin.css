@@ -1116,3 +1116,11 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .pm-mail details{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
 .pm-mail summary{cursor:pointer;font-weight:600}
 .pm-pre{white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.55;color:var(--sec);margin:10px 0 0}
+
+/* Betalingen (actie payments_check) */
+.pay-issues{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:8px}
+.pay-issues li{background:var(--s1);border:1px solid var(--line);border-radius:var(--r-card);padding:12px 16px;border-left:4px solid var(--deg)}
+.pay-issues li.error{border-left-color:var(--down)}
+.pay-tiles{grid-template-columns:repeat(4,1fr)}
+.pay-h{font-size:16px;font-weight:700;margin:24px 0 10px}
+@media (max-width:1000px){.pay-tiles{grid-template-columns:repeat(2,1fr)}}

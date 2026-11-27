@@ -40,7 +40,7 @@ struct BeheerCommands: Commands {
 
     private static let sections: [AppSection] = [.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .status, .downloads]
     /// zonder sneltoets (⌘1 … ⌘9 zijn op)
-    private static let more: [AppSection] = [.server, .crashes, .mail]
+    private static let more: [AppSection] = [.server, .crashes, .payments, .mail]
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}

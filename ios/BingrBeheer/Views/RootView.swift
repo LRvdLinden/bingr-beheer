@@ -106,10 +106,10 @@ struct TabLayout: View {
         }
         .sheet(item: $sheet) { s in
             NavigationStack {
-                if s == .downloads || s == .newsletter || s == .insights || s == .revenue || s == .server || s == .crashes || s == .mail {
+                if s == .downloads || s == .newsletter || s == .insights || s == .revenue || s == .server || s == .crashes || s == .payments || s == .mail {
                     Group {
                         if s == .downloads { DownloadsView() } else if s == .insights { InsightsView() } else if s == .revenue { RevenueView() }
-                        else if s == .server { ServerView() } else if s == .crashes { CrashesView() } else if s == .mail { MailLogView() } else { NewsletterView() }
+                        else if s == .server { ServerView() } else if s == .crashes { CrashesView() } else if s == .payments { PaymentsView() } else if s == .mail { MailLogView() } else { NewsletterView() }
                     }
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button("Klaar") { sheet = nil } }
@@ -131,7 +131,7 @@ struct SplitLayout: View {
         NavigationSplitView(columnVisibility: $visibility) {
             List(selection: Binding<AppSection?>(get: { session.section }, set: { if let s = $0 { session.section = s } })) {
                 Section {
-                    ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes, .mail]) { s in
+                    ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes, .payments, .mail]) { s in
                         Label(s.title, systemImage: s.icon)
                             .badge(s == .support ? (session.supportCounts?.unread ?? 0) : 0)
                             .tag(s)
@@ -171,6 +171,7 @@ struct SectionScreen: View {
     @State private var showServer = false
     @State private var showCrashes = false
     @State private var showMail = false
+    @State private var showPayments = false
     @State private var confirmLogout = false
     @State private var confirmLogoutAll = false
 
@@ -228,6 +229,14 @@ struct SectionScreen: View {
                     }
             }
         }
+        .sheet(isPresented: $showPayments) {
+            NavigationStack {
+                PaymentsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Klaar") { showPayments = false } }
+                    }
+            }
+        }
         .sheet(isPresented: $showMail) {
             NavigationStack {
                 MailLogView()
@@ -271,6 +280,7 @@ struct SectionScreen: View {
             case .server: ServerView()
             case .status: StatusView()
             case .crashes: CrashesView()
+            case .payments: PaymentsView()
             case .mail: MailLogView()
             case .downloads: DownloadsView()
             case .settings: SettingsView()
@@ -288,6 +298,7 @@ struct SectionScreen: View {
                         else if compact && s == .revenue { showRevenue = true }
                         else if compact && s == .server { showServer = true }
                         else if compact && s == .crashes { showCrashes = true }
+                        else if compact && s == .payments { showPayments = true }
                         else if compact && s == .mail { showMail = true }
                         else { session.section = s }
                     },
@@ -318,7 +329,7 @@ struct AppMenuButton: View {
     var body: some View {
         Menu {
             Section {
-                ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes, .mail]) { s in
+                ForEach([AppSection.overview, .insights, .revenue, .users, .support, .messages, .newsletter, .server, .status, .crashes, .payments, .mail]) { s in
                     Button { select(s) } label: {
                         Label(title(s), systemImage: !compact && s == session.section ? "checkmark" : s.icon)
                     }

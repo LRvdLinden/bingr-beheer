@@ -259,7 +259,7 @@
     document.title = label ? `${label} · Beheer · Bingr` : "Beheer · Bingr";
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("hidden", s.id !== `tab-${name}`));
     try { sessionStorage.setItem(KEY + ".tab", name); } catch { /* */ }
-    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, premium: loadPremium, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, mail: loadMailLog, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
+    if (!loaded[name]) { loaded[name] = true; ({ overview: loadStats, insights: loadInsightsPage, revenue: loadRevenue, lifetime: loadLifetime, premium: loadPremium, users: loadUsers, support: loadTickets, messages: loadPushTab, newsletter: () => { loadNewsletter(); loadMailing(); }, payments: loadPayments, mail: loadMailLog, server: loadServer, status: loadStatus, crashes: loadCrashes, downloads: loadDownloads, settings: loadSettings })[name](); }
   }
 
   function start() {
@@ -271,7 +271,7 @@
     const deep = /^#support(?:\/(\d+))?$/.exec(location.hash);
     if (deep) tab = "support";
     if (location.hash === "#crashes") tab = "crashes";
-    showTab(["overview", "insights", "revenue", "lifetime", "premium", "users", "support", "messages", "newsletter", "mail", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
+    showTab(["overview", "insights", "revenue", "lifetime", "premium", "users", "support", "messages", "newsletter", "payments", "mail", "server", "status", "crashes", "downloads", "settings"].includes(tab) ? tab : "overview");
     if (deep && deep[1]) openTicket(Number(deep[1]));
     loadSupportCounts();
     clearInterval(supTimer); supTimer = setInterval(() => { if (token() && !document.hidden) loadSupportCounts(); }, 120000);
@@ -3271,6 +3271,51 @@
     }));
   }
   $("supRefresh").onclick = () => loadTickets();
+
+  // ---- Betalingen (actie payments_check; alleen-lezen controle op misgelopen betalingen) ----
+  // Vergelijkt Apple-verkopen en betaalde Stripe-betalingen (7 dagen) met wat Bingr vastlegde. Alleen aantallen, bedragen en
+  // de laatste 6 tekens van een betaal-id; nooit namen of e-mailadressen.
+  let payBusy = false;
+  async function loadPayments() {
+    if (payBusy) return;
+    payBusy = true;
+    $("payRun").disabled = true; $("payRun").textContent = "Controleren…";
+    let r;
+    try { r = await call("payments_check", {}); }
+    catch (e) {
+      payBusy = false; $("payRun").disabled = false; $("payRun").textContent = "Nu controleren";
+      if (e.code === "auth") return;
+      $("payVerdict").className = "st-banner down";
+      $("payVerdict").innerHTML = `<div><b>Controle mislukt</b><span class="sub">${esc(errText(e))}</span></div>`;
+      return;
+    }
+    payBusy = false; $("payRun").disabled = false; $("payRun").textContent = "Nu controleren";
+    $("payWhen").textContent = `Gecontroleerd op ${fmtDateTime(r.checked_at)}`;
+    const errs = (r.issues || []).filter((i) => i.level === "error").length;
+    $("payVerdict").className = `st-banner ${r.verdict === "ok" ? "up" : errs ? "down" : "degraded"}`;
+    $("payVerdict").innerHTML = r.verdict === "ok"
+      ? `<div><b>Geen misgelopen betalingen gevonden</b><span class="sub">Alles wat Apple en Stripe melden is bij ons vastgelegd.</span></div>`
+      : `<div><b>${errs ? "Er ontbreken betalingen" : "Let op"}</b><span class="sub">${nf.format(r.issues.length)} ${r.issues.length === 1 ? "punt" : "punten"} om te bekijken</span></div>`;
+    $("payIssues").innerHTML = (r.issues || []).map((i) => `<li class="${esc(i.level)}">${esc(i.nl)}</li>`).join("");
+    const st = r.stripe || {}, ap = r.apple || {};
+    const tile = (l, v, h = "") => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div><div class="h">${esc(h)}</div></div>`;
+    $("payTiles").innerHTML = tile("In Stripe betaald", st.queried ? nf.format(st.paid_in_stripe_7d) : "—", st.queried ? "laatste 7 dagen" : "Stripe niet bevraagd")
+      + tile("Bij ons vastgelegd", nf.format(st.recorded_7d || 0), "Lifetime en abonnementsbetalingen, 7 dagen")
+      + tile("Ontbreekt bij ons", nf.format((st.missing || []).length), "in Stripe betaald, niet vastgelegd")
+      + tile("Apple nog niet gekoppeld", nf.format(ap.unlinked_7d || 0), `${nf.format(ap.unlinked_no_mail || 0)} zonder claim-mail · cijfers t/m ${ap.last_sales_date || "—"}`)
+      + tile("Stripe hangend", nf.format((st.pending_over_1h || 0) + (st.incomplete_over_1d || 0)), `${nf.format(st.pending_over_1h || 0)} pending > 1 u · ${nf.format(st.incomplete_over_1d || 0)} onvolledig > 1 dag`)
+      + tile("Achterstallig", nf.format(st.past_due || 0), "Stripe-abonnementen");
+    $("payDays").innerHTML = (r.days || []).slice().reverse().map((d) => `<tr>
+      <td data-l="Dag">${esc(d.date)}</td><td data-l="Verkocht (Apple)">${nf.format(d.apple_sold)}</td>
+      <td data-l="Nieuwe abonnementen">${nf.format(d.apple_new)}</td><td data-l="Lifetime">${nf.format(d.apple_lifetime)}</td></tr>`).join("");
+    $("payMissing").innerHTML = (st.missing || []).map((m) => `<tr>
+      <td data-l="Soort">${m.kind === "invoice" ? "Abonnementsfactuur" : "Lifetime"}</td><td data-l="Betaal-id (laatste 6)">…${esc(m.short_id)}</td>
+      <td data-l="Bedrag">${esc(euro(m.amount_cents))}</td><td data-l="Betaald op">${esc(fmtDateTime(m.paid_at))}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="empty">${st.queried ? "Geen. Alles wat Stripe als betaald meldt, staat bij ons." : "Stripe is niet bevraagd, dus er is niets om te vergelijken."}</td></tr>`;
+    const nn = Object.entries(ap.notifications_3d || {});
+    $("payNotif").textContent = nn.length ? nn.map(([k, v]) => `${k}: ${nf.format(v)}`).join(" · ") : "Geen meldingen.";
+  }
+  $("payRun").onclick = () => loadPayments();
 
   // ---- Verzonden (verzendlogboek; actie mail_log, tabel mail_log in iptv-ios-appletv) ----
   // Wat Bingr per e-mail verstuurd heeft: tijd, bron, ontvanger, onderwerp en of de mailserver de mail aannam. Nooit de inhoud.
