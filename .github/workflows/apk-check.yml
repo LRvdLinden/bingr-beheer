@@ -1,7 +1,9 @@
 name: APK-check (tijdelijk)
 # Tijdelijk en alleen lezen: drie verzoeken naar de openbare downloadlinks; alleen status, type, grootte en versie in het log.
 on:
-  workflow_dispatch:
+  push:
+    branches: [apk-check]
+    paths: ['.github/apk-check.txt']
 permissions:
   contents: read
 jobs:
