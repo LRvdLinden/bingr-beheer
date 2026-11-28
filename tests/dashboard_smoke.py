@@ -15,7 +15,7 @@ Website en Apple in de grafiek, Apple-omzet bijwerken in stukken van 31 dagen, c
 
 Gebruik: python3 tests/dashboard_smoke.py [--channel chrome]   (pip install playwright; lokaal: playwright install chromium)
 """
-import functools, http.server, json, re, sys, threading
+import functools, http.server, json, os, re, sys, threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -235,7 +235,23 @@ def users_answer(req):
     items = [{"id": "00000000-0000-4000-8000-0000000000b1", "email": "t***@example.invalid", "created_at": "2026-11-21T10:00:00Z", "confirmed": True,
               "device_count": 1, "platforms": ["iPhone"], "app_versions": [], "profile_count": 1, "plan": {"plan": "lifetime", "source": "purchase"},
               "sandbox": True, "sandbox_until": None}] if sandbox else []
-    return 200, {"total": len(items), "blocked_total": 0, "lifetime_total": 30, "free_total": 100, "sandbox_total": 18, "page": 0, "page_size": 25, "items": items}
+    flt = str(req.get("filter") or "")
+    if flt.startswith("access:"):
+        # build 194: accounts per soort abonnement (verzonnen)
+        a = flt[7:]
+        items = [{"id": "00000000-0000-4000-8000-0000000000c1", "email": "j***@example.invalid", "created_at": "2026-11-22T10:00:00Z", "confirmed": True,
+                  "device_count": 1, "platforms": ["iPhone"], "app_versions": [], "profile_count": 1, "plan": {"plan": "lifetime", "source": "subscription"},
+                  "access": "yearly", "access_trial": True, "access_provider": "apple", "access_until": "2027-11-22T10:00:00Z", "access_test": False,
+                  "access_extra": None}] if a in ("yearly", "subscription") else []
+    elif not sandbox:
+        items = [{"id": "00000000-0000-4000-8000-0000000000c2", "email": "o***@example.invalid", "created_at": "2026-11-23T10:00:00Z", "confirmed": True,
+                  "device_count": 0, "platforms": [], "app_versions": [], "profile_count": 0, "plan": {"plan": "lifetime", "source": "legacy"},
+                  "access": "legacy_lifetime", "access_trial": False, "access_provider": None, "access_until": None, "access_test": False, "access_extra": "monthly"},
+                 {"id": "00000000-0000-4000-8000-0000000000c3", "email": "x***@example.invalid", "created_at": "2026-11-24T10:00:00Z", "confirmed": True,
+                  "device_count": 0, "platforms": [], "app_versions": [], "profile_count": 0, "plan": {"plan": "free"}}]
+    return 200, {"total": len(items), "blocked_total": 0, "lifetime_total": 30, "free_total": 100, "sandbox_total": 18,
+                 "access_totals": {"free": 100, "legacy_lifetime": 20, "lifetime": 8, "gifted_lifetime": 2, "monthly": 3, "half_year": 1, "yearly": 4},
+                 "page": 0, "page_size": 25, "items": items}
 
 
 def answer(req):
@@ -681,6 +697,22 @@ def payments_smoke(b, base, errors, calls):
     page.wait_for_selector("#tab-users:not(.hidden) #userRows tr[data-id]", timeout=10000)
     check(any(c.get("filter") == "sandbox" for c in USERS_CALLS), "accountlijst met filter sandbox")
     check("Sandbox" in page.inner_text("#userRows") and page.eval_on_selector("#userFilters button[data-f='sandbox']", "e => e.classList.contains('on') && e.textContent.includes('18')"), "badge en teller Sandbox")
+    # build 194: kolom Abonnement en het filter op soort
+    page.select_option("#userAccess", "")
+    page.wait_for_selector("#userRows tr[data-id] td[data-l='Abonnement']", timeout=10000)
+    rows = page.inner_text("#userRows")
+    check("Oude Lifetime + Maand" in rows, f"Oude Lifetime met abonnement erbij: {rows!r}")
+    check(page.eval_on_selector_all("#userRows td[data-l='Abonnement']", "els => els.length") == 2, "kolom Abonnement")
+    check("Gratis" in page.inner_text("#userRows tr:nth-child(2) td[data-l='Abonnement']"), "een oudere server: oud label Gratis")
+    opts = page.inner_text("#userAccess")
+    check("Alle Premium-abonnementen (8)" in opts and "Oude Lifetime (20)" in opts and "Gratis Lifetime gegeven (2)" in opts, f"filterkeuzes met aantallen: {opts!r}")
+    page.select_option("#userAccess", "yearly")
+    page.wait_for_selector("#userRows td[data-l='Abonnement'] .plan-sub", timeout=10000)
+    check(any(c.get("filter") == "access:yearly" for c in USERS_CALLS), "filter access:yearly doorgegeven")
+    check("Jaar (proef)" in page.inner_text("#userRows") and "Apple" in page.inner_text("#userRows"), f"Jaar (proef) via Apple: {page.inner_text('#userRows')!r}")
+    page.select_option("#userAccess", "monthly")
+    page.wait_for_selector("#userRows .empty", timeout=10000)
+    check("Geen accounts met dit abonnement" in page.inner_text("#userRows"), "lege lijst bij een soort zonder accounts")
     page.close()
     return steps
 
@@ -715,7 +747,7 @@ def main():
         r.fulfill(status=status, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps(data))
 
     with sync_playwright() as p:
-        b = p.chromium.launch(channel=channel) if channel else p.chromium.launch()
+        b = p.chromium.launch(channel=channel) if channel else p.chromium.launch(**({"executable_path": os.environ["BINGR_CHROMIUM"]} if os.environ.get("BINGR_CHROMIUM") else {}))
         page = b.new_page(viewport={"width": 1280, "height": 900})
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
