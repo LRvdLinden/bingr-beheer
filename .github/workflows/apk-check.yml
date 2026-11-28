@@ -1,0 +1,25 @@
+name: APK-check (tijdelijk)
+# Tijdelijk en alleen lezen: drie verzoeken naar de openbare downloadlinks; alleen status, type, grootte en versie in het log.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Controleren
+        run: |
+          set -uo pipefail
+          d=$(mktemp -d)
+          for u in "https://bingr.online/downloads/" "https://beheer.bingr.online/dl.php?ping=1"; do
+            c=$(curl -s --max-time 30 -o "$d/b" -w '%{http_code} %{content_type}' "$u" || true)
+            echo "::notice title=$u::$c $(grep -oiE '<title>[^<]{0,80}' "$d/b" | head -1) $(head -c 80 "$d/b" | tr '\n' ' ')"
+          done
+          code=$(curl -s --max-time 300 -D "$d/h" -o "$d/a.apk" -w '%{http_code}' "https://beheer.bingr.online/dl.php?app=android" || true)
+          ct=$(grep -i '^content-type:' "$d/h" | tail -1 | cut -d: -f2- | tr -d ' \r')
+          size=$(stat -c %s "$d/a.apk" 2>/dev/null || echo 0)
+          magic=$(head -c 4 "$d/a.apk" | od -An -tx1 | tr -d ' \n')
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          vc=$("$BT/aapt2" dump badging "$d/a.apk" 2>/dev/null | grep -m1 '^package:' | grep -oE "versionCode='[0-9]+'|versionName='[^']*'" | tr '\n' ' ')
+          echo "::notice title=APK::HTTP $code $ct $size bytes magic=$magic $vc"
