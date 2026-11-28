@@ -52,7 +52,11 @@
 //   revenue_backfill    {token} -> {checked, updated, remaining}  (ontbrekende Stripe-kosten ophalen met STRIPE_SECRET_KEY, max. 20
 //                       per keer; 503 billing_unavailable zonder sleutel)
 //   revenue_vat_set     {token, rate: 0–50} -> {ok, rate}  (app_settings.revenue_vat: btw-tarief zonder Stripe Tax, standaard 21)
-//   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"|"sandbox"}  (build 193: sandbox =
+//   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"|"sandbox"|"access:<soort>"}  (build 194: per account
+//                       `access` (free|legacy_lifetime|lifetime|gifted_lifetime|monthly|half_year|yearly|subscription|unknown), `access_trial`,
+//                       `access_provider` (stripe|apple|null), `access_until`, `access_test`, `access_extra` (abonnement naast Lifetime); bovenaan
+//                       `access_totals` {soort: aantal}; filter access:subscription = elk lopend abonnement; een ouder schema: lege lijst)
+//                         (build 193: sandbox =
 //                       toegang uit de Apple-sandbox; per account `sandbox` (boolean), bovenaan `sandbox_total`; een ouder schema: lege lijst)
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
 //                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade;
@@ -295,6 +299,7 @@ import { isMailtestAddress, MAILTEST_HEADER, mailErrorCode, mailtestOk, smtpConf
 import { blockMail, deletedMail, type Mail, unblockMail } from "./mails.ts";
 import { accountLang, banDuration, cleanReason, confirmMatches, parseUntil } from "./blocks.ts";
 import { cleanName } from "./names.ts";
+import { accessFilter, accessTotals, accessView } from "./access.ts";
 import { releasesInput, releasesView } from "./releases.ts";
 import { serversFromRow } from "./servers.ts";
 import { streamsView } from "./streams.ts";
@@ -1302,7 +1307,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const { data, error } = await admin.rpc("bingr_admin_users", {
         p_search: q, p_limit: size, p_offset: page * size,
         ...(["blocked", "free", "lifetime", "custom", "sandbox"].includes(String(body.filter)) || /^country:([A-Z]{2}|\?)$/.test(String(body.filter))
-          ? { p_filter: String(body.filter) } : {}),
+          ? { p_filter: String(body.filter) } : accessFilter(body.filter) ? { p_filter: accessFilter(body.filter) } : {}),
       });
       if (error) throw new Error(error.message);
       // build 193: filter "sandbox" (toegang uit de Apple-sandbox). Een ouder schema kent het filter niet en zou dan ALLE accounts
@@ -1311,6 +1316,12 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         return json({ total: 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null, free_total: data?.free_total ?? null,
           sandbox_total: null, page, page_size: size, items: [] });
       }
+      // build 194: filter "access:<soort>". Een ouder schema kent het filter niet (en geeft dan ALLE accounts): te herkennen aan de
+      // ontbrekende access_totals. Dan een lege lijst, nooit de verkeerde.
+      if (accessFilter(body.filter) && accessTotals(data?.access_totals) === null) {
+        return json({ total: 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null, free_total: data?.free_total ?? null,
+          sandbox_total: data?.sandbox_total ?? null, access_totals: null, page, page_size: size, items: [] });
+      }
       // build 97: zoeken in accounts (op e-mailadres of naam) in het logboek; alleen lengte van de zoekterm, niet de term zelf
       if (q) await audit("users_search", ip, null, { q_length: q.length, filter: body.filter || undefined, page, results: data?.total ?? 0 });
       const rows = (data?.items ?? []) as Record<string, unknown>[];
@@ -1318,12 +1329,12 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const ids = rows.map((u) => String(u.id ?? "")).filter(isUuid).map((id) => id.toLowerCase());
       const [nl, cc] = await Promise.all([newsletterPrefs(ids), accountCountries(ids)]);
       const items = rows.map((u) => ({
-        ...u, sandbox: u.sandbox === true, email: maskEmail(u.email), newsletter: nl && isUuid(u.id) ? nl[String(u.id).toLowerCase()] ?? null : null,
+        ...u, ...accessView(u), sandbox: u.sandbox === true, email: maskEmail(u.email), newsletter: nl && isUuid(u.id) ? nl[String(u.id).toLowerCase()] ?? null : null,
         country: isUuid(u.id) ? cc[String(u.id).toLowerCase()] ?? null : null,
       }));
       return json({
         total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null,
-        free_total: data?.free_total ?? null, sandbox_total: data?.sandbox_total ?? null, page, page_size: size, items,
+        free_total: data?.free_total ?? null, sandbox_total: data?.sandbox_total ?? null, access_totals: accessTotals(data?.access_totals), page, page_size: size, items,
       });
     }
     case "user_detail": {
@@ -1338,7 +1349,7 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         "lifetime_code" in data ? Promise.resolve(codeView(data.lifetime_code, Date.now())) : lifetimeCode(uid)]);
       const devices = Array.isArray(data.devices) ? data.devices.map((d: Record<string, unknown>) =>
         ({ ...d, country: country.devices.find((x) => Date.parse(String(x.created_at)) === Date.parse(String(d.created_at)) && x.name === d.name)?.country ?? null })) : data.devices;
-      return json({ ...data, devices, email: maskEmail(data.email), newsletter, servers, country: country.account, lifetime_code });
+      return json({ ...data, ...accessView(data), devices, email: maskEmail(data.email), newsletter, servers, country: country.account, lifetime_code });
     }
     case "user_email": {
       // het volledige e-mailadres (oog naast het gemaskeerde adres); in het logboek alleen dat het bekeken is

@@ -376,7 +376,10 @@ struct UserDetailView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text("Abonnement").font(.headline)
-                PlanChip(plan: u.plan)
+                AccessChip(access: u.access, plan: u.plan)
+            }
+            if u.access.isKnown {
+                Text(u.access.detail).font(.caption).foregroundStyle(Color.textDim)
             }
             Text(u.plan.isLifetime
                  ? ["Lifetime", u.plan.sourceText, u.plan.updatedAt.map { Fmt.date($0) }].compactMap { $0 }.joined(separator: " · ")

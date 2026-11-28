@@ -8,6 +8,64 @@ enum PersonName {
     }
 }
 
+/// Wat een account precies heeft (build 56): `access` van de server. Een oudere server geeft het niet: `code` is dan nil
+/// en de weergave valt terug op Gratis/Lifetime uit `plan`.
+struct AccountAccess: Hashable {
+    let code: String?
+    /// De proefperiode loopt nog (`access_trial`).
+    let trial: Bool
+    /// "stripe" of "apple" (`access_provider`); nil = onbekend of niet van toepassing.
+    let provider: String?
+    /// Einde van Premium of van een tijdelijke (sandbox-)Lifetime (`access_until`).
+    let until: Date?
+    /// Testabonnement, geen echte betaling (`access_test`).
+    let test: Bool
+    /// Lopend abonnement naast een Lifetime (`access_extra`).
+    let extra: String?
+
+    static let known = ["free", "legacy_lifetime", "lifetime", "gifted_lifetime", "monthly", "half_year", "yearly", "subscription"]
+    static let names = ["free": "Gratis", "legacy_lifetime": "Oude Lifetime", "lifetime": "Lifetime", "gifted_lifetime": "Gratis Lifetime gegeven",
+                        "monthly": "Maand", "half_year": "Halfjaar", "yearly": "Jaar", "subscription": "Premium"]
+    static let help = ["free": "Gratis", "legacy_lifetime": "Lifetime als cadeau bij de invoering van abonnementen (bestaand account)",
+                       "lifetime": "Lifetime, gekocht", "gifted_lifetime": "Lifetime gratis gegeven (uit het beheer)", "monthly": "Premium per maand",
+                       "half_year": "Premium per halfjaar", "yearly": "Premium per jaar", "subscription": "Premium-abonnement"]
+
+    init(_ j: JSON) {
+        let c = j["access"].text
+        code = c.flatMap { AccountAccess.known.contains($0) ? $0 : nil }
+        trial = j["access_trial"].bool ?? false
+        provider = j["access_provider"].text.flatMap { ["stripe", "apple"].contains($0) ? $0 : nil }
+        until = j["access_until"].date
+        test = j["access_test"].bool ?? false
+        extra = j["access_extra"].text.flatMap { AccountAccess.known.contains($0) && $0 != "free" ? $0 : nil }
+    }
+
+    var isKnown: Bool { code != nil }
+    var isSubscription: Bool { ["monthly", "half_year", "yearly", "subscription"].contains(code ?? "") }
+    var isLifetime: Bool { ["legacy_lifetime", "lifetime", "gifted_lifetime"].contains(code ?? "") }
+    var providerName: String? { provider.map { $0 == "apple" ? "Apple" : "Stripe" } }
+    /// "Jaar (proef) + …": naam met proef, test en een abonnement erbij.
+    var text: String {
+        guard let code, let name = AccountAccess.names[code] else { return "" }
+        var t = name
+        if trial { t += " (proef)" }
+        if test { t += " (test)" }
+        if let extra, let n = AccountAccess.names[extra] { t += " + \(n)" }
+        return t
+    }
+    /// Uitleg onder de chip.
+    var detail: String {
+        guard let code else { return "" }
+        var parts = [AccountAccess.help[code] ?? ""]
+        if let n = providerName { parts.append("via \(n)") }
+        if trial { parts.append("proefperiode loopt") }
+        if test { parts.append("testabonnement (geen echte betaling)") }
+        if let until { parts.append((isSubscription ? "loopt tot " : "tot ") + Fmt.date(until)) }
+        if let extra, let n = AccountAccess.names[extra] { parts.append("daarnaast een lopend abonnement (\(n))") }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
 /// Rij uit `users` (e-mail gemaskeerd door de functie; voor- en achternaam uit user_metadata, of nil).
 struct UserRow: Identifiable, Hashable {
     let id: String
@@ -33,9 +91,12 @@ struct UserRow: Identifiable, Hashable {
     /// Toegang uit de Apple-sandbox (`sandbox`, build 193): een testaankoop, niet betaald. `sandboxUntil` = einde van tijdelijke toegang.
     let sandbox: Bool
     let sandboxUntil: Date?
+    /// Wat het account precies heeft (build 56, `access`).
+    let access: AccountAccess
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        access = AccountAccess(j)
         sandbox = j["sandbox"].bool ?? false
         sandboxUntil = j["sandbox_until"].date
         country = j["country"].text
@@ -103,6 +164,8 @@ struct UserDetail {
     let block: AccountBlock?
     let blocks: [AccountBlock]
     let plan: AccountPlan
+    /// Wat het account precies heeft (build 56, `access`).
+    let access: AccountAccess
     /// build 167: persoonlijke kortingscode (`lifetime_code`); nil = geen code.
     let lifetimeCode: LifetimeCode?
 
@@ -110,6 +173,7 @@ struct UserDetail {
         id = j["id"].text ?? ""
         lifetimeCode = LifetimeCode(j["lifetime_code"])
         plan = AccountPlan(j["plan"])
+        access = AccountAccess(j)
         email = j["email"].text ?? ""
         firstName = j["first_name"].text
         lastName = j["last_name"].text

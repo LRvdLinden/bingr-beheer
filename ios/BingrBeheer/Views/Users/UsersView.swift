@@ -17,6 +17,8 @@ struct UsersView: View {
     /// De server kent het filter Sandbox nog niet (antwoord zonder `sandbox_total`).
     @State private var sandboxUnknown = false
     @State private var countries: CountryStats?
+    /// Aantallen per soort abonnement (`access_totals`); nil = de server geeft ze nog niet.
+    @State private var accessTotals: [String: Int]?
 
     private let pageSize = 50
 
@@ -40,6 +42,7 @@ struct UsersView: View {
             }
             if loaded && items.isEmpty && error == nil {
                 EmptyText(text: sandboxUnknown ? "De server kent het filter Sandbox nog niet."
+                          : session.usersFilter.hasPrefix("access:") ? (accessTotals == nil ? "De server kent dit filter nog niet." : "Geen accounts met dit abonnement.")
                           : Self.emptyText[session.usersFilter] ?? (session.usersFilter.hasPrefix("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden."))
                     .listRowBackground(Color.surface1)
             }
@@ -91,13 +94,49 @@ struct UsersView: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                countryMenu.padding(.leading, 16)
+                accessMenu.padding(.leading, 16)
+                countryMenu
                 filterButtons
             }
         }
         .task {
             if countries == nil, let j = try? await session.call("countries") { countries = CountryStats(j) }
         }
+    }
+
+    private static let accessChoices: [(key: String, label: String)] = [
+        ("free", "Gratis"), ("legacy_lifetime", "Oude Lifetime"), ("lifetime", "Lifetime (gekocht)"), ("gifted_lifetime", "Gratis Lifetime gegeven"),
+        ("subscription", "Alle Premium-abonnementen"), ("monthly", "Maand"), ("half_year", "Halfjaar"), ("yearly", "Jaar"),
+    ]
+
+    private func accessCount(_ key: String) -> Int? {
+        guard let t = accessTotals else { return nil }
+        if key == "subscription" { return ["monthly", "half_year", "yearly", "subscription"].reduce(0) { $0 + (t[$1] ?? 0) } }
+        return t[key] ?? 0
+    }
+
+    /// Filter op wat een account precies heeft (Gratis, Oude Lifetime, Lifetime, Gratis Lifetime gegeven, Maand, Halfjaar, Jaar); één filter tegelijk.
+    private var accessMenu: some View {
+        let cur = session.usersFilter.hasPrefix("access:") ? String(session.usersFilter.dropFirst(7)) : ""
+        let name = Self.accessChoices.first { $0.key == cur }?.label
+        return Menu {
+            Button("Alle abonnementen") { session.usersFilter = "" }
+            ForEach(Self.accessChoices, id: \.key) { c in
+                Button(accessCount(c.key).map { "\(c.label) (\(Fmt.num($0)))" } ?? c.label) { session.usersFilter = "access:\(c.key)" }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "creditcard")
+                Text(name ?? "Abonnement")
+                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle(cur.isEmpty ? Color.textSecondary : Color.white)
+            .background(Capsule().fill(cur.isEmpty ? Color.surface2 : Color.bingrRed))
+        }
+        .accessibilityLabel("Filter op abonnement")
     }
 
     /// Filter op land (laatst gezien land); één filter tegelijk, net als op het web.
@@ -179,6 +218,7 @@ struct UsersView: View {
             if let n = r["free_total"].int { freeTotal = n }
             if let n = r["lifetime_total"].int { lifetimeTotal = n }
             if let n = r["sandbox_total"].int { sandboxTotal = n }
+            if let o = r["access_totals"].object { accessTotals = o.compactMapValues { $0.int } }
             sandboxUnknown = session.usersFilter == "sandbox" && r["sandbox_total"].int == nil
             page = p
             if replace { items = rows } else { items += rows.filter { n in !items.contains { $0.id == n.id } } }
@@ -211,7 +251,7 @@ struct UserRowView: View {
                 if !user.confirmed { Chip(text: "onbevestigd", tone: .warn) }
                 if user.newsletter == false { Chip(text: "Geen nieuwsbrief", icon: "envelope.badge") }
                 if user.isBlocked { Chip(text: "Geblokkeerd", tone: .bad, icon: "nosign") }
-                PlanChip(plan: user.plan)
+                AccessChip(access: user.access, plan: user.plan)
                 if user.sandbox { Chip(text: "Sandbox", tone: .warn, icon: "testtube.2") }
                 if let c = user.country { Text(Country.flag(c)).font(.caption).accessibilityLabel(Country.name(c)) }
             }
@@ -248,6 +288,32 @@ struct CompactLabelStyle: LabelStyle {
         HStack(spacing: 3) {
             configuration.icon
             configuration.title
+        }
+    }
+}
+
+/// Wat het account precies heeft als klein label: Lifetime goud, abonnement groen, gegeven Lifetime blauw, Gratis grijs.
+/// Een oudere server geeft het niet: dan het oude Gratis/Lifetime-label.
+struct AccessChip: View {
+    let access: AccountAccess
+    let plan: AccountPlan
+
+    var body: some View {
+        if let code = access.code {
+            let color: Color = access.isSubscription ? Color(hex: 0x8BE3A5) : code == "gifted_lifetime" ? Color(hex: 0x9CC3FF)
+                : access.isLifetime ? Color(hex: 0xFFD54A) : Color.textSecondary
+            HStack(spacing: 4) {
+                Text(access.text)
+                if let p = access.providerName, access.isSubscription || code == "lifetime" { Text(p).foregroundStyle(Color.textDim) }
+            }
+            .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .foregroundStyle(color)
+            .background(Capsule().fill(color.opacity(0.14)))
+        } else {
+            PlanChip(plan: plan)
         }
     }
 }

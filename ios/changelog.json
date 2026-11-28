@@ -2,6 +2,15 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 56,
+   "version": "1.0.0",
+   "date": "2026-11-28",
+   "items": [
+    {"type": "new", "nl": "Gebruikers: bij elk account staat precies wat het heeft: Gratis, Oude Lifetime, Lifetime (gekocht), Gratis Lifetime gegeven, Maand, Halfjaar of Jaar, met proefperiode, test, einddatum en Stripe of Apple erbij"},
+    {"type": "new", "nl": "Gebruikers: filter op die soorten (ook alle Premium-abonnementen samen) met aantallen"}
+   ]
+  },
+  {
    "build": 55,
    "version": "1.0.0",
    "date": "2026-11-28",

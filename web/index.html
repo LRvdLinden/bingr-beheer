@@ -308,12 +308,13 @@
       <div class="row-head"><h1>Gebruikers</h1><span id="userCount" class="sub"></span></div>
       <div class="sup-bar">
         <div id="userFilters" class="sup-filters" role="group" aria-label="Filter op accountstatus"></div>
+        <label class="sr" for="userAccess">Abonnement</label><select id="userAccess" class="rev-mode user-cc"><option value="">Alle abonnementen</option></select>
         <label class="sr" for="userCountry">Land</label><select id="userCountry" class="rev-mode user-cc"><option value="">Alle landen</option></select>
         <input id="search" class="search" type="search" placeholder="Zoek op naam of begin van e-mailadres" aria-label="Zoek op naam of begin van e-mailadres" autocomplete="off">
       </div>
       <div class="table-wrap">
         <table class="users">
-          <thead><tr><th>Naam en e-mail</th><th>Land</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
+          <thead><tr><th>Naam en e-mail</th><th>Abonnement</th><th>Land</th><th>Aangemaakt</th><th>Laatst ingelogd</th><th>Apparaten</th><th>Profielen</th><th>Versies</th></tr></thead>
           <tbody id="userRows"></tbody>
         </table>
       </div>
