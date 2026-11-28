@@ -118,16 +118,22 @@ jobs:
         run: |
           set -uo pipefail
           url=https://beheer.bingr.online/
-          ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
-          if echo "$ping" | grep -q '"ready":true'; then echo "::notice::dl.php is klaar voor downloads."
-          else
-            # sommige servers draaien PHP als een andere gebruiker: dan mogen key.php en manifest.json 644 zijn
-            # (de map builds/ blijft via de webserver dicht)
-            source tools/ftps.sh; ftps_connect >/dev/null
-            ftps_try "chmod 644 \"$FTPS_TARGET/builds/key.php\" \"$FTPS_TARGET/builds/manifest.json\"" >/dev/null 2>&1
-            ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
-            echo "$ping" | grep -q '"ready":true' && echo "::notice::dl.php is klaar (rechten 644)." || { echo "::error::dl.php kan de sleutel niet lezen."; exit 1; }
-          fi
+          # De ping kan na het uploaden even mislukken (webserver of cache loopt achter, tijdelijke 5xx/429): opnieuw proberen met
+          # pauzes (tot ±3 min) en bij falen de HTTP-status en de (korte, geheimloze) ping-uitkomst in de foutmelding zetten.
+          ping_once() { ping=$(curl -s --max-time 20 -w '\n%{http_code}' "${url}dl.php?ping=1" || true); code=$(printf '%s' "$ping" | tail -n1); ping=$(printf '%s' "$ping" | sed '$d'); echo "$ping" | grep -q '"ready":true'; }
+          ready=0
+          for i in 1 2 3 4 5 6 7 8 9; do
+            ping_once && { ready=1; break; }
+            if [ "$i" = 3 ]; then
+              # sommige servers draaien PHP als een andere gebruiker: dan mogen key.php en manifest.json 644 zijn
+              # (de map builds/ blijft via de webserver dicht)
+              source tools/ftps.sh; ftps_connect >/dev/null
+              ftps_try "chmod 644 \"$FTPS_TARGET/builds/key.php\" \"$FTPS_TARGET/builds/manifest.json\"" >/dev/null 2>&1
+            fi
+            echo "dl.php ping $i: HTTP ${code:-?} $(printf '%s' "$ping" | head -c 120)"
+            sleep 20
+          done
+          [ "$ready" = 1 ] && echo "::notice::dl.php is klaar voor downloads." || { echo "::error::dl.php kan de sleutel niet lezen (laatste ping: HTTP ${code:-?} $(printf '%s' "$ping" | head -c 120))."; exit 1; }
           # teller van de openbare Windows-installer (dl.php ?app=windows) moet schrijfbaar zijn voor PHP; zo niet, ruimere rechten (alleen dit bestand)
           for mode in 600 660 666; do
             ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
