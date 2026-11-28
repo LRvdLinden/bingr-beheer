@@ -52,7 +52,8 @@
 //   revenue_backfill    {token} -> {checked, updated, remaining}  (ontbrekende Stripe-kosten ophalen met STRIPE_SECRET_KEY, max. 20
 //                       per keer; 503 billing_unavailable zonder sleutel)
 //   revenue_vat_set     {token, rate: 0–50} -> {ok, rate}  (app_settings.revenue_vat: btw-tarief zonder Stripe Tax, standaard 21)
-//   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"}
+//   users               {token, q?, page?, page_size?, filter?: "blocked"|"free"|"lifetime"|"custom"|"sandbox"}  (build 193: sandbox =
+//                       toegang uit de Apple-sandbox; per account `sandbox` (boolean), bovenaan `sandbox_total`; een ouder schema: lege lijst)
 //                       -> {total, blocked_total, lifetime_total, free_total, page, page_size, items:[…]}
 //                       (e-mail gemaskeerd; items[].blocked = {until, created_at} bij een actieve blokkade;
 //                       items[].plan = {plan, max_streams?, max_devices?, source?}; items[].first_name / last_name uit
@@ -194,7 +195,10 @@
 //   payments_check      {token} -> {ok, checked_at, verdict: ok|attention, issues:[{level: warn|error, key, nl, en}], days:[{date, apple_sold, apple_new,
 //                       apple_lifetime}] (8 dagen), apple:{last_sales_date, unlinked_7d, unlinked_no_mail, notifications_3d:{resultaat:n}},
 //                       stripe:{queried, paid_in_stripe_7d, recorded_7d, missing:[{kind: checkout|invoice, short_id (laatste 6), amount_cents, paid_at}],
-//                       pending_over_1h, incomplete_over_1d, past_due}}  (alleen-lezen; Apple- en Stripe-cijfers tegenover wat Bingr vastlegde;
+//                       pending_over_1h, incomplete_over_1d, past_due}, sandbox:{lifetime_accounts, active_7d, temporary} (build 193: Lifetime via
+//                       een Apple-testaankoop; RPC bingr_admin_sandbox_stats), funnel:{days:[{date, group: apple|android|web, shown, started, ok,
+//                       failed, cancelled}] (8 dagen x 3 groepen), top_errors:[{error, n}]} (build 193: anonieme betaalstappen uit
+//                       billing_funnel_daily)}  (alleen-lezen; Apple- en Stripe-cijfers tegenover wat Bingr vastlegde;
 //                       payments_check.ts; nooit e-mail, naam, account-id of volledig betaal-id)
 //   mail_log            {token, status?: all|ok|failed, source?, q? (ontvanger of onderwerp), limit? (1-500, 200)} -> {items:[{id, at, source, to, subject,
 //                       ok, error}], totals:{total_7d, failed_7d}, sources}  (tabel mail_log in iptv-ios-appletv; mail_log.ts; nooit de inhoud van een mail)
@@ -332,7 +336,7 @@ import {
 } from "./apple_revenue.ts";
 import { detailView as crashDetailView, listView as crashListView, parseCrashes } from "./crashes.ts";
 import { mailLogView, parseMailLog } from "./mail_log.ts";
-import { buildPaymentsCheck, stripePaidFrom } from "./payments_check.ts";
+import { buildPaymentsCheck, type FunnelRow, stripePaidFrom } from "./payments_check.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -360,6 +364,9 @@ function planView(row: Record<string, unknown> | null) {
   return {
     plan, max_streams: ms, max_devices: md, source: row?.source ?? null, note: row?.note ?? null, granted_by: row?.granted_by ?? null,
     created_at: row?.created_at ?? null, updated_at: row?.updated_at ?? null,
+    // build 193: toegang uit de Apple-sandbox (gemerkt door de database); sandbox_until = einde van een tijdelijke sandbox-Lifetime
+    sandbox: row?.sandbox === true && plan === "lifetime", sandbox_at: row?.sandbox_at ?? null,
+    sandbox_until: row?.sandbox === true && row?.source === "purchase" ? row?.premium_until ?? null : null,
     defaults: PLAN_DEFAULTS, effective: { streams: ms ?? d.streams, devices: md ?? d.devices, servers: d.servers },
   };
 }
@@ -1180,6 +1187,14 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         admin.from("premium_payments").select("id").gte("paid_at", d8).limit(5000),
       ]);
       for (const r of [sales, lastSale, subs, apl, notif, pend, inc, pd, recA, recB, idsA, idsB]) soft(r.error);
+      // build 193: sandbox-tellingen en de betaaltrechter (een server die ze nog niet kent: leeg, geen fout)
+      const [sbx, fun] = await Promise.all([
+        admin.rpc("bingr_admin_sandbox_stats"),
+        admin.from("billing_funnel_daily").select("day,platform,step,product,error,n").gte("day", d8.slice(0, 10)).limit(10000),
+      ]);
+      const missingFn = (e: { code?: string; message?: string } | null) => !!e && (e.code === "PGRST202" || e.code === "42883" || e.code === "42P01" || e.code === "PGRST205" || e.code === "42703");
+      if (sbx.error && !missingFn(sbx.error)) throw new Error(sbx.error.message ?? "db");
+      if (fun.error && !missingFn(fun.error)) throw new Error(fun.error.message ?? "db");
       // Stripe (alleen als de functie een sleutel heeft): betaalde sessies en facturen van 7 dagen, live
       let stripe: { paid: ReturnType<typeof stripePaidFrom>["paid"]; truncated: boolean } | null = null;
       let stripeWhy: "no_key" | "test_key" | "unreachable" | "failed" | null = null;
@@ -1209,6 +1224,8 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
         notifications: (notif.data ?? []) as { result: string | null }[],
         pendingOverHour: pend.count ?? 0, incompleteOverDay: inc.count ?? 0, pastDue: pd.count ?? 0,
         recorded7d: (recA.count ?? 0) + (recB.count ?? 0), knownIds: known, stripe, stripeWhy,
+        sandbox: sbx.error ? null : (sbx.data as Record<string, unknown> | null),
+        funnel: fun.error ? null : ((fun.data ?? []) as FunnelRow[]),
       });
       await audit("payments_check", ip, null, { verdict: view.verdict, issues: view.issues.length, missing: view.stripe.missing.length, stripe: view.stripe.queried });
       return json(view);
@@ -1284,10 +1301,16 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       // filter alleen meesturen als hij gekozen is (zo werkt de lijst ook met een ouder schema)
       const { data, error } = await admin.rpc("bingr_admin_users", {
         p_search: q, p_limit: size, p_offset: page * size,
-        ...(["blocked", "free", "lifetime", "custom"].includes(String(body.filter)) || /^country:([A-Z]{2}|\?)$/.test(String(body.filter))
+        ...(["blocked", "free", "lifetime", "custom", "sandbox"].includes(String(body.filter)) || /^country:([A-Z]{2}|\?)$/.test(String(body.filter))
           ? { p_filter: String(body.filter) } : {}),
       });
       if (error) throw new Error(error.message);
+      // build 193: filter "sandbox" (toegang uit de Apple-sandbox). Een ouder schema kent het filter niet en zou dan ALLE accounts
+      // teruggeven: te herkennen aan het ontbrekende sandbox_total. Dan een lege lijst, nooit de verkeerde.
+      if (body.filter === "sandbox" && (data?.sandbox_total === undefined || data?.sandbox_total === null)) {
+        return json({ total: 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null, free_total: data?.free_total ?? null,
+          sandbox_total: null, page, page_size: size, items: [] });
+      }
       // build 97: zoeken in accounts (op e-mailadres of naam) in het logboek; alleen lengte van de zoekterm, niet de term zelf
       if (q) await audit("users_search", ip, null, { q_length: q.length, filter: body.filter || undefined, page, results: data?.total ?? 0 });
       const rows = (data?.items ?? []) as Record<string, unknown>[];
@@ -1295,12 +1318,12 @@ async function authed(action: string, body: Record<string, unknown>, ip: string,
       const ids = rows.map((u) => String(u.id ?? "")).filter(isUuid).map((id) => id.toLowerCase());
       const [nl, cc] = await Promise.all([newsletterPrefs(ids), accountCountries(ids)]);
       const items = rows.map((u) => ({
-        ...u, email: maskEmail(u.email), newsletter: nl && isUuid(u.id) ? nl[String(u.id).toLowerCase()] ?? null : null,
+        ...u, sandbox: u.sandbox === true, email: maskEmail(u.email), newsletter: nl && isUuid(u.id) ? nl[String(u.id).toLowerCase()] ?? null : null,
         country: isUuid(u.id) ? cc[String(u.id).toLowerCase()] ?? null : null,
       }));
       return json({
         total: data?.total ?? 0, blocked_total: data?.blocked_total ?? null, lifetime_total: data?.lifetime_total ?? null,
-        free_total: data?.free_total ?? null, page, page_size: size, items,
+        free_total: data?.free_total ?? null, sandbox_total: data?.sandbox_total ?? null, page, page_size: size, items,
       });
     }
     case "user_detail": {

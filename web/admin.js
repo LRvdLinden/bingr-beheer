@@ -1869,7 +1869,7 @@
 
 
   // ---- gebruikers ----
-  let page = 0, total = 0, searchTimer, userFilter = "", blockedTotal = null, freeTotal = null, lifetimeTotal = null;
+  let page = 0, total = 0, searchTimer, userFilter = "", blockedTotal = null, freeTotal = null, lifetimeTotal = null, sandboxTotal = null;
   const PAGE = 25;
   $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page = 0; loadUsers(); }, 300); };
   $("prev").onclick = () => { if (page > 0) { page--; loadUsers(); } };
@@ -1881,18 +1881,19 @@
     if (r.blocked_total != null) blockedTotal = r.blocked_total;
     if (r.free_total != null) freeTotal = r.free_total;
     if (r.lifetime_total != null) lifetimeTotal = r.lifetime_total;
+    if (r.sandbox_total != null) sandboxTotal = r.sandbox_total;
     renderUserFilters();
     $("userCount").textContent = `${nf.format(total)} ${total === 1 ? "account" : "accounts"}`;
     $("userRows").innerHTML = (r.items || []).map((u) => `<tr data-id="${esc(u.id)}" tabindex="0"${u.blocked ? ' class="is-blocked"' : ""}>
       <td class="em">${fullName(u) ? `<span class="u-name">${esc(fullName(u))}</span><span class="u-mail">${esc(u.email)}</span>` : esc(u.email)}${u.confirmed ? "" : ' <span class="chip warn">onbevestigd</span>'}${u.newsletter === false ? ' <span class="chip" title="Krijgt de nieuwsbrief niet (afgemeld of alle mail uit)">Geen nieuwsbrief</span>' : ""}${u.blocked
-        ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""} ${planChip(u.plan)}</td>
+        ? ` <span class="chip bad" title="${esc(u.blocked.until ? `Geblokkeerd tot ${fmtDateTime(u.blocked.until)}` : "Geblokkeerd voor onbepaalde tijd")}">Geblokkeerd</span>` : ""} ${planChip(u.plan)}${u.sandbox ? ` <span class="chip warn" title="${esc(u.sandbox_until ? `Tijdelijke toegang via een Apple-testaankoop (sandbox), tot ${fmtDateTime(u.sandbox_until)}` : "Toegang via een Apple-testaankoop (sandbox), zonder betaling")}">Sandbox</span>` : ""}</td>
       <td data-l="Land">${ccChip(u.country)}</td>
       <td data-l="Aangemaakt">${esc(fmtDate(u.created_at))}</td>
       <td data-l="Laatst ingelogd">${esc(ago(u.last_sign_in_at))}</td>
       <td data-l="Apparaten">${nf.format(u.device_count || 0)} ${(u.platforms || []).map((p) => `<span class="chip">${esc(pname(p))}</span>`).join("")}</td>
       <td data-l="Profielen">${nf.format(u.profile_count || 0)}</td>
       <td data-l="Versies">${(u.app_versions || []).map((v) => `<span class="chip">${esc(v)}</span>`).join("") || '<span class="sub">—</span>'}</td>
-    </tr>`).join("") || `<tr><td colspan="7" class="empty">${({ blocked: "Geen geblokkeerde accounts.", free: "Geen Gratis-accounts gevonden.", lifetime: "Geen Lifetime-accounts gevonden.", custom: "Geen accounts met eigen limieten." })[userFilter] || (userFilter.startsWith("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden.")}</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="7" class="empty">${({ blocked: "Geen geblokkeerde accounts.", free: "Geen Gratis-accounts gevonden.", lifetime: "Geen Lifetime-accounts gevonden.", custom: "Geen accounts met eigen limieten.", sandbox: r.sandbox_total == null ? "De server kent het filter Sandbox nog niet." : "Geen accounts met toegang via de sandbox." })[userFilter] || (userFilter.startsWith("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden.")}</td></tr>`;
     $("userRows").querySelectorAll("tr[data-id]").forEach((tr) => {
       tr.onclick = () => openUser(tr.dataset.id);
       tr.onkeydown = (e) => { if (e.key === "Enter") openUser(tr.dataset.id); };
@@ -1903,7 +1904,7 @@
   }
 
   function renderUserFilters() {
-    const f = [["", "Alle accounts", null], ["free", "Gratis", freeTotal], ["lifetime", "Lifetime", lifetimeTotal], ["custom", "Eigen limieten", null], ["blocked", "Geblokkeerd", blockedTotal]];
+    const f = [["", "Alle accounts", null], ["free", "Gratis", freeTotal], ["lifetime", "Lifetime", lifetimeTotal], ["custom", "Eigen limieten", null], ["sandbox", "Sandbox", sandboxTotal], ["blocked", "Geblokkeerd", blockedTotal]];
     $("userFilters").innerHTML = f.map(([k, l, n]) => `<button type="button" data-f="${k}" class="${k === userFilter ? "on" : ""}" aria-pressed="${k === userFilter}">${esc(l)}${n != null ? ` <span class="n">${nf.format(n)}</span>` : ""}</button>`).join("");
     $("userFilters").querySelectorAll("button").forEach((b) => (b.onclick = () => { userFilter = b.dataset.f; page = 0; loadUsers(); }));
     renderCountryFilter();
@@ -2178,7 +2179,7 @@
     const buys = Array.isArray(u.purchases) ? u.purchases.filter((b) => b.status !== "failed") : [];
     const buyList = buys.length ? `<p class="sub">Aankopen: ${buys.map((b) => esc(`${fmtDate(b.paid_at || b.created_at)} ${euro(b.amount)} (${PURCHASE_STATUS[b.status] || b.status}${b.refunded_at ? " " + fmtDate(b.refunded_at) : ""})`)).join(" · ")}. Terugbetalen in het Stripe-dashboard; het account gaat dan vanzelf naar Gratis.</p>` : "";
     return `<section class="plan-box" aria-labelledby="plTitle">
-      <h3 id="plTitle">Abonnement ${planChip(p)}</h3>
+      <h3 id="plTitle">Abonnement ${planChip(p)}${u.sandbox || p.sandbox ? ' <span class="chip warn">Sandbox</span>' : ""}</h3>${u.sandbox || p.sandbox ? `<p class="sub">Deze toegang komt uit een Apple-testaankoop (sandbox): er is niet voor betaald.${p.sandbox_until || u.sandbox_until ? ` Tijdelijk, tot ${esc(fmtDateTime(p.sandbox_until || u.sandbox_until))}.` : " Intrekken: zet het abonnement hieronder op Gratis."}</p>` : ""}
       <p class="sub">${life ? `Lifetime${src ? ", " + esc(src) : ""}${p.updated_at && p.source !== "purchase" ? " · " + esc(fmtDate(p.updated_at)) : ""}` : "Gratis: 1 tegelijk kijken, 2 apparaten, 1 server, zonder statistieken, nu aan het kijken, Trakt, thema's, Verder kijken, kinderprofielen en OpenSubtitles."}</p>${buyList}
       <form id="planForm" class="plan-form" novalidate>
         <label>Abonnement<select id="plPlan"><option value="free"${life ? "" : " selected"}>Gratis</option><option value="lifetime"${life ? " selected" : ""}>Lifetime (gratis gegeven)</option></select></label>
@@ -3304,7 +3305,19 @@
       + tile("Ontbreekt bij ons", nf.format((st.missing || []).length), "in Stripe betaald, niet vastgelegd")
       + tile("Apple nog niet gekoppeld", nf.format(ap.unlinked_7d || 0), `${nf.format(ap.unlinked_no_mail || 0)} zonder claim-mail · cijfers t/m ${ap.last_sales_date || "—"}`)
       + tile("Stripe hangend", nf.format((st.pending_over_1h || 0) + (st.incomplete_over_1d || 0)), `${nf.format(st.pending_over_1h || 0)} pending > 1 u · ${nf.format(st.incomplete_over_1d || 0)} onvolledig > 1 dag`)
-      + tile("Achterstallig", nf.format(st.past_due || 0), "Stripe-abonnementen");
+      + tile("Achterstallig", nf.format(st.past_due || 0), "Stripe-abonnementen")
+      + (r.sandbox ? `<button type="button" id="paySandbox" class="kpi kpi-btn" title="Toon deze accounts (filter Sandbox)"><div class="l">Lifetime via sandbox</div><div class="v">${nf.format(r.sandbox.lifetime_accounts || 0)}</div><div class="h">${esc(`${nf.format(r.sandbox.active_7d || 0)} actief in 7 dagen · ${nf.format(r.sandbox.temporary || 0)} tijdelijk`)}</div></button>` : "");
+    if ($("paySandbox")) $("paySandbox").onclick = () => goUsers("sandbox");
+    // build 193: betaaltrechter per dag en groep (alleen dagen waarop iets gemeld is)
+    const FG = { apple: "Apple", android: "Android", web: "Web en Windows" }, fu = r.funnel || { days: [], top_errors: [] };
+    const frows = (fu.days || []).filter((d) => d.shown || d.started || d.ok || d.failed || d.cancelled).reverse();
+    const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "—");
+    $("payFunnel").innerHTML = frows.map((d) => `<tr>
+      <td data-l="Dag">${esc(d.date)}</td><td data-l="Groep">${esc(FG[d.group] || d.group)}</td><td data-l="Betaalscherm">${nf.format(d.shown)}</td>
+      <td data-l="Koop gestart">${nf.format(d.started)}</td><td data-l="Gelukt">${nf.format(d.ok)}</td><td data-l="Mislukt">${nf.format(d.failed)}</td>
+      <td data-l="Afgebroken">${nf.format(d.cancelled)}</td><td data-l="Gelukt van gestart">${pct(d.ok, d.started)}</td></tr>`).join("")
+      || `<tr><td colspan="8" class="empty">${r.funnel ? "Nog geen meldingen. De apps en de website tellen vanaf build 193." : "De server telt de betaalstappen nog niet."}</td></tr>`;
+    $("payErrors").textContent = (fu.top_errors || []).length ? fu.top_errors.map((e) => `${e.error}: ${nf.format(e.n)}`).join(" · ") : "Geen foutcodes.";
     $("payDays").innerHTML = (r.days || []).slice().reverse().map((d) => `<tr>
       <td data-l="Dag">${esc(d.date)}</td><td data-l="Verkocht (Apple)">${nf.format(d.apple_sold)}</td>
       <td data-l="Nieuwe abonnementen">${nf.format(d.apple_new)}</td><td data-l="Lifetime">${nf.format(d.apple_lifetime)}</td></tr>`).join("");

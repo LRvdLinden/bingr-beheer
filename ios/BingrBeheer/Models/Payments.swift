@@ -48,6 +48,44 @@ struct MissingPayment: Identifiable, Hashable {
     var kindText: String { kind == "invoice" ? "Abonnementsfactuur" : "Lifetime" }
 }
 
+/// Betaaltrechter (build 193): anonieme dagtelling per groep (apple, android, web) uit `funnel.days`.
+struct FunnelDay: Identifiable, Hashable {
+    let date: String
+    let group: String
+    let shown: Int
+    let started: Int
+    let ok: Int
+    let failed: Int
+    let cancelled: Int
+    var id: String { "\(date)-\(group)" }
+
+    init(_ j: JSON) {
+        date = j["date"].text ?? ""
+        group = j["group"].text ?? ""
+        shown = j["shown"].int ?? 0
+        started = j["started"].int ?? 0
+        ok = j["ok"].int ?? 0
+        failed = j["failed"].int ?? 0
+        cancelled = j["cancelled"].int ?? 0
+    }
+
+    var isEmpty: Bool { shown == 0 && started == 0 && ok == 0 && failed == 0 && cancelled == 0 }
+    var groupText: String { ["apple": "Apple", "android": "Android", "web": "Web en Windows"][group] ?? group }
+    /// Gelukt als percentage van gestart ("25%"), of "—" zonder gestarte aankopen.
+    var rate: String { started > 0 ? "\(Int((Double(ok) / Double(started) * 100).rounded()))%" : "—" }
+}
+
+struct FunnelError: Identifiable, Hashable {
+    let error: String
+    let count: Int
+    var id: String { error }
+
+    init(_ j: JSON) {
+        error = j["error"].text ?? ""
+        count = j["n"].int ?? 0
+    }
+}
+
 struct PaymentsCheck {
     let checkedAt: Date?
     let ok: Bool
@@ -64,8 +102,24 @@ struct PaymentsCheck {
     let pendingOverHour: Int
     let incompleteOverDay: Int
     let pastDue: Int
+    /// build 193: Lifetime via een Apple-testaankoop (sandbox). `hasSandbox` false = de server stuurt het blok nog niet mee.
+    let hasSandbox: Bool
+    let sandboxLifetime: Int
+    let sandboxActive7d: Int
+    let sandboxTemporary: Int
+    /// build 193: betaaltrechter. `hasFunnel` false = de server telt nog niet.
+    let hasFunnel: Bool
+    let funnelDays: [FunnelDay]
+    let topErrors: [FunnelError]
 
     init(_ j: JSON) {
+        hasSandbox = j["sandbox"].object != nil
+        sandboxLifetime = j["sandbox"]["lifetime_accounts"].int ?? 0
+        sandboxActive7d = j["sandbox"]["active_7d"].int ?? 0
+        sandboxTemporary = j["sandbox"]["temporary"].int ?? 0
+        hasFunnel = j["funnel"].object != nil
+        funnelDays = j["funnel"]["days"].array.map(FunnelDay.init).filter { !$0.isEmpty }
+        topErrors = j["funnel"]["top_errors"].array.map(FunnelError.init).filter { !$0.error.isEmpty }
         checkedAt = j["checked_at"].date
         ok = j["verdict"].text == "ok"
         issues = j["issues"].array.map(PaymentIssue.init)

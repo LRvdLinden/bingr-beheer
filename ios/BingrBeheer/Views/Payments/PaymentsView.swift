@@ -37,8 +37,46 @@ struct PaymentsView: View {
                         KPITile(label: "Stripe hangend", value: Fmt.num(d.pendingOverHour + d.incompleteOverDay),
                                 hint: "pending > 1 u of onvolledig > 1 dag", small: true)
                         KPITile(label: "Achterstallig", value: Fmt.num(d.pastDue), hint: "Stripe-abonnementen", small: true)
+                        if d.hasSandbox {
+                            // build 193: tik = de accountlijst met het filter Sandbox
+                            Button {
+                                session.usersFilter = "sandbox"
+                                session.section = .users
+                            } label: {
+                                KPITile(label: "Lifetime via sandbox", value: Fmt.num(d.sandboxLifetime),
+                                        hint: "\(Fmt.num(d.sandboxActive7d)) actief in 7 dagen · \(Fmt.num(d.sandboxTemporary)) tijdelijk",
+                                        valueColor: d.sandboxLifetime == 0 ? .white : Color.tone(.warn), small: true)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Toont deze accounts")
+                        }
                     }
                     .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
+                }
+                Section {
+                    if d.funnelDays.isEmpty {
+                        Text(d.hasFunnel ? "Nog geen meldingen. De apps en de website tellen vanaf build 193." : "De server telt de betaalstappen nog niet.")
+                            .foregroundStyle(Color.textDim)
+                    }
+                    ForEach(d.funnelDays.reversed()) { f in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text("\(f.date) · \(f.groupText)").font(.subheadline.weight(.semibold)).monospacedDigit()
+                                Spacer()
+                                Text(f.rate).font(.subheadline.monospacedDigit()).foregroundStyle(Color.textSecondary)
+                            }
+                            Text("betaalscherm \(f.shown) · gestart \(f.started) · gelukt \(f.ok) · mislukt \(f.failed) · afgebroken \(f.cancelled)")
+                                .font(.caption).foregroundStyle(Color.textSecondary).monospacedDigit()
+                        }
+                    }
+                    if !d.topErrors.isEmpty {
+                        Text("Foutcodes: " + d.topErrors.map { "\($0.error) \(Fmt.num($0.count))" }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(Color.textSecondary)
+                    }
+                } header: {
+                    Text("Betaaltrechter per dag")
+                } footer: {
+                    Text("Anonieme tellingen van de apps en de website: betaalscherm getoond, aankoop gestart, gelukt, mislukt of afgebroken. Het percentage is gelukt van gestart.")
                 }
                 Section("In Stripe betaald, bij ons niet vastgelegd") {
                     if d.missing.isEmpty {

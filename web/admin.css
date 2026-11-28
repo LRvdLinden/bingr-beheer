@@ -1123,4 +1123,6 @@ button.ins-s:hover:not(:disabled){background:#ffffff12;border-color:#ffffff26}
 .pay-issues li.error{border-left-color:var(--down)}
 .pay-tiles{grid-template-columns:repeat(4,1fr)}
 .pay-h{font-size:16px;font-weight:700;margin:24px 0 10px}
+.kpi-btn{font:inherit;color:inherit;text-align:left;cursor:pointer;appearance:none}
+.kpi-btn:hover,.kpi-btn:focus-visible{border-color:var(--deg)}
 @media (max-width:1000px){.pay-tiles{grid-template-columns:repeat(2,1fr)}}

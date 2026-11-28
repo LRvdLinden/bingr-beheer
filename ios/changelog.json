@@ -2,6 +2,15 @@
  "_info": "Interne changelog van de Beheer-app (BingrBeheer). Alleen zichtbaar in de tab Downloads van het beheer; NOOIT in docs/changelog.json van iptv-ios-appletv of op bingr.online. Nieuwste build bovenaan; per punt type new, improved of fixed en de tekst in nl. Geen persoonsgegevens of geheimen. Notities maken: python3 tools/beheer_notes.py <build>.",
  "builds": [
   {
+   "build": 55,
+   "version": "1.0.0",
+   "date": "2026-11-28",
+   "items": [
+    {"type": "new", "nl": "Gebruikers: filter Sandbox met teller en een label Sandbox bij accounts die toegang hebben via een Apple-testaankoop (niet betaald)"},
+    {"type": "new", "nl": "Betalingen: de betaaltrechter per dag en groep (betaalscherm, gestart, gelukt, mislukt, afgebroken) met de meest voorkomende foutcodes, en de tegel Lifetime via sandbox die de accountlijst met dat filter opent"}
+   ]
+  },
+  {
    "build": 54,
    "version": "1.0.0",
    "date": "2026-11-27",

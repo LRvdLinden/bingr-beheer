@@ -215,13 +215,35 @@ def payments_answer(req):
         "stripe": {"queried": True, "paid_in_stripe_7d": 3, "recorded_7d": 2,
                    "missing": [{"kind": "checkout", "short_id": "abc123", "amount_cents": 499, "paid_at": "2026-11-26T09:00:00Z"}],
                    "pending_over_1h": 0, "incomplete_over_1d": 0, "past_due": 1},
+        # build 193: Lifetime via de sandbox en de betaaltrechter (8 dagen x 3 groepen; alleen 2 dagen met meldingen)
+        "sandbox": {"lifetime_accounts": 18, "active_7d": 13, "temporary": 1},
+        "funnel": {"days": [{"date": f"2026-11-{20 + i}", "group": g, "shown": 12 if (i, g) == (7, "apple") else 3 if (i, g) == (6, "web") else 0,
+                             "started": 4 if (i, g) == (7, "apple") else 0, "ok": 1 if (i, g) == (7, "apple") else 0,
+                             "failed": 2 if (i, g) == (7, "apple") else 0, "cancelled": 1 if (i, g) == (7, "apple") else 0}
+                            for i in range(8) for g in ("apple", "android", "web")],
+                   "top_errors": [{"error": "http_413", "n": 2}, {"error": "waiver_required", "n": 1}]},
     }
+
+
+USERS_CALLS = []
+
+
+def users_answer(req):
+    """Accountlijst (alleen voor het filter Sandbox, build 193): verzonnen accounts met gemaskeerd adres."""
+    USERS_CALLS.append(req)
+    sandbox = req.get("filter") == "sandbox"
+    items = [{"id": "00000000-0000-4000-8000-0000000000b1", "email": "t***@example.invalid", "created_at": "2026-11-21T10:00:00Z", "confirmed": True,
+              "device_count": 1, "platforms": ["iPhone"], "app_versions": [], "profile_count": 1, "plan": {"plan": "lifetime", "source": "purchase"},
+              "sandbox": True, "sandbox_until": None}] if sandbox else []
+    return 200, {"total": len(items), "blocked_total": 0, "lifetime_total": 30, "free_total": 100, "sandbox_total": 18, "page": 0, "page_size": 25, "items": items}
 
 
 def answer(req):
     a = req.get("action")
     if a == "payments_check":
         return payments_answer(req)
+    if a == "users":
+        return users_answer(req)
     if a == "mail_log":
         return mail_log_answer(req)
     if a == "crashes":
@@ -641,7 +663,12 @@ def payments_smoke(b, base, errors, calls):
     check("Er ontbreken betalingen" in page.inner_text("#payVerdict"), f"uitslag: {page.inner_text('#payVerdict')!r}")
     check(page.eval_on_selector("#payVerdict", "e => e.classList.contains('down')"), "kleur bij ontbrekende betaling")
     check("staat niet bij ons vastgelegd" in page.inner_text("#payIssues"), "afwijkingen")
-    check(page.eval_on_selector_all("#payTiles .kpi", "els => els.length") == 6, "tegels")
+    check(page.eval_on_selector_all("#payTiles .kpi", "els => els.length") == 7, "tegels")
+    check("18" in page.inner_text("#paySandbox") and "13 actief in 7 dagen" in page.inner_text("#paySandbox"), f"sandbox-tegel: {page.inner_text('#paySandbox')!r}")
+    check(page.eval_on_selector_all("#payFunnel tr", "els => els.length") == 2, "trechter: alleen dagen met meldingen")
+    first = page.inner_text("#payFunnel tr:first-child")
+    check("2026-11-27" in first and "Apple" in first and "12" in first and "25%" in first, f"trechter: {first!r}")
+    check("http_413: 2" in page.inner_text("#payErrors") and "waiver_required: 1" in page.inner_text("#payErrors"), "foutcodes")
     check("…abc123" in page.inner_text("#payMissing") and "4,99" in page.inner_text("#payMissing"), f"ontbrekend: {page.inner_text('#payMissing')!r}")
     check(page.eval_on_selector_all("#payDays tr", "els => els.length") == 8, "8 dagen")
     check("bad_transaction_x: 2" in page.inner_text("#payNotif"), "meldingen")
@@ -649,6 +676,11 @@ def payments_smoke(b, base, errors, calls):
     page.click("#payRun")
     page.wait_for_timeout(600)
     check(len(PAY_CALLS) == n + 1, "opnieuw controleren")
+    # build 193: de sandbox-tegel opent de accountlijst met het filter Sandbox
+    page.click("#paySandbox")
+    page.wait_for_selector("#tab-users:not(.hidden) #userRows tr[data-id]", timeout=10000)
+    check(any(c.get("filter") == "sandbox" for c in USERS_CALLS), "accountlijst met filter sandbox")
+    check("Sandbox" in page.inner_text("#userRows") and page.eval_on_selector("#userFilters button[data-f='sandbox']", "e => e.classList.contains('on') && e.textContent.includes('18')"), "badge en teller Sandbox")
     page.close()
     return steps
 

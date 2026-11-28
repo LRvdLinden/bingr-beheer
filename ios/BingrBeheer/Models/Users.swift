@@ -30,9 +30,14 @@ struct UserRow: Identifiable, Hashable {
     let newsletter: Bool?
     /// Laatst gezien land (`country`, alleen de landcode); nil = onbekend.
     let country: String?
+    /// Toegang uit de Apple-sandbox (`sandbox`, build 193): een testaankoop, niet betaald. `sandboxUntil` = einde van tijdelijke toegang.
+    let sandbox: Bool
+    let sandboxUntil: Date?
 
     init(_ j: JSON) {
         id = j["id"].text ?? UUID().uuidString
+        sandbox = j["sandbox"].bool ?? false
+        sandboxUntil = j["sandbox_until"].date
         country = j["country"].text
         newsletter = j["newsletter"].bool
         plan = AccountPlan(j["plan"])

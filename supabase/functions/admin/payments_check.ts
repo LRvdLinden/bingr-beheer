@@ -22,7 +22,15 @@ export type PaymentsInput = {
   knownIds: Set<string>;                  // billing_purchases.stripe_session_id en premium_payments.id van de laatste dagen
   stripe: { paid: StripePaid[]; truncated: boolean } | null;   // null = niet bevraagd
   stripeWhy?: "no_key" | "test_key" | "unreachable" | "failed" | null;
+  /** build 193: tellingen van bingr_admin_sandbox_stats (null = de server kent ze nog niet) */
+  sandbox?: { lifetime_accounts?: unknown; active_7d?: unknown; temporary?: unknown } | null;
+  /** build 193: rijen van billing_funnel_daily van de laatste 8 dagen (null/leeg = de server telt nog niet) */
+  funnel?: FunnelRow[] | null;
 };
+export type FunnelRow = { day: string; platform: string; step: string; product?: string | null; error?: string | null; n: number };
+export type FunnelGroup = "apple" | "android" | "web";
+export type FunnelDay = { date: string; group: FunnelGroup; shown: number; started: number; ok: number; failed: number; cancelled: number };
+export type SandboxView = { lifetime_accounts: number; active_7d: number; temporary: number };
 
 const DAY = 86_400_000;
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -30,6 +38,44 @@ const dayOf = (iso: string) => String(iso ?? "").slice(0, 10);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 export const shortId = (id: string) => String(id ?? "").slice(-6);
+
+// ---------------- build 193: sandbox en betaaltrechter ----------------
+export function sandboxView(v: PaymentsInput["sandbox"]): SandboxView {
+  const i = (x: unknown) => Math.max(0, Math.floor(n(x)));
+  return { lifetime_accounts: i(v?.lifetime_accounts), active_7d: i(v?.active_7d), temporary: i(v?.temporary) };
+}
+export const FUNNEL_GROUPS: FunnelGroup[] = ["apple", "android", "web"];
+/** Platform van een melding naar de groep in het overzicht (web = ook Windows); onbekend = null. */
+export function funnelGroup(platform: string): FunnelGroup | null {
+  if (["ios", "ipados", "tvos", "macos"].includes(platform)) return "apple";
+  if (platform === "android" || platform === "androidtv") return "android";
+  if (platform === "web" || platform === "windows") return "web";
+  return null;
+}
+const FUNNEL_FIELD: Record<string, keyof Omit<FunnelDay, "date" | "group">> = {
+  paywall_shown: "shown", purchase_started: "started", purchase_ok: "ok", purchase_failed: "failed", purchase_cancelled: "cancelled",
+};
+/** De trechter per dag (laatste 8, oudste eerst) en per groep; herstellen telt hier niet mee. Plus de meest voorkomende foutcodes. */
+export function buildFunnel(now: number, rows: FunnelRow[] | null | undefined): { days: FunnelDay[]; top_errors: { error: string; n: number }[] } {
+  const days: FunnelDay[] = [];
+  const at = new Map<string, FunnelDay>();
+  for (let k = 7; k >= 0; k--) {
+    const date = ymd(now - k * DAY);
+    for (const group of FUNNEL_GROUPS) { const d = { date, group, shown: 0, started: 0, ok: 0, failed: 0, cancelled: 0 }; days.push(d); at.set(`${date}|${group}`, d); }
+  }
+  const errs = new Map<string, number>();
+  for (const r of rows ?? []) {
+    const g = funnelGroup(String(r.platform ?? "")), d = g ? at.get(`${dayOf(String(r.day))}|${g}`) : undefined;
+    if (!d) continue;
+    const c = Math.max(0, Math.floor(n(r.n)));
+    const f = FUNNEL_FIELD[String(r.step ?? "")];
+    if (f) d[f] += c;
+    const e = String(r.error ?? "");
+    if (e && /^[a-z0-9_]{1,40}$/.test(e) && (r.step === "purchase_failed" || r.step === "restore_failed")) errs.set(e, (errs.get(e) ?? 0) + c);
+  }
+  const top_errors = [...errs.entries()].map(([error, c]) => ({ error, n: c })).sort((a, b) => b.n - a.n || (a.error < b.error ? -1 : 1)).slice(0, 10);
+  return { days, top_errors };
+}
 
 /** De laatste 8 dagen (oudste eerst) met Apple-verkopen tegenover nieuwe Apple-abonnementen en -Lifetime-aankopen. */
 export function buildDays(i: Pick<PaymentsInput, "now" | "sales" | "appleSubs" | "applePurchases">): DayRow[] {
@@ -94,6 +140,10 @@ export function buildIssues(i: PaymentsInput, days: DayRow[], missing: Missing[]
   if (i.incompleteOverDay > 0) out.push({ level: "warn", key: "stripe_incomplete",
     nl: `${i.incompleteOverDay} Stripe-${pl(i.incompleteOverDay, "abonnement is", "abonnementen zijn")} na een dag nog onvolledig.`,
     en: `${i.incompleteOverDay} Stripe ${pl(i.incompleteOverDay, "subscription is", "subscriptions are")} still incomplete after a day.` });
+  const sb = sandboxView(i.sandbox);
+  if (sb.lifetime_accounts > 0) out.push({ level: "warn", key: "sandbox_lifetime",
+    nl: `${sb.lifetime_accounts} ${pl(sb.lifetime_accounts, "account heeft", "accounts hebben")} Lifetime via een Apple-testaankoop (sandbox), zonder betaling; ${sb.active_7d} daarvan ${pl(sb.active_7d, "was", "waren")} de laatste 7 dagen actief. Bekijk ze onder Accounts met het filter Sandbox.`,
+    en: `${sb.lifetime_accounts} ${pl(sb.lifetime_accounts, "account has", "accounts have")} Lifetime through an Apple test purchase (sandbox), without payment; ${sb.active_7d} of them ${pl(sb.active_7d, "was", "were")} active in the last 7 days. See Accounts with the Sandbox filter.` });
   if (i.pastDue > 0) out.push({ level: "warn", key: "stripe_past_due",
     nl: `${i.pastDue} Stripe-${pl(i.pastDue, "abonnement loopt", "abonnementen lopen")} achter met betalen.`,
     en: `${i.pastDue} Stripe ${pl(i.pastDue, "subscription is", "subscriptions are")} past due.` });
@@ -117,6 +167,8 @@ export function buildPaymentsCheck(i: PaymentsInput) {
       queried: !!i.stripe, paid_in_stripe_7d: i.stripe ? i.stripe.paid.length : null, recorded_7d: i.recorded7d,
       missing, pending_over_1h: i.pendingOverHour, incomplete_over_1d: i.incompleteOverDay, past_due: i.pastDue,
     },
+    sandbox: sandboxView(i.sandbox),
+    funnel: buildFunnel(i.now, i.funnel),
   };
 }
 

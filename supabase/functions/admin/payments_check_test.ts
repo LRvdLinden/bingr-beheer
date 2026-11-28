@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { buildDays, buildPaymentsCheck, findMissing, notificationCounts, shortId, stripePaidFrom, type PaymentsInput } from "./payments_check.ts";
+import { buildDays, buildFunnel, buildPaymentsCheck, findMissing, funnelGroup, notificationCounts, sandboxView, shortId, stripePaidFrom, type PaymentsInput } from "./payments_check.ts";
 
 const NOW = Date.parse("2026-11-27T18:00:00Z");
 const base = (o: Partial<PaymentsInput> = {}): PaymentsInput => ({
@@ -88,4 +88,47 @@ Deno.test("hulpfuncties", () => {
   assertEquals(shortId("cs_live_abcdef"), "abcdef");
   assertEquals(notificationCounts([{ result: null }, { result: "a" }, { result: "a" }]), { onbekend: 1, a: 2 });
   assertEquals(findMissing([], new Set()), []);
+});
+
+// ---------------- build 193: sandbox en betaaltrechter ----------------
+Deno.test("sandbox: tellingen in vaste vorm, ook als de server ze nog niet kent", () => {
+  assertEquals(sandboxView(null), { lifetime_accounts: 0, active_7d: 0, temporary: 0 });
+  assertEquals(sandboxView({ lifetime_accounts: "18", active_7d: 13.9, temporary: -2 }), { lifetime_accounts: 18, active_7d: 13, temporary: 0 });
+  const none = buildPaymentsCheck(base());
+  assertEquals(none.sandbox, { lifetime_accounts: 0, active_7d: 0, temporary: 0 });
+  assertEquals(none.verdict, "ok");
+});
+Deno.test("sandbox: Lifetime via de sandbox geeft een waarschuwing; alleen tijdelijke toegang niet", () => {
+  const r = buildPaymentsCheck(base({ sandbox: { lifetime_accounts: 18, active_7d: 13, temporary: 1 } }));
+  assertEquals(r.issues.map((x) => [x.key, x.level]), [["sandbox_lifetime", "warn"]]);
+  assertEquals(r.verdict, "attention");
+  assertEquals(r.issues[0].nl.includes("18 accounts hebben") && r.issues[0].nl.includes("13 daarvan waren"), true);
+  assertEquals(buildPaymentsCheck(base({ sandbox: { lifetime_accounts: 1, active_7d: 1, temporary: 0 } })).issues[0].nl.includes("1 account heeft"), true);
+  assertEquals(buildPaymentsCheck(base({ sandbox: { lifetime_accounts: 0, active_7d: 0, temporary: 4 } })).issues, []);
+});
+Deno.test("trechter: groepen, 8 dagen per groep, stappen en foutcodes", () => {
+  assertEquals(["ios", "ipados", "tvos", "macos", "android", "androidtv", "web", "windows", "tizen"].map(funnelGroup),
+    ["apple", "apple", "apple", "apple", "android", "android", "web", "web", null]);
+  const f = buildFunnel(NOW, [
+    { day: "2026-11-27", platform: "ios", step: "paywall_shown", n: 10 },
+    { day: "2026-11-27", platform: "tvos", step: "paywall_shown", n: 2 },
+    { day: "2026-11-27", platform: "ios", step: "purchase_started", product: "year", n: 4 },
+    { day: "2026-11-27", platform: "ios", step: "purchase_ok", product: "year", n: 1 },
+    { day: "2026-11-27", platform: "ios", step: "purchase_failed", product: "year", error: "http_413", n: 2 },
+    { day: "2026-11-27", platform: "ios", step: "purchase_failed", product: "year", error: "", n: 1 },
+    { day: "2026-11-27", platform: "ios", step: "purchase_cancelled", n: 1 },
+    { day: "2026-11-27", platform: "ios", step: "restore_failed", error: "nothing_to_restore", n: 5 },
+    { day: "2026-11-26", platform: "windows", step: "paywall_shown", n: 3 },
+    { day: "2026-11-26", platform: "web", step: "purchase_failed", error: "waiver_required", n: 2 },
+    { day: "2026-11-01", platform: "ios", step: "paywall_shown", n: 99 },
+    { day: "2026-11-27", platform: "tizen", step: "paywall_shown", n: 99 },
+    { day: "2026-11-27", platform: "ios", step: "purchase_failed", error: "Vrije tekst", n: 7 },
+  ]);
+  assertEquals(f.days.length, 24);
+  assertEquals([f.days[0].date, f.days[0].group, f.days[23].date, f.days[23].group], ["2026-11-20", "apple", "2026-11-27", "web"]);
+  assertEquals(f.days.find((d) => d.date === "2026-11-27" && d.group === "apple"), { date: "2026-11-27", group: "apple", shown: 12, started: 4, ok: 1, failed: 10, cancelled: 1 });
+  assertEquals(f.days.find((d) => d.date === "2026-11-26" && d.group === "web"), { date: "2026-11-26", group: "web", shown: 3, started: 0, ok: 0, failed: 2, cancelled: 0 });
+  assertEquals(f.top_errors, [{ error: "nothing_to_restore", n: 5 }, { error: "http_413", n: 2 }, { error: "waiver_required", n: 2 }]);
+  assertEquals(buildFunnel(NOW, null), { days: f.days.map((d) => ({ ...d, shown: 0, started: 0, ok: 0, failed: 0, cancelled: 0 })), top_errors: [] });
+  assertEquals(buildPaymentsCheck(base()).funnel.days.length, 24);
 });

@@ -228,7 +228,7 @@
       </div>
       <div class="panel lt-panel">
         <h2>Test met mijn account</h2>
-        <p class="sub">Een testaccount ziet Premium al, ook met alles uit: alsof het nieuw is (proef mag) op alle apparaten. Zet het aan bij Gebruikers, in de lade van een account (knop Premium testen). Een Lifetime-account blijft volledig toegang houden; test daarom met een gratis account.</p>
+        <p class="sub">Een testaccount ziet Premium al, ook met alles uit: alsof het nieuw is (proef mag) op alle apparaten. Zet het aan bij Gebruikers, in de lade van een account (knop Premium testen). Een Lifetime-account blijft volledig toegang houden; test daarom met een gratis account. Alleen een testaccount houdt blijvend Lifetime na een Apple-testaankoop (sandbox, bv. TestFlight); elk ander account krijgt daar eenmalig 3 dagen toegang voor.</p>
         <div id="pmTests" aria-live="polite"></div>
       </div>
       <div class="panel lt-panel">
@@ -603,6 +603,16 @@
       <div id="payVerdict" class="st-banner" aria-live="polite"></div>
       <ul id="payIssues" class="pay-issues"></ul>
       <div id="payTiles" class="kpis pay-tiles"></div>
+      <h2 class="pay-h">Betaaltrechter per dag</h2>
+      <p class="sub">Anonieme tellingen van de apps en de website (vanaf build 193): hoe vaak het betaalscherm is getoond, een aankoop is gestart, gelukt, mislukt of afgebroken. Geen accounts, apparaten of adressen.</p>
+      <div class="table-wrap">
+        <table class="users">
+          <thead><tr><th>Dag</th><th>Groep</th><th>Betaalscherm</th><th>Koop gestart</th><th>Gelukt</th><th>Mislukt</th><th>Afgebroken</th><th>Gelukt van gestart</th></tr></thead>
+          <tbody id="payFunnel"></tbody>
+        </table>
+      </div>
+      <h2 class="pay-h">Meest voorkomende foutcodes (8 dagen)</h2>
+      <div id="payErrors" class="sub"></div>
       <h2 class="pay-h">Apple per dag</h2>
       <div class="table-wrap">
         <table class="users">

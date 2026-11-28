@@ -13,6 +13,9 @@ struct UsersView: View {
     @State private var blockedTotal: Int?
     @State private var freeTotal: Int?
     @State private var lifetimeTotal: Int?
+    @State private var sandboxTotal: Int?
+    /// De server kent het filter Sandbox nog niet (antwoord zonder `sandbox_total`).
+    @State private var sandboxUnknown = false
     @State private var countries: CountryStats?
 
     private let pageSize = 50
@@ -36,7 +39,8 @@ struct UsersView: View {
                 }
             }
             if loaded && items.isEmpty && error == nil {
-                EmptyText(text: Self.emptyText[session.usersFilter] ?? (session.usersFilter.hasPrefix("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden."))
+                EmptyText(text: sandboxUnknown ? "De server kent het filter Sandbox nog niet."
+                          : Self.emptyText[session.usersFilter] ?? (session.usersFilter.hasPrefix("country:") ? "Geen accounts uit dit land." : "Geen accounts gevonden."))
                     .listRowBackground(Color.surface1)
             }
             if loading {
@@ -67,11 +71,11 @@ struct UsersView: View {
     }
 
     private static let filters: [Option] = [
-        .init("", "Alle accounts"), .init("free", "Gratis"), .init("lifetime", "Lifetime"), .init("custom", "Eigen limieten"), .init("blocked", "Geblokkeerd"),
+        .init("", "Alle accounts"), .init("free", "Gratis"), .init("lifetime", "Lifetime"), .init("custom", "Eigen limieten"), .init("sandbox", "Sandbox"), .init("blocked", "Geblokkeerd"),
     ]
     private static let emptyText = [
         "blocked": "Geen geblokkeerde accounts.", "free": "Geen Gratis-accounts gevonden.", "lifetime": "Geen Lifetime-accounts gevonden.",
-        "custom": "Geen accounts met eigen limieten.",
+        "custom": "Geen accounts met eigen limieten.", "sandbox": "Geen accounts met toegang via de sandbox.",
     ]
 
     private func count(_ key: String) -> Int? {
@@ -79,6 +83,7 @@ struct UsersView: View {
         case "blocked": return blockedTotal
         case "free": return freeTotal
         case "lifetime": return lifetimeTotal
+        case "sandbox": return sandboxTotal
         default: return nil
         }
     }
@@ -173,6 +178,8 @@ struct UsersView: View {
             if let b = r["blocked_total"].int { blockedTotal = b }
             if let n = r["free_total"].int { freeTotal = n }
             if let n = r["lifetime_total"].int { lifetimeTotal = n }
+            if let n = r["sandbox_total"].int { sandboxTotal = n }
+            sandboxUnknown = session.usersFilter == "sandbox" && r["sandbox_total"].int == nil
             page = p
             if replace { items = rows } else { items += rows.filter { n in !items.contains { $0.id == n.id } } }
             error = nil
@@ -205,6 +212,7 @@ struct UserRowView: View {
                 if user.newsletter == false { Chip(text: "Geen nieuwsbrief", icon: "envelope.badge") }
                 if user.isBlocked { Chip(text: "Geblokkeerd", tone: .bad, icon: "nosign") }
                 PlanChip(plan: user.plan)
+                if user.sandbox { Chip(text: "Sandbox", tone: .warn, icon: "testtube.2") }
                 if let c = user.country { Text(Country.flag(c)).font(.caption).accessibilityLabel(Country.name(c)) }
             }
             HStack(spacing: 10) {
