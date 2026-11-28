@@ -130,10 +130,10 @@ jobs:
               source tools/ftps.sh; ftps_connect >/dev/null
               ftps_try "chmod 644 \"$FTPS_TARGET/builds/key.php\" \"$FTPS_TARGET/builds/manifest.json\"" >/dev/null 2>&1
             fi
-            echo "dl.php ping $i: HTTP ${code:-?} $(printf '%s' "$ping" | head -c 120)"
+            echo "dl.php ping $i: HTTP ${code:-?} $(printf '%s' "$ping" | tr '\n' ' ' | grep -oiE '<title>[^<]{0,80}' | head -1) $(printf '%s' "$ping" | head -c 60 | tr '\n' ' ')"
             sleep 20
           done
-          [ "$ready" = 1 ] && echo "::notice::dl.php is klaar voor downloads." || { echo "::error::dl.php kan de sleutel niet lezen (laatste ping: HTTP ${code:-?} $(printf '%s' "$ping" | head -c 120))."; exit 1; }
+          [ "$ready" = 1 ] && echo "::notice::dl.php is klaar voor downloads." || { echo "::error::dl.php kan de sleutel niet lezen (laatste ping: HTTP ${code:-?} $(printf '%s' "$ping" | tr '\n' ' ' | grep -oiE '<title>[^<]{0,80}' | head -1))."; exit 1; }
           # teller van de openbare Windows-installer (dl.php ?app=windows) moet schrijfbaar zijn voor PHP; zo niet, ruimere rechten (alleen dit bestand)
           for mode in 600 660 666; do
             ping=$(curl -s --max-time 20 "${url}dl.php?ping=1" || true)
